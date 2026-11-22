@@ -11,7 +11,7 @@ def pkg [name: string, deps: list<string>]: nothing -> record {
 
 def "test layers: crates are told apart by name" [] {
     assert (is_renderer "fusuma-render")
-    assert (is_renderer "fusuma-render-skia")
+    assert (is_renderer "fusuma-render-vello-cpu")
     assert (not (is_renderer "fusuma-renderer-ui"))
     assert (not (is_renderer "fusuma-core"))
     assert (is_toolkit "fusuma")
@@ -22,12 +22,12 @@ def "test layers: crates are told apart by name" [] {
 }
 
 def "test layers: a renderer crate that depends on the toolkit is reported" [] {
-    let bad = violations [(pkg fusuma-render-skia [tiny-skia fusuma-core]) (pkg fusuma-render [])]
-    assert equal $bad [{ from: fusuma-render-skia, to: fusuma-core }]
+    let bad = violations [(pkg fusuma-render-vello-cpu [tiny-skia fusuma-core]) (pkg fusuma-render [])]
+    assert equal $bad [{ from: fusuma-render-vello-cpu, to: fusuma-core }]
 }
 
 def "test layers: renderer crates may depend on each other, and the toolkit on the renderer" [] {
-    assert equal (violations [(pkg fusuma-render-skia [fusuma-render fusuma-render-embedded])]) []
+    assert equal (violations [(pkg fusuma-render-vello-cpu [fusuma-render fusuma-render-embedded])]) []
     assert equal (violations [(pkg fusuma-core [fusuma-render fusuma-render-embedded]) (pkg fusuma-widgets [fusuma-core])]) []
 }
 

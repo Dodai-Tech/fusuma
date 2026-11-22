@@ -1,0 +1,16 @@
+[package]
+name = "fusuma-anim"
+description = "Animation for Fusuma: easing, tweens, keyframes, springs and fling decay in fixed-point maths (no_std, no allocator, runs without an FPU)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-anim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["animation", "easing", "spring", "no-std", "embedded"]
+categories = ["graphics", "embedded", "no-std", "gui"]
+
+[lints]
+workspace = true

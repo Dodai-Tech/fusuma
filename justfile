@@ -183,7 +183,7 @@ validate-tag version:
 release-preview: _check-git-cliff
     @print $"Current version: (nu scripts/version.nu)\n"
     @git-cliff --unreleased
-    @echo "Ships: fusuma-render, fusuma-render-embedded, fusuma-render-skia (crates.io, docs on docs.rs)"
+    @echo "Ships: fusuma-render, fusuma-render-embedded, fusuma-render-vello-common, fusuma-render-vello-cpu (crates.io, docs on docs.rs)"
 
 # Everything in check-all plus a release build and the docs
 check-release: check-all build-release doc

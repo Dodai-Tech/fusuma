@@ -5,7 +5,7 @@
 use libfuzzer_sys::fuzz_target;
 use fusuma_render::{Align, Color, Image, PathCmd, Point, Probe, Rect, Renderer, TextStyle};
 use fusuma_render_embedded::{Embedded, Frame};
-use fusuma_render_skia::Skia;
+
 
 struct Bytes<'a>(&'a [u8]);
 
@@ -110,6 +110,6 @@ fn run<R: Renderer + Probe>(r: &mut R, data: &[u8]) {
 fuzz_target!(|data: &[u8]| {
     let mut e = Embedded::new(Frame::new(48, 40, vec![0u16; 48 * 40]).unwrap());
     run(&mut e, data);
-    let mut s = Skia::new(48, 40).unwrap();
+    let mut s = fusuma_render_vello_cpu::new(48, 40).unwrap();
     run(&mut s, data);
 });

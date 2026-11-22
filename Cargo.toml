@@ -3,7 +3,9 @@ resolver = "3"
 members = [
     "crates/fusuma-render",
     "crates/fusuma-render-embedded",
-    "crates/fusuma-render-skia",
+    "crates/fusuma-anim",
+    "crates/fusuma-render-vello-common",
+    "crates/fusuma-render-vello-cpu",
 ]
 
 [workspace.package]
@@ -20,7 +22,11 @@ categories = ["graphics", "embedded", "no-std", "rendering"]
 fusuma-render = { path = "crates/fusuma-render", version = "0.1.0" }
 fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.1.0" }
 embedded-graphics = "0.8.2"
-tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd", "png-format"] }
+fusuma-anim = { path = "crates/fusuma-anim", version = "0.1.0" }
+fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.1.0" }
+vello_common = { version = "0.4", default-features = false, features = ["std"] }
+vello_cpu = { version = "0.4", default-features = false, features = ["std", "u8_pipeline", "png"] }
+png = "0.18"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

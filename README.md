@@ -12,16 +12,26 @@
 A native Rust UI toolkit for everything from a microcontroller to a desktop, with no webview, no
 HTML and no CSS. A fusuma (襖) is the sliding door of a Japanese room.
 
-Two layers live in this repository, as separate crates:
+Apps depend on one crate, `fusuma` (planned), and the right renderer is chosen for the target:
+the integer one on a microcontroller, the GPU one on a desktop or phone, the CPU one when there is
+no usable GPU. The crates below are the parts it is built from.
 
-| Layer | Crates | Status |
-|---|---|---|
-| Renderer: draws shapes, paths, text and images | [`fusuma-render`](crates/fusuma-render) (the `Renderer` trait, `no_std`), [`fusuma-render-embedded`](crates/fusuma-render-embedded) (integer, `no_std`, for small displays), [`fusuma-render-skia`](crates/fusuma-render-skia) (anti-aliased, `tiny-skia`); `fusuma-render-vello` (GPU) is planned | working, fuzzed, one shared conformance suite |
-| Toolkit: widgets, layout, events, animation | `fusuma-*` | planned |
+| Crate | What | `no_std` | Status |
+|---|---|---|---|
+| [`fusuma-render`](crates/fusuma-render) | the `Renderer` trait, geometry, colors, paths, the conformance suite | yes | working |
+| [`fusuma-render-embedded`](crates/fusuma-render-embedded) | integer drawing for small displays | yes | working |
+| [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
+| [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
+| [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, in fixed point | yes | working |
+| `fusuma-render-vello` | GPU drawing on `vello_gpu` | no | planned |
+| `fusuma-shaders` | shader contract and engine | no | planned |
+| `fusuma-core`, `fusuma-widgets`, `fusuma-text` | widget tree, layout, widgets, text | partly | planned |
+| `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
+| `fusuma` | the facade: one dependency, the backend chosen by target | no | planned |
 
-A renderer crate never depends on a toolkit crate: a project that needs only drawing, a
-microcontroller firmware for instance, depends on `fusuma-render-embedded` and gets no toolkit
-code. CI checks this rule.
+See the [roadmap](docs/ROADMAP.md). A renderer crate never depends on a toolkit crate: a firmware
+that needs only drawing depends on `fusuma-render-embedded` and gets no toolkit code. CI checks
+this rule.
 
 ## Use
 
@@ -45,11 +55,14 @@ Nushell tests. `just fuzz-all` runs the fuzz targets (nightly).
 ## Layout
 
 ```
-crates/fusuma-render            the Renderer trait, geometry, colors, paths, conformance suite
-crates/fusuma-render-embedded   integer drawing for embedded-graphics targets
-crates/fusuma-render-skia       anti-aliased drawing on tiny-skia
-fuzz/                      cargo-fuzz targets (geometry, draw)
-scripts/                   Nushell scripts used by the justfile and CI
+crates/fusuma-render               the Renderer trait, geometry, colors, paths, conformance suite
+crates/fusuma-render-embedded      integer drawing for embedded-graphics targets
+crates/fusuma-render-vello-common  the Renderer on a Vello scene, shared by the CPU and GPU backends
+crates/fusuma-render-vello-cpu     anti-aliased drawing on vello_cpu
+crates/fusuma-anim                 easing, tweens, keyframes, springs, fling decay
+docs/ROADMAP.md                    what is done and what comes next
+fuzz/                              cargo-fuzz targets (geometry, draw, anim)
+scripts/                           Nushell scripts used by the justfile and CI
 ```
 
 Part of the Dodai family: Dodai OS is the foundation, Fusuma draws the interface, and

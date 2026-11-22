@@ -1,8 +1,8 @@
 [package]
-name = "fusuma-render-skia"
-description = "Fusuma renderer backend for desktops, phones and watches: anti-aliased CPU drawing on tiny-skia"
+name = "fusuma-render-vello-common"
+description = "Shared code of the Fusuma Vello backends: the Renderer implementation, generic over a recording scene (CPU or GPU)"
 readme = "README.md"
-documentation = "https://docs.rs/fusuma-render-skia"
+documentation = "https://docs.rs/fusuma-render-vello-common"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ categories.workspace = true
 fusuma-render.workspace = true
 fusuma-render-embedded.workspace = true
 embedded-graphics.workspace = true
-tiny-skia.workspace = true
+vello_common.workspace = true
 
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
