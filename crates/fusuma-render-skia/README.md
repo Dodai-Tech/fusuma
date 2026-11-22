@@ -1,5 +1,9 @@
 # fusuma-render-skia
 
+[![Crates.io](https://img.shields.io/crates/v/fusuma-render-skia.svg)](https://crates.io/crates/fusuma-render-skia)
+[![docs.rs](https://img.shields.io/docsrs/fusuma-render-skia)](https://docs.rs/fusuma-render-skia)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
+
 The Fusuma renderer backend for desktops, phones, tablets and watches: anti-aliased CPU drawing on
 [`tiny-skia`](https://crates.io/crates/tiny-skia). It owns an RGBA `Pixmap`, which you hand to a
 window system (`winit` and `softbuffer`, a Wayland buffer, a texture) or write out as a PNG.

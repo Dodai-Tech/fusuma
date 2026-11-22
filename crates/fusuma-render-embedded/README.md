@@ -1,5 +1,9 @@
 # fusuma-render-embedded
 
+[![Crates.io](https://img.shields.io/crates/v/fusuma-render-embedded.svg)](https://crates.io/crates/fusuma-render-embedded)
+[![docs.rs](https://img.shields.io/docsrs/fusuma-render-embedded)](https://docs.rs/fusuma-render-embedded)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
+
 The Fusuma renderer backend for small displays. It draws with integers only, in `no_std` and without an
 allocator, on any [`embedded-graphics`](https://crates.io/crates/embedded-graphics) `DrawTarget`
 with `Rgb565` pixels: an SPI or QSPI display driver, a framebuffer in PSRAM, or the `Frame` type

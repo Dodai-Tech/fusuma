@@ -3,6 +3,10 @@
 [![CI](https://github.com/Dodai-Tech/fusuma/actions/workflows/ci.yml/badge.svg)](https://github.com/Dodai-Tech/fusuma/actions/workflows/ci.yml)
 [![Security](https://github.com/Dodai-Tech/fusuma/actions/workflows/security.yml/badge.svg)](https://github.com/Dodai-Tech/fusuma/actions/workflows/security.yml)
 [![Fuzz](https://github.com/Dodai-Tech/fusuma/actions/workflows/fuzz.yml/badge.svg)](https://github.com/Dodai-Tech/fusuma/actions/workflows/fuzz.yml)
+[![Crates.io](https://img.shields.io/crates/v/fusuma-render.svg)](https://crates.io/crates/fusuma-render)
+[![docs.rs](https://img.shields.io/docsrs/fusuma-render)](https://docs.rs/fusuma-render)
+[![MSRV](https://img.shields.io/badge/MSRV-1.90-blue.svg)](Cargo.toml)
+[![no_std](https://img.shields.io/badge/no__std-yes-success.svg)](crates/fusuma-render)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A native Rust UI toolkit for everything from a microcontroller to a desktop, with no webview, no

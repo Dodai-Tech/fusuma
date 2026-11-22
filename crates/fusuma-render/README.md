@@ -1,5 +1,9 @@
 # fusuma-render
 
+[![Crates.io](https://img.shields.io/crates/v/fusuma-render.svg)](https://crates.io/crates/fusuma-render)
+[![docs.rs](https://img.shields.io/docsrs/fusuma-render)](https://docs.rs/fusuma-render)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
+
 A small renderer abstraction for 2D user interfaces. A toolkit draws through one trait,
 `Renderer`; backends implement it for the target.
 
