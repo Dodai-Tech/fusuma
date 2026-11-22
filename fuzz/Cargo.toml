@@ -1,0 +1,31 @@
+[package]
+name = "tokonoma-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tokonoma = { path = "../crates/tokonoma" }
+tokonoma-embedded = { path = "../crates/tokonoma-embedded" }
+tokonoma-skia = { path = "../crates/tokonoma-skia" }
+
+# Not part of the main workspace (needs nightly).
+[workspace]
+
+[[bin]]
+name = "geometry"
+path = "fuzz_targets/geometry.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "draw"
+path = "fuzz_targets/draw.rs"
+test = false
+doc = false
+bench = false

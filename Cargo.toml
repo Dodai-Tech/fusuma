@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/tokonoma",
+    "crates/tokonoma-embedded",
+    "crates/tokonoma-skia",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+authors = ["Sorin Albu-Irimies"]
+repository = "https://github.com/Dodai-Tech/tokonoma"
+homepage = "https://github.com/Dodai-Tech/tokonoma"
+keywords = ["graphics", "renderer", "embedded", "no-std", "2d"]
+categories = ["graphics", "embedded", "no-std", "rendering"]
+
+[workspace.dependencies]
+tokonoma = { path = "crates/tokonoma", version = "0.1.0" }
+tokonoma-embedded = { path = "crates/tokonoma-embedded", version = "0.1.0" }
+embedded-graphics = "0.8.2"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd", "png-format"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

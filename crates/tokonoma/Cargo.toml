@@ -1,0 +1,21 @@
+[package]
+name = "tokonoma"
+description = "A small, no_std renderer abstraction: shapes, paths, text, images, clip and translate behind one trait"
+readme = "README.md"
+documentation = "https://docs.rs/tokonoma"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# The shared test-suite every backend must pass (`tokonoma::conformance`).
+conformance = []
+
+[lints]
+workspace = true
