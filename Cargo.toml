@@ -13,7 +13,6 @@ rust-version = "1.90"
 license = "MIT"
 authors = ["Sorin Albu-Irimies"]
 repository = "https://github.com/Dodai-Tech/tokonoma"
-homepage = "https://github.com/Dodai-Tech/tokonoma"
 keywords = ["graphics", "renderer", "embedded", "no-std", "2d"]
 categories = ["graphics", "embedded", "no-std", "rendering"]
 
