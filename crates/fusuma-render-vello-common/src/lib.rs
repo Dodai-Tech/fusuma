@@ -17,12 +17,17 @@ use fusuma_render::{
     left_edge,
 };
 use fusuma_render_embedded::{font_for, text_size};
-pub use vello_common::{color, kurbo, peniko};
+pub use vello_common::{
+    color, kurbo,
+    paint::{ImageSource, PaintType},
+    peniko,
+    pixmap::Pixmap,
+};
 use vello_common::{
     kurbo::{Affine, BezPath, Circle, Join, RoundedRect, Shape, Stroke},
-    paint::{Image as PaintImage, ImageSource, PaintType},
+    paint::Image as PaintImage,
     peniko::{ImageAlphaType, ImageQuality, ImageSampler},
-    pixmap::{PixelMetadata, Pixmap},
+    pixmap::PixelMetadata,
 };
 
 /// Shapes reaching farther than this many pixels from the origin (after the translation) are not
@@ -60,6 +65,12 @@ pub trait Scene {
     /// A transform of the paint (an image or a gradient) relative to the shape, replacing any
     /// earlier one; `Affine::IDENTITY` resets it.
     fn set_paint_transform(&mut self, transform: Affine);
+
+    /// How an image is handed to the renderer. A CPU scene takes the pixels as they are (the
+    /// default); a GPU scene uploads them to a texture and returns a handle to it.
+    fn image_source(&mut self, pixmap: Arc<Pixmap>) -> ImageSource {
+        ImageSource::Pixmap(pixmap)
+    }
 
     /// Fills a rectangle.
     fn fill_rect(&mut self, rect: &kurbo::Rect);
@@ -459,7 +470,7 @@ impl<S: Scene> Renderer for Backend<S> {
             },
         );
         let paint = PaintImage {
-            image: ImageSource::Pixmap(Arc::new(pixmap)),
+            image: i.scene.image_source(Arc::new(pixmap)),
             // Nearest neighbor: an image is drawn pixel for pixel.
             sampler: ImageSampler {
                 quality: ImageQuality::Low,

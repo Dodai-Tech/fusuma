@@ -16,7 +16,7 @@
 export const BINS = []
 
 # Crates published to crates.io, dependencies first.
-export const PUBLISH = ["fusuma-render", "fusuma-render-embedded", "fusuma-render-vello-common", "fusuma-render-vello-cpu"]
+export const PUBLISH = ["fusuma-render", "fusuma-anim", "fusuma-render-embedded", "fusuma-render-vello-common", "fusuma-render-vello-cpu", "fusuma-render-vello"]
 
 # System packages (apt) every Linux job that compiles installs first, e.g. the
 # headers a GUI toolkit links against: ["libxkbcommon-dev"].

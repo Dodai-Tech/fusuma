@@ -1,0 +1,27 @@
+[package]
+name = "fusuma-render-vello"
+description = "Fusuma renderer backend for desktops and phones with a GPU: anti-aliased drawing on vello_gpu and wgpu"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-render-vello"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+fusuma-render-vello-common.workspace = true
+vello_gpu.workspace = true
+pollster.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+fusuma-render = { workspace = true, features = ["conformance"] }
+fusuma-render-embedded.workspace = true
+fusuma-render-vello-cpu.workspace = true
+
+[lints]
+workspace = true

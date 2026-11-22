@@ -2,12 +2,12 @@
 
 use fusuma_render::Renderer;
 use fusuma_render_vello_common::{
-    Backend, MAX_SIDE, Scene,
+    Backend, MAX_SIDE, PaintType, Scene,
     kurbo::{Affine, BezPath, Rect as KRect},
     peniko::Fill,
     stroke,
 };
-use vello_cpu::{PaintType, Pixmap, RenderContext, Resources};
+use vello_cpu::{Pixmap, RenderContext, Resources};
 
 /// The Fusuma renderer on `vello_cpu`.
 pub type VelloCpu = Backend<CpuScene>;

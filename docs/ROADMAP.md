@@ -53,8 +53,10 @@ works and is tested.
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
 - [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
 - [ ] Publish `fusuma-render-vello-common` and `-vello-cpu`, move `dodai-os` to them
-- [ ] `fusuma-render-vello` on `vello_gpu`: check this machine for a GPU or a software Vulkan, same conformance suite with a tolerance
-- [ ] Benchmark: a UI frame on `vello_cpu` and `vello_gpu`; a shader chain with read-back and as a texture; at 410x502 and 1920x1080
+- [x] `fusuma-render-vello` on `vello_gpu` and `wgpu` 30: headless device, renders into an `Rgba8Unorm` texture and reads it back; passes the conformance suite on a real GPU (AMD RX 7800 XT, Vulkan) and matches the CPU backend; tests skip on machines without a GPU. Images go to the GPU as external textures through a `Scene::image_source` hook
+- [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the facade's GPU-first choice
+- [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
+- [ ] Benchmark more: a complex scene (many paths, large blurs), the GPU drawing to a surface with no read-back, and a shader chain with read-back versus as a texture
 - [ ] Experiment: run `vello_cpu` on the S3 (it builds with `libm`) and measure frame time and memory
 - [ ] Text: Vello glyph runs with a Rust text stack replace the bitmap fonts on the CPU and GPU backends
 
