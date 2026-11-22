@@ -1,8 +1,8 @@
 [package]
-name = "tokonoma"
+name = "fusuma-render"
 description = "A small, no_std renderer abstraction: shapes, paths, text, images, clip and translate behind one trait"
 readme = "README.md"
-documentation = "https://docs.rs/tokonoma"
+documentation = "https://docs.rs/fusuma-render"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,7 +13,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-# The shared test-suite every backend must pass (`tokonoma::conformance`).
+# The shared test-suite every backend must pass (`fusuma_render::conformance`).
 conformance = []
 
 [lints]

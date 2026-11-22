@@ -2,7 +2,7 @@
 //! Rectangle maths never panics and keeps its promises on any input.
 
 use libfuzzer_sys::fuzz_target;
-use tokonoma::{Point, Rect};
+use fusuma_render::{Point, Rect};
 
 fn rect(c: &[u8]) -> Rect {
     let n = |i: usize| i32::from_le_bytes([c[i], c[i + 1], c[i + 2], c[i + 3]]);

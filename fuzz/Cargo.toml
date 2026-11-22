@@ -9,9 +9,9 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-tokonoma = { path = "../crates/tokonoma" }
-tokonoma-embedded = { path = "../crates/tokonoma-embedded" }
-tokonoma-skia = { path = "../crates/tokonoma-skia" }
+fusuma-render = { path = "../crates/fusuma-render" }
+fusuma-render-embedded = { path = "../crates/fusuma-render-embedded" }
+fusuma-render-skia = { path = "../crates/fusuma-render-skia" }
 
 # Not part of the main workspace (needs nightly).
 [workspace]

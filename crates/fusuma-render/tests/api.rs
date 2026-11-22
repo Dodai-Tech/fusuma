@@ -1,6 +1,6 @@
 //! The public API as a user of the crate sees it.
 
-use tokonoma::{Color, Point, Rect, Size, triangle};
+use fusuma_render::{Color, Point, Rect, Size, triangle};
 
 #[test]
 fn types_compose() {

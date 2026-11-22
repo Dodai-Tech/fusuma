@@ -33,10 +33,10 @@ export def notes [version: string, changes: string]: nothing -> string {
     [
         $"# Fusuma ($version)"
         ""
-        $"Add it from crates.io \(docs: https://docs.rs/tokonoma/($version)\):"
+        $"Add it from crates.io \(docs: https://docs.rs/fusuma-render/($version)\):"
         ""
         "```sh"
-        "cargo add tokonoma"
+        "cargo add fusuma-render"
         "```"
         ""
         "## Changes"

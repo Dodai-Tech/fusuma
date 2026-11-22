@@ -1,6 +1,6 @@
 //! Path flattening and an even-odd scanline fill, in integers and without allocation.
 
-use tokonoma::{PathCmd, Point, Rect};
+use fusuma_render::{PathCmd, Point, Rect};
 
 /// Most edges a path may flatten to.
 pub const MAX_EDGES: usize = 160;
@@ -358,8 +358,8 @@ pub fn clip_segment(a: Point, b: Point, bounds: Rect) -> Option<(Point, Point)> 
 mod tests {
     extern crate std;
     use super::*;
+    use fusuma_render::triangle;
     use std::vec::Vec;
-    use tokonoma::triangle;
 
     fn covered(edges: &Edges, bounds: Rect) -> usize {
         let mut n = 0;

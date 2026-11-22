@@ -3,9 +3,9 @@
 //! stack, clip and translation stay consistent.
 
 use libfuzzer_sys::fuzz_target;
-use tokonoma::{Align, Color, Image, PathCmd, Point, Probe, Rect, Renderer, TextStyle};
-use tokonoma_embedded::{Embedded, Frame};
-use tokonoma_skia::Skia;
+use fusuma_render::{Align, Color, Image, PathCmd, Point, Probe, Rect, Renderer, TextStyle};
+use fusuma_render_embedded::{Embedded, Frame};
+use fusuma_render_skia::Skia;
 
 struct Bytes<'a>(&'a [u8]);
 

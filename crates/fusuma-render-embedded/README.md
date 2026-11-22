@@ -1,6 +1,6 @@
-# tokonoma-embedded
+# fusuma-render-embedded
 
-The Tokonoma backend for small displays. It draws with integers only, in `no_std` and without an
+The Fusuma renderer backend for small displays. It draws with integers only, in `no_std` and without an
 allocator, on any [`embedded-graphics`](https://crates.io/crates/embedded-graphics) `DrawTarget`
 with `Rgb565` pixels: an SPI or QSPI display driver, a framebuffer in PSRAM, or the `Frame` type
 of this crate.
@@ -13,4 +13,4 @@ of this crate.
 - There is no alpha blending and no anti-aliasing (`Capabilities` say so): a color is drawn
   opaque unless it is fully transparent, which draws nothing.
 
-It passes the shared `tokonoma::conformance` suite.
+It passes the shared `fusuma_render::conformance` suite.

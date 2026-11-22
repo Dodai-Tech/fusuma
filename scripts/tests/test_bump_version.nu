@@ -7,7 +7,7 @@ use runner.nu *
 use ../bump_version.nu [is_semver compare_versions set_workspace_version set_extension_version stageable]
 
 const CARGO = '[package]
-name = "tokonoma"
+name = "fusuma-render"
 version.workspace = true
 
 [workspace.package]

@@ -1,8 +1,8 @@
 [package]
-name = "tokonoma-skia"
-description = "Tokonoma backend for desktops, phones and watches: anti-aliased CPU drawing on tiny-skia"
+name = "fusuma-render-skia"
+description = "Fusuma renderer backend for desktops, phones and watches: anti-aliased CPU drawing on tiny-skia"
 readme = "README.md"
-documentation = "https://docs.rs/tokonoma-skia"
+documentation = "https://docs.rs/fusuma-render-skia"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,13 +13,13 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-tokonoma.workspace = true
-tokonoma-embedded.workspace = true
+fusuma-render.workspace = true
+fusuma-render-embedded.workspace = true
 embedded-graphics.workspace = true
 tiny-skia.workspace = true
 
 [dev-dependencies]
-tokonoma = { workspace = true, features = ["conformance"] }
+fusuma-render = { workspace = true, features = ["conformance"] }
 
 [lints]
 workspace = true

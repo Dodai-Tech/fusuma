@@ -3,7 +3,7 @@
 //! ```ignore
 //! #[test]
 //! fn conforms() {
-//!     tokonoma::conformance::run_all(|| MyBackend::new(64, 64));
+//!     fusuma_render::conformance::run_all(|| MyBackend::new(64, 64));
 //! }
 //! ```
 //!

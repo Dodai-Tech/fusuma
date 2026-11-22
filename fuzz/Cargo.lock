@@ -142,6 +142,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-fuzz"
+version = "0.0.0"
+dependencies = [
+ "fusuma-render",
+ "fusuma-render-embedded",
+ "fusuma-render-skia",
+ "libfuzzer-sys",
+]
+
+[[package]]
+name = "fusuma-render"
+version = "0.1.0"
+
+[[package]]
+name = "fusuma-render-embedded"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "fusuma-render",
+]
+
+[[package]]
+name = "fusuma-render-skia"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "fusuma-render",
+ "fusuma-render-embedded",
+ "tiny-skia",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -280,38 +312,6 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
-]
-
-[[package]]
-name = "tokonoma"
-version = "0.1.0"
-
-[[package]]
-name = "tokonoma-embedded"
-version = "0.1.0"
-dependencies = [
- "embedded-graphics",
- "tokonoma",
-]
-
-[[package]]
-name = "tokonoma-fuzz"
-version = "0.0.0"
-dependencies = [
- "libfuzzer-sys",
- "tokonoma",
- "tokonoma-embedded",
- "tokonoma-skia",
-]
-
-[[package]]
-name = "tokonoma-skia"
-version = "0.1.0"
-dependencies = [
- "embedded-graphics",
- "tiny-skia",
- "tokonoma",
- "tokonoma-embedded",
 ]
 
 [[package]]

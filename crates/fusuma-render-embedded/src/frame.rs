@@ -9,7 +9,7 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 
-/// Reads a pixel back; lets a target be used with [`tokonoma::Probe`] in tests and screenshots.
+/// Reads a pixel back; lets a target be used with [`fusuma_render::Probe`] in tests and screenshots.
 pub trait PixelSource {
     /// The pixel at `(x, y)`, `None` outside.
     fn pixel_at(&self, x: i32, y: i32) -> Option<Rgb565>;

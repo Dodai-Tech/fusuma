@@ -20,7 +20,7 @@ use embedded_graphics::{
     primitives::{Circle, Line, PrimitiveStyle, Rectangle},
     text::{Baseline, Text},
 };
-use tokonoma::{
+use fusuma_render::{
     Capabilities, Color, Error, Image, PathCmd, Point, Probe, Rect, Renderer, Size, TextStyle,
     left_edge,
 };
@@ -80,7 +80,7 @@ fn eg_rect(r: Rect) -> Rectangle {
     Rectangle::new(EgPoint::new(r.x, r.y), EgSize::new(r.w, r.h))
 }
 
-/// The Tokonoma renderer for an `embedded-graphics` RGB565 target.
+/// The Fusuma renderer for an `embedded-graphics` RGB565 target.
 #[derive(Debug)]
 pub struct Embedded<T> {
     target: T,
@@ -458,8 +458,8 @@ mod tests {
 
     #[test]
     fn passes_the_shared_conformance_suite() {
-        tokonoma::conformance::run_all(|| backend(64, 64));
-        tokonoma::conformance::run_all(|| backend(200, 120));
+        fusuma_render::conformance::run_all(|| backend(64, 64));
+        fusuma_render::conformance::run_all(|| backend(200, 120));
     }
 
     #[test]

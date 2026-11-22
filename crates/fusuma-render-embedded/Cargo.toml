@@ -1,8 +1,8 @@
 [package]
-name = "tokonoma-embedded"
-description = "Tokonoma backend for microcontroller displays: integer drawing on any embedded-graphics RGB565 target (no_std, no allocator)"
+name = "fusuma-render-embedded"
+description = "Fusuma renderer backend for microcontroller displays: integer drawing on any embedded-graphics RGB565 target (no_std, no allocator)"
 readme = "README.md"
-documentation = "https://docs.rs/tokonoma-embedded"
+documentation = "https://docs.rs/fusuma-render-embedded"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,11 +13,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-tokonoma.workspace = true
+fusuma-render.workspace = true
 embedded-graphics.workspace = true
 
 [dev-dependencies]
-tokonoma = { workspace = true, features = ["conformance"] }
+fusuma-render = { workspace = true, features = ["conformance"] }
 
 [lints]
 workspace = true

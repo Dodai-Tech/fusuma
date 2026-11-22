@@ -10,14 +10,14 @@ use embedded_graphics::{
     prelude::{DrawTarget, Drawable, Point as EgPoint},
     text::{Baseline, Text},
 };
-use tiny_skia::{
-    BlendMode, FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
-};
-use tokonoma::{
+use fusuma_render::{
     Capabilities, Color, Error, Image, PathCmd, Point, Probe, Rect, Renderer, Size, TextStyle,
     left_edge,
 };
-use tokonoma_embedded::{font_for, text_size};
+use fusuma_render_embedded::{font_for, text_size};
+use tiny_skia::{
+    BlendMode, FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
+};
 
 /// Shapes reaching farther than this many pixels from the origin (after the translation) are not
 /// drawn, except plain rectangles, which are clipped exactly. `tiny-skia`'s scan converter
@@ -46,7 +46,7 @@ struct State {
     ty: i32,
 }
 
-/// The Tokonoma renderer on a `tiny-skia` pixmap.
+/// The Fusuma renderer on a `tiny-skia` pixmap.
 #[derive(Debug)]
 pub struct Skia {
     pixmap: Pixmap,
@@ -499,7 +499,7 @@ impl Probe for Skia {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokonoma::{Align, triangle};
+    use fusuma_render::{Align, triangle};
 
     fn backend(w: u32, h: u32) -> Skia {
         Skia::new(w, h).unwrap()
@@ -507,8 +507,8 @@ mod tests {
 
     #[test]
     fn passes_the_shared_conformance_suite() {
-        tokonoma::conformance::run_all(|| backend(64, 64));
-        tokonoma::conformance::run_all(|| backend(200, 120));
+        fusuma_render::conformance::run_all(|| backend(64, 64));
+        fusuma_render::conformance::run_all(|| backend(200, 120));
     }
 
     #[test]
@@ -658,7 +658,7 @@ mod tests {
         r.draw_text("Dodai", Point::new(12, 14), &TextStyle::new(20, white))
             .unwrap();
         r.draw_text(
-            "Tokonoma",
+            "Fusuma",
             Point::new(110, 70),
             &TextStyle::new(14, white).aligned(Align::Right),
         )
@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn the_same_scene_looks_the_same_on_both_backends() {
-        use tokonoma_embedded::{Embedded, Frame};
+        use fusuma_render_embedded::{Embedded, Frame};
         let mut a = backend(180, 120);
         let mut b = Embedded::new(Frame::new(180, 120, vec![0u16; 180 * 120]).unwrap());
         scene(&mut a);
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn curves_agree_between_the_backends_except_on_their_edges() {
-        use tokonoma_embedded::{Embedded, Frame};
+        use fusuma_render_embedded::{Embedded, Frame};
         fn curves<R: Renderer>(r: &mut R) {
             r.clear(Color::BLACK).unwrap();
             r.fill_circle(Point::new(40, 40), 25, Color::WHITE).unwrap();
