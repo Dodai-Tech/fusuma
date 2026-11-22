@@ -8,6 +8,14 @@ All notable changes to this project are documented here. It is generated from
 
 ### ✨ Features
 
-- Tokonoma renderer trait, embedded (no_std) and tiny-skia backends, conformance suite and fuzzing ([`f03ce48`](https://github.com/Dodai-Tech/tokonoma/commit/f03ce48d596639cdbf87369224d130a97bc39279))
+- Tokonoma renderer trait, embedded (no_std) and tiny-skia backends, conformance suite and fuzzing ([`f03ce48`](https://github.com/Dodai-Tech/fusuma/commit/f03ce48d596639cdbf87369224d130a97bc39279))
+
+### ♻️ Refactor
+
+- Rename the project to Fusuma, keep the Tokonoma crates; add the layer rule (renderer never depends on toolkit) ([`b86c79b`](https://github.com/Dodai-Tech/fusuma/commit/b86c79b52430e2b59199f6102fd4ff72763878cb))
+
+### 🔧 Chores
+
+- Drop homepage, it duplicates repository ([`90ed47f`](https://github.com/Dodai-Tech/fusuma/commit/90ed47f15387e364448cb5c4ddaad35a51fbcde5))
 
 
