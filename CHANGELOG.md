@@ -4,6 +4,18 @@ All notable changes to this project are documented here. It is generated from
 [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org) — do not edit it by hand.
 
+## [0.2.0](https://github.com/Dodai-Tech/fusuma/compare/v0.1.0...v0.2.0) — 2026-11-22
+
+### ✨ Features
+
+- Fusuma-render-vello (GPU backend on vello_gpu and wgpu), image upload hook, GPU-vs-CPU benchmark; publish list with the new crates ([`a9d6fde`](https://github.com/Dodai-Tech/fusuma/commit/a9d6fdef4218e0b8a59823e426604f0f80c3aa5a))
+- Fusuma-render-vello-cpu and -vello-common (Vello backends), fusuma-anim (easing, tween, keyframes, spring, decay); drop the tiny-skia backend; roadmap and docs ([`fc0641c`](https://github.com/Dodai-Tech/fusuma/commit/fc0641cafe9f2bbc61587ed73b403e017b8cb6fb))
+
+### 🔧 Chores
+
+- Drop the unused png workspace dependency ([`993ba42`](https://github.com/Dodai-Tech/fusuma/commit/993ba42954709214e2e851a2a10148a2b11ced46))
+- Drop the unused workspace dependency entry for fusuma-anim ([`ca5b30a`](https://github.com/Dodai-Tech/fusuma/commit/ca5b30a4b991e0c869c414d72fcbd968936ce0e9))
+
 ## [0.1.0](https://github.com/Dodai-Tech/fusuma/releases/tag/v0.1.0) — 2026-11-22
 
 ### ✨ Features

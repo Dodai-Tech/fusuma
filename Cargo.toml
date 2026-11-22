@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
@@ -20,14 +20,14 @@ keywords = ["graphics", "renderer", "embedded", "no-std", "2d"]
 categories = ["graphics", "embedded", "no-std", "rendering"]
 
 [workspace.dependencies]
-fusuma-render = { path = "crates/fusuma-render", version = "0.1.0" }
-fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.1.0" }
+fusuma-render = { path = "crates/fusuma-render", version = "0.2.0" }
+fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.2.0" }
 embedded-graphics = "0.8.2"
-fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "0.1.0" }
+fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "0.2.0" }
 vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wgpu_default", "full_image_support"] }
 pollster = "1"
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "vulkan", "metal", "dx12", "gles"] }
-fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.1.0" }
+fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0" }
 vello_common = { version = "0.4", default-features = false, features = ["std"] }
 vello_cpu = { version = "0.4", default-features = false, features = ["std", "u8_pipeline", "png"] }
 

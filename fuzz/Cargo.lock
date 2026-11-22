@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "fusuma-anim"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "fusuma-fuzz"
@@ -216,11 +216,11 @@ dependencies = [
 
 [[package]]
 name = "fusuma-render"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "fusuma-render-embedded"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-graphics",
  "fusuma-render",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "fusuma-render-vello-common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-graphics",
  "fusuma-render",
@@ -238,7 +238,7 @@ dependencies = [
 
 [[package]]
 name = "fusuma-render-vello-cpu"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "fusuma-render",
  "fusuma-render-vello-common",
