@@ -16,6 +16,8 @@ no dependencies.
 | `Keyframes` | a fixed number of timed values with an easing on each segment |
 | `Spring` | a damped spring (physics): stiffness, damping and mass, or a response time and damping ratio, with presets |
 | `Decay` | a fling: velocity that fades with friction, for scrolling and swipes |
+| `Animator` | up to N running tweens, springs and flings on one frame clock; `step` says whether another frame is needed, so a still screen costs nothing |
+| `rubber_band`, `snap_page` | dragging: overscroll that resists, and the page a flick settles on |
 
 All of them are driven by a clock you pass in, in milliseconds, so there is no hidden time source
 and every animation is testable and deterministic.

@@ -63,9 +63,10 @@ works and is tested.
 ## Phase 2: animation (out of the box)
 - [x] `fusuma-anim`: `Fx` (Q16.16), easing (quad, cubic, quart, smooth, back, bounce, CSS Bezier), `Tween` with delay, stagger and retarget, `Keyframes`
 - [x] Physics: `Spring` (stiffness, damping, mass, or response time and damping ratio, presets), `Decay` (fling with friction and projected end), interruptible without a jump
-- [x] 43 unit tests and a fuzz target; builds for RISC-V, ARM and Xtensa
-- [ ] Animator: one frame clock, a set of running animations, "needs a frame" for redraw on demand
-- [ ] Gesture-driven motion: drag with rubber-band overscroll, snap to pages and items from `Decay::projected_end`, spring release
+- [x] 60 unit tests and a fuzz target; builds for RISC-V, ARM and Xtensa
+- [x] `Animator<N>`: a fixed set of running tweens, springs and flings on one frame clock; `step` says whether another frame is needed; stale-safe handles
+- [x] Drag helpers: `rubber_band` (resisting overscroll) and `snap_page` (where a flick settles, at most one page)
+- [ ] Gesture-driven motion in a widget: a pager that follows the finger, lets go into a spring, and a scroll list with fling (needs the widget tree)
 - [ ] Shared and layout animations: a card that grows into a page, list reorder and insert, stagger helpers
 - [ ] More physics: gravity and bounce, a spring chain for trailing motion, velocity from touch history
 - [ ] Vector animation like Rive or Lottie: a state machine over timelines, playing `velato` (Lottie) and `vello_svg` content; a design-tool file format is out of scope

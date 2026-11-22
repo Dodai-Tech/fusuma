@@ -3,7 +3,10 @@
 //! its promises: a spring stays inside the number range and settles exactly on its target; an
 //! easing is 0 at 0 and 1 at 1.
 
-use fusuma_anim::{Bezier, Decay, Easing, Fx, Keyframe, Keyframes, Spring, SpringConfig, Tween};
+use fusuma_anim::{
+    Animator, Bezier, Decay, Easing, Fx, Keyframe, Keyframes, Spring, SpringConfig, Tween, rubber_band,
+    snap_page,
+};
 use libfuzzer_sys::fuzz_target;
 
 fn fx(b: &[u8]) -> Fx {
@@ -75,4 +78,43 @@ fuzz_target!(|data: &[u8]| {
         d.step(u32::from(data[(i as usize) % data.len()]));
     }
     let _ = d.projected_end();
+
+    // The animator: random starts, steps, removals and stale handles never panic.
+    let mut an = Animator::<4>::new();
+    let mut ids = [None; 8];
+    for (i, b) in data.iter().enumerate().take(64) {
+        let slot = i % 8;
+        match b % 6 {
+            0 => ids[slot] = an.start_tween(tw).ok(),
+            1 => ids[slot] = an.start_spring(Spring::new(cfg, from)).ok(),
+            2 => ids[slot] = an.start_decay(Decay::new(from, to, Fx::from_int(4))).ok(),
+            3 => {
+                if let Some(id) = ids[slot] {
+                    an.remove(id);
+                }
+            }
+            4 => {
+                if let Some(s) = ids[slot].and_then(|id| an.spring_mut(id)) {
+                    s.set_target(to);
+                }
+            }
+            _ => {
+                an.step(u32::from(*b) * 37 + i as u32);
+            }
+        }
+        if let Some(id) = ids[slot] {
+            let _ = (an.value(id, 5), an.is_done(id, 5));
+        }
+    }
+
+    // Dragging: the band never leaves its bounds by more than the size, a snap stays in range.
+    let size = fx(&data[17..]).abs();
+    let r = rubber_band(from, to.min(from), to.max(from), size);
+    if size > Fx::ZERO && size < Fx::from_int(30_000) && from.abs() < Fx::from_int(30_000) {
+        let (lo, hi) = (to.min(from), to.max(from));
+        assert!(r >= lo - size && r <= hi + size, "{r:?} outside {lo:?}..{hi:?} by more than {size:?}");
+    }
+    let pages = u32::from(data[0]) % 9;
+    let page = snap_page(from, to, fx(&data[13..]), size, pages, u32::from(data[1]));
+    assert!(pages == 0 && page == 0 || page < pages.max(1));
 });
