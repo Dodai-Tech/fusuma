@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — What a release ships
+# Fusuma — What a release ships
 # ──────────────────────────────────────────────────────────────────────────────
 # The release and CI scripts read these (build_release, package, publish_crate,
 # release_notes, apt, check_static). Edit them when the workspace gains a binary

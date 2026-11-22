@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Derive the Codeberg (Forgejo) workflows from the Gitea ones
+# Fusuma — Derive the Codeberg (Forgejo) workflows from the Gitea ones
 # ──────────────────────────────────────────────────────────────────────────────
 # Codeberg runs Forgejo Actions, which reads .forgejo/workflows/ first. Those files
 # are the .gitea/workflows/ ones with Forgejo names; .gitea/ stays the source.

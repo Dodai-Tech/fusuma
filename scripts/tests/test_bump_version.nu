@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── Tokonoma · test_bump_version.nu ─────────────────────────────────
+# ── Fusuma · test_bump_version.nu ─────────────────────────────────
 # Tests for the pure helpers of scripts/bump_version.nu.
 
 use std/assert

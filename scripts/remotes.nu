@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — One git operation on every remote
+# Fusuma — One git operation on every remote
 # ──────────────────────────────────────────────────────────────────────────────
 # GitHub (origin), Gitea (gitea-starscream) and Codeberg (codeberg) are independent hosts, no mirroring.
 # Unconfigured remotes are skipped; a failing remote doesn't stop the others, but
@@ -14,9 +14,9 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 export const REMOTES = {
-    origin: "git@github.com:Dodai-Tech/tokonoma.git"
-    gitea-starscream: "gitea@192.168.1.44:sorin/tokonoma.git"
-    codeberg: "ssh://git@codeberg.org/Dodai-Tech/tokonoma.git"
+    origin: "git@github.com:Dodai-Tech/fusuma.git"
+    gitea-starscream: "gitea@192.168.1.44:sorin/fusuma.git"
+    codeberg: "ssh://git@codeberg.org/Dodai-Tech/fusuma.git"
 }
 
 # The wanted remotes that are configured, in REMOTES order.

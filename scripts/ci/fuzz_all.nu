@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Fuzz every cargo-fuzz target for a while (nightly toolchain)
+# Fusuma — Fuzz every cargo-fuzz target for a while (nightly toolchain)
 # ──────────────────────────────────────────────────────────────────────────────
 # New targets are picked up automatically (cargo fuzz list). Stops at the first
 # crash; the reproducer is in fuzz/artifacts/<target>/.

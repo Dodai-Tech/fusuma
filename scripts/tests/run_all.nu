@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── Tokonoma · Run All Nushell Tests ────────────────────────────────────────
+# ── Fusuma · Run All Nushell Tests ────────────────────────────────────────
 #
 # Usage:
 #   nu scripts/tests/run_all.nu          # run every test_*.nu file
@@ -12,7 +12,7 @@ def main [--filter: string = ""] {
     let cyan   = (ansi cyan)
     let reset  = (ansi reset)
 
-    print $"($bold)($cyan)── Tokonoma · Nushell Test Suite ──($reset)"
+    print $"($bold)($cyan)── Fusuma · Nushell Test Suite ──($reset)"
     print ""
 
     let test_dir = ($env.CURRENT_FILE | path dirname)

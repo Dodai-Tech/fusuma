@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Nightly dependency update helpers (used by deps-update.yml)
+# Fusuma — Nightly dependency update helpers (used by deps-update.yml)
 # ──────────────────────────────────────────────────────────────────────────────
 #   nu scripts/ci/deps_update.nu sync               reset to origin/main (scheduled runs start stale)
 #   nu scripts/ci/deps_update.nu update             cargo update here and in fuzz/; fails on a downgrade

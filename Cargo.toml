@@ -12,7 +12,7 @@ edition = "2024"
 rust-version = "1.90"
 license = "MIT"
 authors = ["Sorin Albu-Irimies"]
-repository = "https://github.com/Dodai-Tech/tokonoma"
+repository = "https://github.com/Dodai-Tech/fusuma"
 keywords = ["graphics", "renderer", "embedded", "no-std", "2d"]
 categories = ["graphics", "embedded", "no-std", "rendering"]
 

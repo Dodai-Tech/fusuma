@@ -21,14 +21,14 @@ All notable changes to this project are documented here. It is generated from
 # `commit_parsers`; `striptags` removes it again for display.
 body = """
 {%- macro entry(commit) -%}
-- {% if commit.scope and commit.scope != "deps" %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/Dodai-Tech/tokonoma/commit/{{ commit.id }}))
+- {% if commit.scope and commit.scope != "deps" %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/Dodai-Tech/fusuma/commit/{{ commit.id }}))
 {%- endmacro -%}
 
 {% if version -%}
 ## [{{ version | trim_start_matches(pat="v") }}]({% if previous.version -%}
-https://github.com/Dodai-Tech/tokonoma/compare/{{ previous.version }}...{{ version }}
+https://github.com/Dodai-Tech/fusuma/compare/{{ previous.version }}...{{ version }}
 {%- else -%}
-https://github.com/Dodai-Tech/tokonoma/releases/tag/{{ version }}
+https://github.com/Dodai-Tech/fusuma/releases/tag/{{ version }}
 {%- endif %}) — {{ timestamp | date(format="%Y-%m-%d") }}
 {% else -%}
 ## [Unreleased]

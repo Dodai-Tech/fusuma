@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Bump the version
+# Fusuma — Bump the version
 # ──────────────────────────────────────────────────────────────────────────────
 # Usage:
 #   nu scripts/bump_version.nu <new_version> [--yes] [--skip-checks] [--check]

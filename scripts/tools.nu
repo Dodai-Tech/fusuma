@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Development tools: check or install
+# Fusuma — Development tools: check or install
 # ──────────────────────────────────────────────────────────────────────────────
 # Usage:
 #   nu scripts/tools.nu check git-cliff     fail with an install hint if missing

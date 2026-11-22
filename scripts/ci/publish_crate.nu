@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Publish crates to crates.io, idempotently
+# Fusuma — Publish crates to crates.io, idempotently
 # ──────────────────────────────────────────────────────────────────────────────
 # Publishes one crate, or every crate in PUBLISH (scripts/project.nu) in order.
 # No CARGO_REGISTRY_TOKEN ⇒ skip (forks, first setup). "already exists" ⇒ success,

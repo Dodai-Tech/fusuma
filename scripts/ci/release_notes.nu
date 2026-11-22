@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Release notes
+# Fusuma — Release notes
 # ──────────────────────────────────────────────────────────────────────────────
 # Writes RELEASE_NOTES.md for a tag: install instructions plus this release's
 # section of the changelog (git-cliff --latest; the workflow runs at the tag, so
@@ -31,7 +31,7 @@ export def install_lines []: nothing -> list<string> {
 # The notes text for `version` with the changelog section `changes`.
 export def notes [version: string, changes: string]: nothing -> string {
     [
-        $"# Tokonoma ($version)"
+        $"# Fusuma ($version)"
         ""
         $"Add it from crates.io \(docs: https://docs.rs/tokonoma/($version)\):"
         ""

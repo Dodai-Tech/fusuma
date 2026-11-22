@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── Tokonoma · test_check_versions.nu ───────────────────────────────────────
+# ── Fusuma · test_check_versions.nu ───────────────────────────────────────
 
 use std/assert
 use runner.nu *

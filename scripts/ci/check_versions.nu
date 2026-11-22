@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Versions agree
+# Fusuma — Versions agree
 # ──────────────────────────────────────────────────────────────────────────────
 # The workspace version (Cargo.toml), the top-level `version` of every file in
 # EXTRA_MANIFESTS and, for a release, the tag must all be the same.

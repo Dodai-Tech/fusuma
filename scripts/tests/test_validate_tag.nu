@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── Tokonoma · test_validate_tag.nu ─────────────────────────────────────────
+# ── Fusuma · test_validate_tag.nu ─────────────────────────────────────────
 # Tests for scripts/ci/validate_tag.nu — tag validation and version extraction.
 
 use std/assert

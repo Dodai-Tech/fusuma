@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── Tokonoma · test_dev_scripts.nu ──────────────────────────────────
+# ── Fusuma · test_dev_scripts.nu ──────────────────────────────────
 # The justfile's helpers: remotes, tools, Gitea dispatch, fuzzing.
 
 use std/assert

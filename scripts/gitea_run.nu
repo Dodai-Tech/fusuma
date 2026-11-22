@@ -1,13 +1,13 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Start a Gitea workflow now (workflow_dispatch)
+# Fusuma — Start a Gitea workflow now (workflow_dispatch)
 # ──────────────────────────────────────────────────────────────────────────────
 # Env: GITEA_URL (e.g. http://192.168.1.44:3000), GITEA_TOKEN (repo scope).
 #
 # Usage: nu scripts/gitea_run.nu <workflow>     e.g. deps-update | security | fuzz
 # ──────────────────────────────────────────────────────────────────────────────
 
-export const REPO = "sorin/tokonoma"
+export const REPO = "sorin/fusuma"
 
 export def dispatch_url [base: string, workflow: string] {
     let file = if ($workflow | str ends-with ".yml") { $workflow } else { $"($workflow).yml" }

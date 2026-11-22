@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Quality gate
+# Fusuma — Quality gate
 # ──────────────────────────────────────────────────────────────────────────────
 # The same sequence locally (`just check-all`), in CI, in the nightly dependency
 # update and before a bump:
@@ -32,7 +32,7 @@ def run_step [label: string, cmd: closure]: nothing -> bool {
 }
 
 def main [--skip-fmt, --skip-test, --skip-nu] {
-    print $"(ansi cyan)══ Tokonoma — Quality Gate ══(ansi reset)"
+    print $"(ansi cyan)══ Fusuma — Quality Gate ══(ansi reset)"
     mut ok = true
     if not $skip_fmt {
         $ok = (run_step "cargo fmt --all -- --check" { cargo fmt --all -- --check }) and $ok
@@ -51,6 +51,7 @@ def main [--skip-fmt, --skip-test, --skip-nu] {
         with-env { RUSTDOCFLAGS: "-D warnings" } { cargo doc --no-deps --all-features --quiet }
     }) and $ok
     $ok = (run_step "versions agree" { nu scripts/ci/check_versions.nu }) and $ok
+    $ok = (run_step "layers: renderer does not depend on toolkit" { nu scripts/ci/layers.nu }) and $ok
     $ok = (run_step "unused dependencies (cargo machete)" {
         nu scripts/tools.nu ensure cargo-machete
         cargo machete

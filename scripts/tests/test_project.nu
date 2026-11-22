@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# ── Tokonoma · test_project.nu ──────────────────────────────────────
+# ── Fusuma · test_project.nu ──────────────────────────────────────
 # scripts/project.nu must match the workspace: a stale list breaks a release.
 
 use std/assert

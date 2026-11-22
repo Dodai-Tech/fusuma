@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Bump `uses: owner/repo@vN` in .gitea/workflows (Gitea has no Dependabot)
+# Fusuma — Bump `uses: owner/repo@vN` in .gitea/workflows (Gitea has no Dependabot)
 # ──────────────────────────────────────────────────────────────────────────────
 # Looks up each action's latest major on GitHub and rewrites older majors. Prints
 # changed=true|false. actions/checkout and actions/*-artifact stay pinned: act_runner

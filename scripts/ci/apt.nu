@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Tokonoma — Install the system packages a Linux build needs
+# Fusuma — Install the system packages a Linux build needs
 # ──────────────────────────────────────────────────────────────────────────────
 # Installs APT (scripts/project.nu) with apt-get, e.g. the headers a GUI toolkit
 # links against. Does nothing off Linux or when APT is empty. Every CI job that

@@ -1,4 +1,4 @@
-# Tokonoma — task runner
+# Fusuma — task runner
 # Recipes run in Nushell; anything longer than a line lives in scripts/*.nu (tested).
 # Install: cargo install just nu git-cliff   — then `just install-tools`
 # Usage:   just <task>
@@ -183,7 +183,7 @@ validate-tag version:
 release-preview: _check-git-cliff
     @print $"Current version: (nu scripts/version.nu)\n"
     @git-cliff --unreleased
-    @echo "Ships: tokonoma (crates.io, docs on docs.rs)"
+    @echo "Ships: tokonoma, tokonoma-embedded, tokonoma-skia (crates.io, docs on docs.rs)"
 
 # Everything in check-all plus a release build and the docs
 check-release: check-all build-release doc
