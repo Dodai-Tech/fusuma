@@ -2,6 +2,9 @@
 
 use crate::tree::{Flags, Kind, NodeId, Tree};
 
+/// How far a slider moves for one arrow key, in thousandths.
+pub(crate) const SLIDER_STEP: u16 = 50;
+
 /// A key the tree understands. The application maps its own keys (a keyboard, a button, a rotary
 /// encoder) to these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,6 +20,10 @@ pub enum Key {
     Up,
     /// Enter or Space: presses the focused widget.
     Activate,
+    /// The left arrow: lowers the focused slider a step.
+    Left,
+    /// The right arrow: raises the focused slider a step.
+    Right,
 }
 
 impl<const N: usize> Tree<N> {
@@ -110,6 +117,23 @@ impl<const N: usize> Tree<N> {
                 {
                     self.set_focus(Some(i), true);
                     self.activate(i);
+                }
+            }
+            Key::Left | Key::Right => {
+                if let Some(i) = self.focus.and_then(|id| self.slot(id))
+                    && self.focusable(i)
+                    && matches!(self.nodes[i].kind, Kind::Slider { .. })
+                {
+                    self.set_focus(Some(i), true);
+                    let Kind::Slider { permille } = self.nodes[i].kind else {
+                        return;
+                    };
+                    let to = if key == Key::Left {
+                        permille.saturating_sub(SLIDER_STEP)
+                    } else {
+                        permille.saturating_add(SLIDER_STEP).min(1000)
+                    };
+                    self.move_slider(i, to);
                 }
             }
             Key::Next | Key::Prev | Key::Down | Key::Up => {

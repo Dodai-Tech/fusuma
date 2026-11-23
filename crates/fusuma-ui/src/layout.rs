@@ -152,7 +152,9 @@ impl<const N: usize> Tree<N> {
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
             | Kind::ListItem { .. }
-            | Kind::Progress { .. } => self.measure_widget(i, renderer, theme),
+            | Kind::Progress { .. }
+            | Kind::Switch { .. }
+            | Kind::Slider { .. } => self.measure_widget(i, renderer, theme),
             Kind::Stack(axis) => {
                 let (mut main, mut cross, mut count) = (0u32, 0u32, 0u32);
                 let mut c = n.first;

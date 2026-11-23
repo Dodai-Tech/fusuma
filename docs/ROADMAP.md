@@ -181,9 +181,11 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] A view layer: a lightweight description built from application state and diffed into the retained tree, with messages routed back
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
 - [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree; layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
-- [ ] Widgets as modules of `fusuma`: toggle, slider, progress, list with scrolling, dialog, tabs, text field (split into a crate only if it grows large)
+- [x] Widgets in `fusuma-ui`: checkbox, radio, switch, slider, selectable list item, progress bar, with keyboard focus (Tab, arrows, Enter)
+- [ ] More widgets: scroll container with clipping, multi-line text view, text input, dialog, tabs, menu, toast
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
-- [ ] A `std` feature on `fusuma` with the run-time backend choice (GPU first, CPU fallback)
+- [x] `fusuma` is a facade crate (`fusuma-ui` is the toolkit): `renderer-*` features link backends, `toml` reads settings, `fusuma-platform` chooses
+- [ ] Platform picked by target automatically (`fusuma-platform-desktop`, `-mobile`; the ESP one is a separate firmware-side crate)
 - [ ] A gesture recogniser (tap, long press, swipe, drag with `fusuma-anim`): Hibari OS has one in `hibari-hal` that moves here, since a desktop and a phone need it too
 - [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
 

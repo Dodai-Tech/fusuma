@@ -1,9 +1,9 @@
 //! The surface of the renderer that was chosen, behind one type: draw the app, then show what changed.
 
 use fusuma::App;
-use fusuma_platform::Backend;
-use fusuma_render::Rect;
-use fusuma_render_embedded::{Embedded, Frame};
+use fusuma::platform::Backend;
+use fusuma::render::Rect;
+use fusuma::renderers::embedded::{Embedded, Frame};
 
 use crate::rgb565;
 
@@ -11,9 +11,9 @@ use crate::rgb565;
 pub enum Surface {
     Integer(Embedded<Frame<Vec<u16>>>),
     #[cfg(feature = "skia")]
-    Skia(fusuma_render_skia::Skia),
+    Skia(fusuma::renderers::skia::Skia),
     #[cfg(feature = "vello-cpu")]
-    Vello(fusuma_render_vello_cpu::VelloCpu),
+    Vello(fusuma::renderers::vello_cpu::VelloCpu),
 }
 
 impl Surface {
@@ -26,9 +26,9 @@ impl Surface {
                 Some(Self::Integer(Embedded::new(frame)))
             }
             #[cfg(feature = "skia")]
-            Backend::Skia => fusuma_render_skia::Skia::new(width, height).map(Self::Skia),
+            Backend::Skia => fusuma::renderers::skia::Skia::new(width, height).map(Self::Skia),
             #[cfg(feature = "vello-cpu")]
-            Backend::VelloCpu => fusuma_render_vello_cpu::new(width, height).map(Self::Vello),
+            Backend::VelloCpu => fusuma::renderers::vello_cpu::new(width, height).map(Self::Vello),
             _ => None,
         }
     }
@@ -42,7 +42,7 @@ impl Surface {
             #[cfg(feature = "vello-cpu")]
             Self::Vello(r) => {
                 // The scene forgets what it drew before; this frame redraws only the damaged part.
-                r.with_scene(fusuma_render_vello_cpu::Scene::reset);
+                r.with_scene(fusuma::renderers::vello_cpu::Scene::reset);
                 app.frame(r).map_err(|e| format!("{e:?}"))
             }
         };
@@ -75,7 +75,7 @@ impl Surface {
             }
             #[cfg(feature = "vello-cpu")]
             Self::Vello(r) => r.with_scene(|scene| {
-                rgba_to_screen(fusuma_render_vello_cpu::Scene::pixels(scene), x0, y0, x1, y1, screen);
+                rgba_to_screen(fusuma::renderers::vello_cpu::Scene::pixels(scene), x0, y0, x1, y1, screen);
             }),
         }
     }

@@ -1,0 +1,23 @@
+[package]
+name = "fusuma-ui"
+description = "Fusuma toolkit: a fixed-size widget tree, layout, theme tokens, pointer input and painting through the Renderer trait (no_std, no allocator)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "toolkit", "layout", "embedded", "no-std"]
+categories = ["gui", "embedded", "no-std"]
+
+[dependencies]
+fusuma-anim.workspace = true
+fusuma-render.workspace = true
+
+[dev-dependencies]
+fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

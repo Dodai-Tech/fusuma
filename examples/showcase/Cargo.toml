@@ -11,10 +11,9 @@ publish = false
 
 [dependencies]
 fusuma.workspace = true
-fusuma-render.workspace = true
 
 [dev-dependencies]
-fusuma-render-vello-cpu = { workspace = true, features = ["png"] }
+fusuma = { workspace = true, features = ["std", "png"] }
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "fusuma"
-description = "Fusuma toolkit core: a fixed-size widget tree, layout, theme tokens, pointer input and painting through the Renderer trait (no_std, no allocator)"
+description = "Fusuma, a native Rust UI toolkit for screens from a microcontroller to a desktop: the one crate to add (toolkit, renderers and platform behind features)"
 readme = "README.md"
 documentation = "https://docs.rs/fusuma"
 version.workspace = true
@@ -9,15 +9,32 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-keywords = ["gui", "toolkit", "layout", "embedded", "no-std"]
+keywords = ["gui", "toolkit", "embedded", "no-std", "vello"]
 categories = ["gui", "embedded", "no-std"]
 
-[dependencies]
-fusuma-anim.workspace = true
-fusuma-render.workspace = true
+[features]
+default = ["std", "renderer-vello-cpu"]
+# The standard library. Without it the crate is `no_std` (the Vello renderers then need `libm`, see their README).
+std = ["fusuma-render-vello-cpu?/std", "fusuma-render-skia?/std"]
+# Reading renderer settings from TOML (`fusuma.toml`).
+toml = ["fusuma-platform/toml"]
+# Renderer backends, each linked only when asked for. The platform picks among those linked.
+renderer-integer = ["dep:fusuma-render-embedded"]
+renderer-skia = ["dep:fusuma-render-skia"]
+renderer-vello-cpu = ["dep:fusuma-render-vello-cpu"]
+renderer-vello-gpu = ["dep:fusuma-render-vello"]
+# `png()` for the CPU Vello renderer: the surface as a PNG file.
+png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 
-[dev-dependencies]
-fusuma-render-vello-cpu.workspace = true
+[dependencies]
+fusuma-ui.workspace = true
+fusuma-render.workspace = true
+fusuma-anim.workspace = true
+fusuma-platform.workspace = true
+fusuma-render-embedded = { workspace = true, optional = true }
+fusuma-render-skia = { workspace = true, optional = true, default-features = false }
+fusuma-render-vello-cpu = { workspace = true, optional = true }
+fusuma-render-vello = { workspace = true, optional = true }
 
 [lints]
 workspace = true

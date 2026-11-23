@@ -222,6 +222,14 @@ pub(crate) enum Kind {
     Progress {
         permille: u16,
     },
+    Switch {
+        text: SmallText,
+        on: bool,
+    },
+    /// A value from 0 to 1000 thousandths, dragged with the pointer or moved with the keys.
+    Slider {
+        permille: u16,
+    },
 }
 
 impl Kind {
@@ -233,6 +241,8 @@ impl Kind {
                 | Self::Checkbox { .. }
                 | Self::Radio { .. }
                 | Self::ListItem { .. }
+                | Self::Switch { .. }
+                | Self::Slider { .. }
         )
     }
 
@@ -242,6 +252,7 @@ impl Kind {
             | Self::Button { text, .. }
             | Self::Checkbox { text, .. }
             | Self::Radio { text, .. }
+            | Self::Switch { text, .. }
             | Self::ListItem { text, .. } => Some(text),
             _ => None,
         }
@@ -253,6 +264,7 @@ impl Kind {
             | Self::Button { text, .. }
             | Self::Checkbox { text, .. }
             | Self::Radio { text, .. }
+            | Self::Switch { text, .. }
             | Self::ListItem { text, .. } => Some(text),
             _ => None,
         }
@@ -262,6 +274,7 @@ impl Kind {
     pub(crate) const fn flag_mut(&mut self) -> Option<&mut bool> {
         match self {
             Self::Checkbox { checked, .. } | Self::Radio { checked, .. } => Some(checked),
+            Self::Switch { on, .. } => Some(on),
             Self::ListItem { selected, .. } => Some(selected),
             _ => None,
         }
@@ -348,8 +361,11 @@ impl Node {
 pub enum ActionKind {
     /// A button was pressed and released on itself (or activated from the keyboard).
     Clicked,
-    /// A checkbox was switched by the user; carries the new state.
+    /// A checkbox or a switch was switched by the user; carries the new state.
     Toggled(bool),
+    /// A slider was moved by the user; carries the new value in thousandths. Not sent for changes made
+    /// with [`Tree::set_slider`].
+    Changed(u16),
     /// A radio button or a list item was chosen by the user. It is not sent when the one already
     /// chosen is activated again, nor for changes made with [`Tree::set_checked`].
     Selected,
@@ -680,6 +696,42 @@ impl<const N: usize> Tree<N> {
             self.set_checked(id, true);
         }
         Ok(id)
+    }
+
+    /// Adds a switch (a toggle). Switching it by the user sends [`ActionKind::Toggled`].
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn switch(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        on: bool,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Switch {
+                text: SmallText::new(text),
+                on,
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Adds a slider, `permille` thousandths along (0 to 1000, more is 1000). Dragging it, or the Left and
+    /// Right keys while it has the focus, send [`ActionKind::Changed`]. It wants a width: use
+    /// [`CrossAlign::Stretch`] in a column or a [`Length::Fill`] width.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn slider(&mut self, parent: Option<NodeId>, permille: u16) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Slider {
+                permille: permille.min(1000),
+            },
+            Style::DEFAULT,
+        )
     }
 
     /// Adds a progress bar, `permille` thousandths full (0 to 1000, more is 1000). It takes the width

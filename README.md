@@ -12,7 +12,7 @@
 A native Rust UI toolkit for everything from a microcontroller to a desktop, with no webview, no
 HTML and no CSS. A fusuma (襖) is the sliding door of a Japanese room.
 
-Apps depend on one crate, `fusuma`, which is `no_std` with no allocator by default, so it fits an ESP.
+Apps depend on one crate, `fusuma`, a facade: the toolkit plus the renderer choice and the backends behind cargo features (`renderer-vello-cpu` by default; `default-features = false` is `no_std`, so it fits an ESP).
 The renderer is chosen for the target (a `std` feature will add the run-time choice between the GPU
 and the CPU backend). Several renderers pass the same conformance suite and a device picks a default by
 its hardware: the integer renderer (lightest), `tiny-skia` (anti-aliased, light), `vello_cpu` (richest) and the
@@ -27,7 +27,8 @@ renderer crates stay separate, because each is useful alone.
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
 | [`fusuma-render-vello`](crates/fusuma-render-vello) | anti-aliased GPU drawing on `vello_gpu` and `wgpu` | no | working |
 | [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
-| [`fusuma`](crates/fusuma) | **the toolkit:** retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer. Apps depend on this one crate | yes | first slice, not published |
+| [`fusuma`](crates/fusuma) | **the crate to add:** a facade over the toolkit, `render`, `anim`, `platform` and the backends, each backend one feature (`renderer-integer`, `renderer-skia`, `renderer-vello-cpu`, `renderer-vello-gpu`) | yes | working |
+| [`fusuma-ui`](crates/fusuma-ui) | **the toolkit:** retained widget tree, layout, theme tokens, pointer and key events, focus, animation and paint passes; Label, Button, Checkbox, Radio, Switch, Slider, List item, Progress, Row, Column, Spacer | yes | working |
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, an animator and drag helpers, in fixed point | yes | working (the animator and drag helpers are not in the published 0.2.0) |
 | [`fusuma-platform`](crates/fusuma-platform) | **the out-of-the-box renderer choice:** which backend a machine draws with, from its screen and hardware (RAM, PSRAM, FPU, GPU), with overrides, a memory check and a reason for the answer | yes | working |
 | `fusuma-platform-esp` | runs an `App` on an ESP-IDF board (display, touch, frame loop) and picks the renderer itself; today the Waveshare ESP32-P4 7" ([`crates/fusuma-platform-esp`](crates/fusuma-platform-esp)) | no | working |

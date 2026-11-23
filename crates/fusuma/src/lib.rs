@@ -1,26 +1,30 @@
 #![doc = include_str!("../README.md")]
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-mod anim;
-mod app;
-#[cfg(test)]
-mod damage;
-mod event;
-mod focus;
-mod layout;
-mod paint;
-mod theme;
-mod tree;
-mod widgets;
+// The toolkit at the top level: `fusuma::Tree`, `fusuma::Button...`.
+pub use fusuma_ui::*;
 
-pub use app::App;
-pub use event::Pointer;
-pub use focus::Key;
-pub use theme::{
-    ButtonState, ButtonStyle, ButtonVariant, Colors, MotionTimes, Radii, Round, Spacing, Surface,
-    TextRole, TextSizes, Theme,
-};
-pub use tree::{
-    Action, ActionKind, Axis, BuildError, CrossAlign, Length, NodeId, SmallText, Style, TEXT_CAP,
-    Tree,
-};
+/// The drawing layer: the `Renderer` trait, geometry, colour, text and images.
+pub use fusuma_render as render;
+
+/// Animation: easing, tweens, keyframes, springs and decay.
+pub use fusuma_anim as anim;
+
+/// The renderer choice: which backend a machine draws with, from its hardware, with overrides.
+pub use fusuma_platform as platform;
+
+/// The renderer backends linked by the `renderer-*` features.
+pub mod renderers {
+    /// The integer, `no_std` renderer for microcontroller displays (`renderer-integer`).
+    #[cfg(feature = "renderer-integer")]
+    pub use fusuma_render_embedded as embedded;
+    /// The `tiny-skia` renderer (`renderer-skia`).
+    #[cfg(feature = "renderer-skia")]
+    pub use fusuma_render_skia as skia;
+    /// Vello on a GPU (`renderer-vello-gpu`).
+    #[cfg(feature = "renderer-vello-gpu")]
+    pub use fusuma_render_vello as vello_gpu;
+    /// Vello on the CPU (`renderer-vello-cpu`).
+    #[cfg(feature = "renderer-vello-cpu")]
+    pub use fusuma_render_vello_cpu as vello_cpu;
+}

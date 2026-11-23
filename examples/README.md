@@ -1,6 +1,6 @@
 # Fusuma examples
 
-**`showcase/`** is a small app that uses every Fusuma widget: buttons, checkboxes, radio buttons, a list,
+**`showcase/`** is a small app that uses every Fusuma widget: buttons, checkboxes, radio buttons, a switch, a slider, a list,
 a progress bar, keyboard focus and a dark/light theme switch. It is `no_std` and draws on any renderer, so
 the same code is tested on the host (`just showcase-shots` writes a PNG of every page to
 `docs/screenshots/`) and runs on a board.

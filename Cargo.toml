@@ -5,6 +5,7 @@ members = [
     "crates/fusuma-render-embedded",
     "crates/fusuma-anim",
     "crates/fusuma",
+    "crates/fusuma-ui",
     "crates/fusuma-platform",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-skia",
@@ -30,11 +31,15 @@ categories = ["graphics", "embedded", "no-std", "rendering"]
 fusuma-render = { path = "crates/fusuma-render", version = "0.2.0" }
 fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.2.0" }
 embedded-graphics = "0.8.2"
-fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "0.2.0" }
+fusuma-render-skia = { path = "crates/fusuma-render-skia", version = "0.2.0", default-features = false }
+fusuma-render-vello = { path = "crates/fusuma-render-vello", version = "0.2.0" }
+fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "0.2.0", default-features = false }
 vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wgpu_default", "full_image_support"] }
 pollster = "1"
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "vulkan", "metal", "dx12", "gles"] }
-fusuma = { path = "crates/fusuma", version = "0.2.0" }
+fusuma-ui = { path = "crates/fusuma-ui", version = "0.2.0" }
+fusuma-platform = { path = "crates/fusuma-platform", version = "0.2.0" }
+fusuma = { path = "crates/fusuma", version = "0.2.0", default-features = false }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
 vello_common = { version = "0.4", default-features = false }

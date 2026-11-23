@@ -11,7 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 fusuma-render = { path = "../crates/fusuma-render" }
 fusuma-anim = { path = "../crates/fusuma-anim" }
-fusuma = { path = "../crates/fusuma" }
+fusuma-ui = { path = "../crates/fusuma-ui" }
 fusuma-render-embedded = { path = "../crates/fusuma-render-embedded" }
 fusuma-render-vello-cpu = { path = "../crates/fusuma-render-vello-cpu" }
 

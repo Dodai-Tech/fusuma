@@ -6,9 +6,9 @@ mod surface;
 use std::time::{Duration, Instant};
 
 use fusuma::{App, Pointer};
-pub use fusuma_platform::{Backend, BackendSetting, RenderLayer};
-use fusuma_platform::{Hardware, Machine, Render};
-use fusuma_render::Point;
+pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
+use fusuma::platform::{Hardware, Machine, Render};
+use fusuma::render::Point;
 
 use hw::{Touch, TouchTracker};
 use surface::Surface;
@@ -102,7 +102,7 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
         facts.psram_kb,
         facts.fpu
     );
-    let plan = fusuma_platform::plan(&machine, None, LINKED)
+    let plan = fusuma::platform::plan(&machine, None, LINKED)
         .ok_or_else(|| anyhow::anyhow!("no renderer is linked"))?;
     log::info!(
         "renderer settings: fallback {}, keep {} KB free{}",

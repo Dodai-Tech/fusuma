@@ -76,6 +76,9 @@ impl<const N: usize> Tree<N> {
                     return false;
                 }
                 self.set_active(i, true);
+                if let (Some(p), true) = (self.pointer, self.is_slider(i)) {
+                    self.slider_to_x(i, p.x);
+                }
                 true
             }
             Phase::Up { inside } => {
@@ -83,7 +86,7 @@ impl<const N: usize> Tree<N> {
                     return false;
                 }
                 self.set_active(i, false);
-                if inside && !self.nodes[i].disabled_eff {
+                if inside && !self.nodes[i].disabled_eff && !self.is_slider(i) {
                     self.activate(i);
                 }
                 true
@@ -109,6 +112,13 @@ impl<const N: usize> Tree<N> {
         match event {
             Pointer::Move(p) => {
                 self.pointer = Some(p);
+                // A slider that holds the press follows the pointer, even outside its bounds.
+                if let Some(held) = self.captured.and_then(|id| self.slot(id))
+                    && self.nodes[held].active
+                    && self.is_slider(held)
+                {
+                    self.slider_to_x(held, p.x);
+                }
                 let h = self.hit(p);
                 self.set_hover(h);
             }

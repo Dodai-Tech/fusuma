@@ -457,8 +457,13 @@ name = "fusuma"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-platform",
  "fusuma-render",
+ "fusuma-render-embedded",
+ "fusuma-render-skia",
+ "fusuma-render-vello",
  "fusuma-render-vello-cpu",
+ "fusuma-ui",
 ]
 
 [[package]]
@@ -532,6 +537,13 @@ name = "fusuma-showcase"
 version = "0.2.0"
 dependencies = [
  "fusuma",
+]
+
+[[package]]
+name = "fusuma-ui"
+version = "0.2.0"
+dependencies = [
+ "fusuma-anim",
  "fusuma-render",
  "fusuma-render-vello-cpu",
 ]

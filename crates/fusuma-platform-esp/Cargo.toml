@@ -18,16 +18,11 @@ publish = false
 default = ["skia", "vello-cpu"]
 # Link the `tiny-skia` and the `vello_cpu` renderers next to the integer one, which is always there.
 # Leaving both off links the integer renderer only (the smallest firmware).
-skia = ["dep:fusuma-render-skia"]
-vello-cpu = ["dep:fusuma-render-vello-cpu"]
+skia = ["fusuma/renderer-skia"]
+vello-cpu = ["fusuma/renderer-vello-cpu"]
 
 [dependencies]
-fusuma = { path = "../fusuma" }
-fusuma-platform = { path = "../fusuma-platform", features = ["toml"] }
-fusuma-render = { path = "../fusuma-render" }
-fusuma-render-embedded = { path = "../fusuma-render-embedded" }
-fusuma-render-skia = { path = "../fusuma-render-skia", optional = true, default-features = false, features = ["std"] }
-fusuma-render-vello-cpu = { path = "../fusuma-render-vello-cpu", optional = true, default-features = false, features = ["std"] }
+fusuma = { path = "../fusuma", default-features = false, features = ["std", "toml", "renderer-integer"] }
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 log = "0.4"
 anyhow = "1"

@@ -152,7 +152,9 @@ impl<const N: usize> Tree<N> {
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
             | Kind::ListItem { .. }
-            | Kind::Progress { .. } => self.paint_widget(i, r, theme),
+            | Kind::Progress { .. }
+            | Kind::Switch { .. }
+            | Kind::Slider { .. } => self.paint_widget(i, r, theme),
             Kind::Label { text, role } => {
                 let style = theme.text_style(role);
                 let size = r.measure_text(text.as_str(), &style);

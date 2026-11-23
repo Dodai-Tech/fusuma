@@ -758,7 +758,12 @@ name = "fusuma"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-platform",
  "fusuma-render",
+ "fusuma-render-embedded",
+ "fusuma-render-skia",
+ "fusuma-render-vello-cpu",
+ "fusuma-ui",
 ]
 
 [[package]]
@@ -780,11 +785,6 @@ dependencies = [
  "anyhow",
  "esp-idf-svc",
  "fusuma",
- "fusuma-platform",
- "fusuma-render",
- "fusuma-render-embedded",
- "fusuma-render-skia",
- "fusuma-render-vello-cpu",
  "log",
 ]
 
@@ -833,7 +833,6 @@ name = "fusuma-showcase"
 version = "0.2.0"
 dependencies = [
  "fusuma",
- "fusuma-render",
 ]
 
 [[package]]
@@ -845,6 +844,14 @@ dependencies = [
  "esp-idf-svc",
  "fusuma-platform-esp",
  "fusuma-showcase",
+]
+
+[[package]]
+name = "fusuma-ui"
+version = "0.2.0"
+dependencies = [
+ "fusuma-anim",
+ "fusuma-render",
 ]
 
 [[package]]

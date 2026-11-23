@@ -7,11 +7,11 @@
 
 use core::fmt::{self, Write};
 
+use fusuma::render::{Rect, Renderer};
 use fusuma::{
     ActionKind, App, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Round, Style,
     Surface, TextRole, Theme, Tree,
 };
-use fusuma_render::{Rect, Renderer};
 
 /// Nodes the tree can hold; the busiest page uses about 40.
 pub const NODES: usize = 64;
@@ -59,11 +59,19 @@ pub enum Page {
     List,
     /// A progress bar that runs.
     Progress,
+    /// A switch and a slider.
+    Controls,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 4] = [Self::Buttons, Self::Selection, Self::List, Self::Progress];
+    pub const ALL: [Self; 5] = [
+        Self::Buttons,
+        Self::Selection,
+        Self::List,
+        Self::Progress,
+        Self::Controls,
+    ];
 
     /// The name in the sidebar.
     #[must_use]
@@ -73,6 +81,7 @@ impl Page {
             Self::Selection => "Selection",
             Self::List => "List",
             Self::Progress => "Progress",
+            Self::Controls => "Controls",
         }
     }
 }
@@ -122,6 +131,9 @@ struct Live {
     bar_label: Option<NodeId>,
     start: Option<NodeId>,
     reset: Option<NodeId>,
+    switch: Option<NodeId>,
+    slider: Option<NodeId>,
+    slider_label: Option<NodeId>,
 }
 
 const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
@@ -135,7 +147,7 @@ pub struct Showcase {
     dark: bool,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 4],
+    sidebar: [Option<NodeId>; 5],
     body: Option<NodeId>,
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
@@ -144,6 +156,7 @@ pub struct Showcase {
     clicks: u32,
     running: bool,
     fill_ms: u32,
+    volume: u16,
 }
 
 impl Showcase {
@@ -156,7 +169,7 @@ impl Showcase {
             dark: true,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
-            sidebar: [None; 4],
+            sidebar: [None; 5],
             body: None,
             content: None,
             theme_button: None,
@@ -165,6 +178,7 @@ impl Showcase {
             clicks: 0,
             running: false,
             fill_ms: 0,
+            volume: 500,
         };
         // The tree has room for all of it; a build failure would leave a smaller screen, not a crash.
         let _ = s.build();
@@ -224,6 +238,8 @@ impl Showcase {
             bar: self.live.bar,
             start: self.live.start,
             reset: self.live.reset,
+            switch: self.live.switch,
+            slider: self.live.slider,
         }
     }
 
@@ -357,6 +373,20 @@ impl Showcase {
                 }
                 live.list_label = Some(t.label(Some(c), "Chosen: Aurora", TextRole::Body)?);
             }
+            Page::Controls => {
+                t.label(Some(c), "Controls", TextRole::Title)?;
+                live.switch = Some(t.switch(Some(c), "Wi-Fi", true)?);
+                let mut b = Buf::new();
+                let _ = write!(b, "Volume: {}%", self.volume / 10);
+                live.slider_label = Some(t.label(Some(c), b.text(), TextRole::Body)?);
+                let slider = t.slider(Some(c), self.volume)?;
+                live.slider = Some(slider);
+                t.label(
+                    Some(c),
+                    "Drag the slider, or focus it and use Left and Right.",
+                    TextRole::Caption,
+                )?;
+            }
             Page::Progress => {
                 t.label(Some(c), "Progress", TextRole::Title)?;
                 live.bar = Some(t.progress_bar(Some(c), permille)?);
@@ -435,13 +465,27 @@ impl Showcase {
                         }
                     }
                 }
+                ActionKind::Changed(v) => {
+                    if id == self.live.slider {
+                        self.volume = v;
+                        let _ = write!(b, "Volume: {}%", v / 10);
+                        if let Some(l) = self.live.slider_label {
+                            self.tree.set_text(l, b.text());
+                        }
+                    }
+                }
                 ActionKind::Toggled(on) => {
-                    let name = self
-                        .live
-                        .checks
-                        .iter()
-                        .position(|&c| c == id)
-                        .and_then(|i| ["Notifications", "Location", "Analytics"].get(i).copied());
+                    let name = if id == self.live.switch {
+                        Some("Wi-Fi")
+                    } else {
+                        self.live
+                            .checks
+                            .iter()
+                            .position(|&c| c == id)
+                            .and_then(|i| {
+                                ["Notifications", "Location", "Analytics"].get(i).copied()
+                            })
+                    };
                     if let Some(name) = name {
                         let _ = write!(b, "{name} {}", if on { "on" } else { "off" });
                     }
@@ -579,6 +623,10 @@ pub struct Widgets {
     pub start: Option<NodeId>,
     /// The Progress page's reset button.
     pub reset: Option<NodeId>,
+    /// The Controls page's switch.
+    pub switch: Option<NodeId>,
+    /// The Controls page's slider.
+    pub slider: Option<NodeId>,
 }
 
 #[cfg(test)]
@@ -587,17 +635,17 @@ extern crate std;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fusuma_render::{Point, Probe};
+    use fusuma::render::{Point, Probe};
 
-    fn app() -> (Showcase, fusuma_render_vello_cpu::VelloCpu) {
+    fn app() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
         let mut s = Showcase::new(1024, 600);
-        let mut r = fusuma_render_vello_cpu::new(1024, 600).unwrap();
+        let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
         assert!(s.frame(&mut r).unwrap().is_some());
         (s, r)
     }
 
     fn tap(s: &mut Showcase, id: NodeId) {
-        let measure = fusuma_render_vello_cpu::new(8, 8).unwrap();
+        let measure = fusuma::renderers::vello_cpu::new(8, 8).unwrap();
         s.layout(&measure);
         let r = s.rect_of(id).unwrap();
         let p = Point::new(r.x + (r.w / 2) as i32, r.y + (r.h / 2) as i32);
@@ -780,9 +828,45 @@ mod tests {
                         if dark { "dark" } else { "light" },
                         p.name()
                     );
-                    std::fs::write(name, fusuma_render_vello_cpu::png(&r).unwrap()).unwrap();
+                    std::fs::write(name, fusuma::renderers::vello_cpu::png(&r).unwrap()).unwrap();
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_controls_page_has_a_working_switch_and_slider() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Controls);
+        let w = s.widgets();
+        let (sw, sl) = (w.switch.unwrap(), w.slider.unwrap());
+        assert!(s.tree().is_checked(sw));
+        tap(&mut s, sw);
+        assert!(!s.tree().is_checked(sw));
+        assert_eq!(s.tree().text(s.status.unwrap()), Some("Wi-Fi off"));
+        s.frame(&mut r).unwrap();
+        let rect = s.rect_of(sl).unwrap();
+        let y = rect.y + (rect.h / 2) as i32;
+        s.pointer(Pointer::Down(Point::new(rect.x + rect.w as i32 - 2, y)));
+        s.pointer(Pointer::Up(Point::new(rect.x + rect.w as i32 - 2, y)));
+        assert_eq!(s.tree().slider_value(sl), Some(1000));
+        assert_eq!(
+            s.tree().text(s.live.slider_label.unwrap()),
+            Some("Volume: 100%")
+        );
+        go(&mut s, Page::Buttons);
+        go(&mut s, Page::Controls);
+        assert_eq!(
+            s.tree().slider_value(s.widgets().slider.unwrap()),
+            Some(1000),
+            "the value is kept"
+        );
+        s.key(Key::Next);
+        s.tree.focus(s.widgets().slider.unwrap());
+        s.key(Key::Left);
+        assert_eq!(
+            s.tree().slider_value(s.widgets().slider.unwrap()),
+            Some(950)
+        );
     }
 }
