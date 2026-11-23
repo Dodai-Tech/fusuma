@@ -66,8 +66,8 @@ fuzz/                              cargo-fuzz targets (geometry, draw, anim)
 scripts/                           Nushell scripts used by the justfile and CI
 ```
 
-Part of the Dodai family: Dodai OS is the foundation, Fusuma draws the interface, and
-Dodai UI is the design system.
+Part of the Dodai family: Hibari OS is a thin operating system for ESP32 boards, Fusuma draws the
+interface, and Dodai UI is the design system.
 
 ## License
 

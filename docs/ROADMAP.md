@@ -52,7 +52,7 @@ works and is tested.
 - [x] `fusuma-render-vello-cpu` on `vello_cpu`, passing the conformance suite and matching the integer backend pixel for pixel; fuzzed
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
 - [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
-- [ ] Publish `fusuma-render-vello-common` and `-vello-cpu`, move `dodai-os` to them
+- [ ] Publish `fusuma-render-vello-common` and `-vello-cpu`, move `hibari-os` to them
 - [x] `fusuma-render-vello` on `vello_gpu` and `wgpu` 30: headless device, renders into an `Rgba8Unorm` texture and reads it back; passes the conformance suite on a real GPU (AMD RX 7800 XT, Vulkan) and matches the CPU backend; tests skip on machines without a GPU. Images go to the GPU as external textures through a `Scene::image_source` hook
 - [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the facade's GPU-first choice
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
@@ -70,7 +70,7 @@ works and is tested.
 - [ ] Shared and layout animations: a card that grows into a page, list reorder and insert, stagger helpers
 - [ ] More physics: gravity and bounce, a spring chain for trailing motion, velocity from touch history
 - [ ] Vector animation like Rive or Lottie: a state machine over timelines, playing `velato` (Lottie) and `vello_svg` content; a design-tool file format is out of scope
-- [ ] Move `dodai-os-core::anim` onto `fusuma-anim` (one animation crate for the OS and the toolkit)
+- [ ] Move `hibari-os-core::anim` onto `fusuma-anim` (one animation crate for the OS and the toolkit)
 
 ## Phase 3: effects and shaders
 - [ ] `Capabilities`: `effects` and `shaders` flags next to `alpha` and `antialiasing`
@@ -87,7 +87,7 @@ works and is tested.
 - [ ] Text input with an input method, and accessibility with `AccessKit`
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [ ] `fusuma` facade and run-time backend choice (GPU first, CPU fallback)
-- [ ] Port the Dodai OS launcher to Fusuma widgets, and `dodai-ui-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
+- [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-ui-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
 
 ## Phase 5: more platforms
 - [ ] `fusuma-platform-android` and `-ios`: native windows and touch, no web wrapper

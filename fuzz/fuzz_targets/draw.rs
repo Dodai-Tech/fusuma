@@ -81,7 +81,7 @@ fn run<R: Renderer + Probe>(r: &mut R, data: &[u8]) {
                 }
             }
             10 | 11 => {
-                let text = ["", "Hi", "Dodai OS", "é€"][usize::from(b.u8() % 4)];
+                let text = ["", "Hi", "Hibari OS", "é€"][usize::from(b.u8() % 4)];
                 let align = [Align::Left, Align::Center, Align::Right][usize::from(b.u8() % 3)];
                 let style = TextStyle::new(b.u32(), b.color()).aligned(align);
                 let at = b.point();
