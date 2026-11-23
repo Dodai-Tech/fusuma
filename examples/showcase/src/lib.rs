@@ -55,7 +55,7 @@ pub enum Page {
     Buttons,
     /// Checkboxes and radio buttons.
     Selection,
-    /// A list to choose from.
+    /// A scrolling list to choose from.
     List,
     /// A progress bar that runs.
     Progress,
@@ -125,8 +125,9 @@ struct Live {
     checks: [Option<NodeId>; 3],
     radios: [Option<NodeId>; 3],
     radio_label: Option<NodeId>,
-    items: [Option<NodeId>; 6],
+    items: [Option<NodeId>; 12],
     list_label: Option<NodeId>,
+    list: Option<NodeId>,
     bar: Option<NodeId>,
     bar_label: Option<NodeId>,
     start: Option<NodeId>,
@@ -137,7 +138,10 @@ struct Live {
 }
 
 const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
-const ITEM_NAMES: [&str; 6] = ["Aurora", "Birch", "Cedar", "Dune", "Ember", "Fjord"];
+const ITEM_NAMES: [&str; 12] = [
+    "Aurora", "Birch", "Cedar", "Dune", "Ember", "Fjord", "Glacier", "Harbor", "Island", "Juniper",
+    "Kelp", "Lagoon",
+];
 
 /// The showcase app.
 #[derive(Debug)]
@@ -235,6 +239,7 @@ impl Showcase {
             checks: self.live.checks,
             radios: self.live.radios,
             items: self.live.items,
+            list: self.live.list,
             bar: self.live.bar,
             start: self.live.start,
             reset: self.live.reset,
@@ -361,13 +366,16 @@ impl Showcase {
             }
             Page::List => {
                 t.label(Some(c), "List", TextRole::Title)?;
-                let list = t.column(
+                // A window onto twelve rows: drag it, turn the wheel, or move the focus with the keys.
+                let list = t.scroll(
                     Some(c),
                     Style::new()
                         .width(Length::Fixed(360))
+                        .height(Length::Fixed(260))
                         .gap(sp.xs)
                         .align(CrossAlign::Stretch),
                 )?;
+                live.list = Some(list);
                 for (i, slot) in live.items.iter_mut().enumerate() {
                     *slot = Some(t.list_item(Some(list), ITEM_NAMES[i], i == 0)?);
                 }
@@ -616,7 +624,9 @@ pub struct Widgets {
     /// The Selection page's radio buttons.
     pub radios: [Option<NodeId>; 3],
     /// The List page's rows.
-    pub items: [Option<NodeId>; 6],
+    pub items: [Option<NodeId>; 12],
+    /// The List page's scrolling window.
+    pub list: Option<NodeId>,
     /// The Progress page's bar.
     pub bar: Option<NodeId>,
     /// The Progress page's start/pause button.
@@ -868,5 +878,64 @@ mod tests {
             s.tree().slider_value(s.widgets().slider.unwrap()),
             Some(950)
         );
+    }
+
+    #[test]
+    fn the_list_scrolls_by_wheel_and_by_drag_and_still_chooses() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::List);
+        s.frame(&mut r).unwrap();
+        let w = s.widgets();
+        let list = w.list.unwrap();
+        let view = s.rect_of(list).unwrap();
+        assert!(
+            s.tree().scroll_max(list).unwrap() > 0,
+            "twelve rows do not fit 260 px"
+        );
+        s.pointer(Pointer::Wheel(Point::new(view.x + 20, view.y + 20), 150));
+        assert_eq!(s.tree().scroll_offset(list), Some(150));
+        s.frame(&mut r).unwrap();
+        // A row that was out of sight is now at hand.
+        let row = w.items[6].unwrap();
+        tap(&mut s, row);
+        assert_eq!(
+            s.tree().text(s.live.list_label.unwrap()),
+            Some("Chosen: Glacier")
+        );
+        // Dragging scrolls back without choosing anything.
+        let start = Point::new(view.x + 30, view.y + 30);
+        s.pointer(Pointer::Down(start));
+        s.pointer(Pointer::Move(Point::new(start.x, start.y + 200)));
+        s.pointer(Pointer::Up(Point::new(start.x, start.y + 200)));
+        s.pointer(Pointer::Leave);
+        assert_eq!(s.tree().scroll_offset(list), Some(0));
+        assert_eq!(
+            s.tree().text(s.live.list_label.unwrap()),
+            Some("Chosen: Glacier")
+        );
+    }
+}
+
+#[cfg(test)]
+mod probe {
+    use super::*;
+    use fusuma::render::Probe;
+    #[test]
+    fn probe_rows() {
+        let mut s = Showcase::new(1024, 600);
+        let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
+        s.frame(&mut r).unwrap();
+        let rc = s.rect_of(s.sidebar_item(Page::List).unwrap()).unwrap();
+        let p = fusuma::render::Point::new(rc.x + 5, rc.y + 5);
+        s.pointer(Pointer::Down(p));
+        s.pointer(Pointer::Up(p));
+        s.frame(&mut r).unwrap();
+        let bg = s.theme().colors.surface;
+        for y in (400..520).step_by(4) {
+            let n = (300..640).filter(|&x| r.pixel(x, y) != Some(bg)).count();
+            std::eprintln!("ROW y={y} lit={n}");
+        }
+        let list = s.widgets().list.unwrap();
+        std::eprintln!("LISTRECT {:?}", s.rect_of(list));
     }
 }

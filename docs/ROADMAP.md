@@ -182,7 +182,8 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
 - [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree; layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
 - [x] Widgets in `fusuma-ui`: checkbox, radio, switch, slider, selectable list item, progress bar, with keyboard focus (Tab, arrows, Enter)
-- [ ] More widgets: scroll container with clipping, multi-line text view, text input, dialog, tabs, menu, toast
+- [x] Scroll container (`Tree::scroll`): clips its children, scrolls by touch drag (with a slop so a tap still clicks), mouse wheel (`Pointer::Wheel`) and by moving the focus to a hidden widget; hidden widgets cannot be hit; a scrollbar shows the position. Not yet: inertia after a drag, rubber-banding at the ends (`fusuma-anim` has both), horizontal scrolling
+- [ ] More widgets: multi-line text view, text input, dialog, tabs, menu, toast
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [x] `fusuma` is a facade crate (`fusuma-ui` is the toolkit): `renderer-*` features link backends, `toml` reads settings, `fusuma-platform` chooses
 - [ ] Platform picked by target automatically (`fusuma-platform-desktop`, `-mobile`; the ESP one is a separate firmware-side crate)

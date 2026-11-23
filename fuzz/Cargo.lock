@@ -200,14 +200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fusuma"
-version = "0.2.0"
-dependencies = [
- "fusuma-anim",
- "fusuma-render",
-]
-
-[[package]]
 name = "fusuma-anim"
 version = "0.2.0"
 
@@ -215,11 +207,11 @@ version = "0.2.0"
 name = "fusuma-fuzz"
 version = "0.0.0"
 dependencies = [
- "fusuma",
  "fusuma-anim",
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-cpu",
+ "fusuma-ui",
  "libfuzzer-sys",
 ]
 
@@ -251,6 +243,14 @@ dependencies = [
  "fusuma-render",
  "fusuma-render-vello-common",
  "vello_cpu",
+]
+
+[[package]]
+name = "fusuma-ui"
+version = "0.2.0"
+dependencies = [
+ "fusuma-anim",
+ "fusuma-render",
 ]
 
 [[package]]

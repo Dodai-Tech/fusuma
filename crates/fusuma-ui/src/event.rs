@@ -3,7 +3,7 @@
 
 use fusuma_render::Point;
 
-use crate::tree::{Flags, NodeId, Tree};
+use crate::tree::{Drag, Flags, Kind, NodeId, Tree};
 
 /// A pointer event: a finger or a mouse, in tree coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,7 +17,13 @@ pub enum Pointer {
     /// The pointer left the tree. For a touch screen send this after every [`Pointer::Up`]: a
     /// finger that is lifted hovers over nothing.
     Leave,
+    /// The mouse wheel (or a trackpad) turned over `Point`: `dy` pixels, positive to scroll the content
+    /// up (see later content). A platform converts lines to pixels.
+    Wheel(Point, i32),
 }
+
+/// How far a press must travel before it is a scroll and not a click, in pixels.
+pub(crate) const SCROLL_SLOP: i32 = 8;
 
 #[derive(Clone, Copy)]
 enum Phase {
@@ -33,7 +39,42 @@ impl<const N: usize> Tree<N> {
         let mut cur = Some(root);
         while let Some(i) = cur {
             let n = &self.nodes[i];
-            if n.kind.pressable() && !n.disabled_eff && n.rect.contains(p) {
+            if n.kind.pressable()
+                && !n.disabled_eff
+                && n.rect.contains(p)
+                && self.in_viewports(i, p)
+            {
+                found = Some(i);
+            }
+            cur = self.preorder_next(i, root);
+        }
+        found
+    }
+
+    /// Whether `p` is inside the viewport of every scroll container above node `i`: a widget scrolled out of
+    /// sight cannot be hit.
+    pub(crate) fn in_viewports(&self, i: usize, p: Point) -> bool {
+        let mut cur = self.nodes[i].parent.map(usize::from);
+        while let Some(s) = cur {
+            if matches!(self.nodes[s].kind, Kind::Scroll { .. }) && !self.nodes[s].rect.contains(p)
+            {
+                return false;
+            }
+            cur = self.nodes[s].parent.map(usize::from);
+        }
+        true
+    }
+
+    /// The innermost scroll container under `p`, if any.
+    pub(crate) fn scroll_at(&self, p: Point) -> Option<usize> {
+        let root = usize::from(self.root?);
+        let mut found = None;
+        let mut cur = Some(root);
+        while let Some(i) = cur {
+            if matches!(self.nodes[i].kind, Kind::Scroll { .. })
+                && self.nodes[i].rect.contains(p)
+                && self.in_viewports(i, p)
+            {
                 found = Some(i);
             }
             cur = self.preorder_next(i, root);
@@ -58,7 +99,7 @@ impl<const N: usize> Tree<N> {
         self.hovered = new_id;
     }
 
-    fn set_active(&mut self, i: usize, active: bool) {
+    pub(crate) fn set_active(&mut self, i: usize, active: bool) {
         if self.nodes[i].active != active {
             self.nodes[i].active = active;
             self.request(i, Flags::PAINT | Flags::ANIM);
@@ -112,6 +153,7 @@ impl<const N: usize> Tree<N> {
         match event {
             Pointer::Move(p) => {
                 self.pointer = Some(p);
+                self.drag_scroll(p);
                 // A slider that holds the press follows the pointer, even outside its bounds.
                 if let Some(held) = self.captured.and_then(|id| self.slot(id))
                     && self.nodes[held].active
@@ -124,6 +166,12 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Down(p) => {
                 self.pointer = Some(p);
+                self.drag = self.scroll_at(p).map(|s| Drag {
+                    scroll: self.id_of(s),
+                    start_y: p.y,
+                    offset0: self.scroll_offset_at(s),
+                    moving: false,
+                });
                 let h = self.hit(p);
                 self.set_hover(h);
                 if let Some(t) = h {
@@ -135,6 +183,7 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Up(p) => {
                 self.pointer = Some(p);
+                self.drag = None;
                 let h = self.hit(p);
                 if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {
                     self.dispatch(
@@ -146,8 +195,17 @@ impl<const N: usize> Tree<N> {
                 }
                 self.set_hover(h);
             }
+            Pointer::Wheel(p, dy) => {
+                if let Some(s) = self.scroll_at(p) {
+                    let to = self.scroll_offset_at(s).saturating_add(dy);
+                    self.set_scroll(s, to);
+                    let h = self.hit(p);
+                    self.set_hover(h);
+                }
+            }
             Pointer::Leave => {
                 self.pointer = None;
+                self.drag = None;
                 if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {
                     // A press that the pointer walks away from is cancelled, not a click.
                     self.dispatch(held, Phase::Up { inside: false });

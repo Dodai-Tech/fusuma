@@ -47,6 +47,11 @@ impl<const N: usize> Tree<N> {
         self.focus_visible = visible && new.is_some();
         if let Some(i) = target {
             self.request(i, Flags::PAINT);
+            if visible {
+                // At the next layout, when the positions are fresh.
+                self.pending_reveal = Some(self.id_of(i));
+                self.request(i, Flags::LAYOUT);
+            }
         }
     }
 

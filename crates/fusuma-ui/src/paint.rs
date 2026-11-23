@@ -53,14 +53,98 @@ impl<const N: usize> Tree<N> {
         let Some(root) = self.root.map(usize::from) else {
             return Ok(());
         };
-        let mut cur = Some(root);
-        while let Some(i) = cur {
-            self.paint_node(i, renderer, theme)?;
-            cur = self.preorder_next(i, root);
-        }
+        self.paint_walk(root, renderer, theme, None)?;
         self.clear_flag(Flags::PAINT);
         self.damage = None;
         Ok(())
+    }
+
+    /// Whether node `i` is inside (a descendant of) node `ancestor`.
+    fn is_inside(&self, i: usize, ancestor: usize) -> bool {
+        let mut cur = self.nodes[i].parent.map(usize::from);
+        while let Some(p) = cur {
+            if p == ancestor {
+                return true;
+            }
+            cur = self.nodes[p].parent.map(usize::from);
+        }
+        false
+    }
+
+    /// Draws the nodes from `root` on, parents before children. A scroll container clips what is inside it
+    /// and draws its scrollbar over it when its children are done. With a `region`, nodes that do not touch
+    /// it are skipped.
+    fn paint_walk<R: Renderer>(
+        &self,
+        root: usize,
+        r: &mut R,
+        theme: &Theme,
+        region: Option<Rect>,
+    ) -> Result<(), R::Error> {
+        // Scroll containers whose children are being drawn, outermost first. Deeper nesting than this is
+        // drawn without its own clip (the outer ones still clip).
+        const OPEN: usize = 8;
+        let mut open = [0usize; OPEN];
+        let mut depth = 0;
+        let mut result = Ok(());
+        let mut cur = Some(root);
+        while let Some(i) = cur {
+            while depth > 0 && !self.is_inside(i, open[depth - 1]) {
+                depth -= 1;
+                let done = self.end_scroll(open[depth], r, theme);
+                result = result.and(done);
+            }
+            let seen = region.is_none_or(|g| {
+                let o = self.nodes[i].rect.intersect(&g);
+                o.w > 0 && o.h > 0
+            });
+            if result.is_ok() && seen {
+                result = self.paint_node(i, r, theme);
+            }
+            if result.is_ok() && depth < OPEN && matches!(self.nodes[i].kind, Kind::Scroll { .. }) {
+                result = r.save().and_then(|()| r.clip(self.nodes[i].rect));
+                open[depth] = i;
+                depth += 1;
+            }
+            cur = self.preorder_next(i, root);
+        }
+        while depth > 0 {
+            depth -= 1;
+            let done = self.end_scroll(open[depth], r, theme);
+            result = result.and(done);
+        }
+        result
+    }
+
+    /// Draws the scrollbar of container `i` (inside its clip) and ends the clip.
+    fn end_scroll<R: Renderer>(&self, i: usize, r: &mut R, theme: &Theme) -> Result<(), R::Error> {
+        let n = &self.nodes[i];
+        let mut result = Ok(());
+        if let Kind::Scroll { offset, content } = n.kind {
+            let view = n.rect.inset(n.style.padding).h;
+            if content > view && view > 0 {
+                let track = n.rect;
+                let thumb = (u64::from(view) * u64::from(view) / u64::from(content)) as u32;
+                let thumb = thumb.max(theme.track_height * 2).min(view);
+                let range = u64::from(view - thumb);
+                let max = u64::from(content - view);
+                let at = (range * offset.max(0) as u64 / max).min(range) as u32;
+                let bar = theme.track_height.clamp(2, 6);
+                let x = track
+                    .right()
+                    .saturating_sub(i32::try_from(bar).unwrap_or(0) + 2);
+                let y = track.y.saturating_add(
+                    i32::try_from(n.style.padding.saturating_add(at)).unwrap_or(i32::MAX),
+                );
+                result = r.fill_rect(
+                    Rect::new(x, y, bar, thumb),
+                    bar / 2,
+                    theme.colors.border_strong,
+                );
+            }
+        }
+        let restored = r.restore();
+        result.and(restored)
     }
 
     /// Draws only the part of the tree that overlaps `region`, limited to it: the way to redraw what
@@ -89,15 +173,8 @@ impl<const N: usize> Tree<N> {
         }
         renderer.save()?;
         let mut result = renderer.clip(region);
-        let mut cur = Some(root);
-        while let Some(i) = cur {
-            if result.is_ok()
-                && self.nodes[i].rect.intersect(&region).w > 0
-                && self.nodes[i].rect.intersect(&region).h > 0
-            {
-                result = self.paint_node(i, renderer, theme);
-            }
-            cur = self.preorder_next(i, root);
+        if result.is_ok() {
+            result = self.paint_walk(root, renderer, theme, Some(region));
         }
         let restored = renderer.restore();
         result?;
@@ -142,7 +219,7 @@ impl<const N: usize> Tree<N> {
             return Ok(());
         }
         match n.kind {
-            Kind::Stack(_) => {
+            Kind::Stack(_) | Kind::Scroll { .. } => {
                 if let Some(color) = theme.surface(n.style.background) {
                     r.fill_rect(rect, theme.radius(n.style.round), color)?;
                 }

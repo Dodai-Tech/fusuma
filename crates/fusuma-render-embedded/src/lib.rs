@@ -36,6 +36,8 @@ fn in_band(v: i64) -> bool {
 
 /// The largest circle radius and rounded-rectangle side: `embedded-graphics` squares distances in
 /// `i32`, which overflows beyond this. Bigger shapes are not drawn (no screen is that big).
+/// Circles with a radius above this are drawn through the path rasteriser, which clips.
+const BIG_CIRCLE: u32 = 256;
 const MAX_EXTENT: u32 = 16_383;
 
 /// The widest stroke drawn; a wider one is drawn this wide.
@@ -280,6 +282,21 @@ where
             return Ok(());
         }
         let diameter = radius * 2 + 1;
+        // Nothing to do when the circle is off the clip; and a big circle is a rounded square, which the
+        // path rasteriser clips to the screen, where walking every point of the circle would not stop.
+        let bounds = Rect::new(c.x - radius as i32, c.y - radius as i32, diameter, diameter);
+        if bounds.intersect(&self.state.clip).is_empty() {
+            return Ok(());
+        }
+        if radius > BIG_CIRCLE {
+            let square = Rect::new(
+                center.x.saturating_sub(radius as i32),
+                center.y.saturating_sub(radius as i32),
+                diameter,
+                diameter,
+            );
+            return self.fill_rect(square, radius, color);
+        }
         self.draw(|t| {
             Circle::with_center(c, diameter)
                 .into_styled(PrimitiveStyle::with_fill(rgb565(color)))
@@ -454,6 +471,31 @@ mod tests {
 
     fn backend(w: u16, h: u16) -> Backend {
         Embedded::new(Frame::new(w, h, vec![0u16; usize::from(w) * usize::from(h)]).unwrap())
+    }
+
+    /// A regression found by the fuzzer: a circle far bigger than the screen used to be walked point by
+    /// point (billions of them). It must finish at once and draw the part that is on the screen.
+    #[test]
+    fn a_huge_circle_is_clipped_and_not_walked_point_by_point() {
+        let c = Color::rgb(255, 255, 0);
+        let mut b = backend(48, 40);
+        b.fill_circle(Point::new(24, 20), 10_000, c).unwrap();
+        assert_eq!(b.pixel(0, 0), Some(c), "the screen is inside the circle");
+        assert_eq!(b.pixel(47, 39), Some(c));
+        // A circle whose edge crosses the screen: the near side is filled, the far corner is not.
+        let mut b = backend(48, 40);
+        b.fill_circle(Point::new(-4000, 20), 4010, c).unwrap();
+        assert_eq!(b.pixel(2, 20), Some(c));
+        assert_ne!(b.pixel(47, 20), Some(c));
+        // Entirely off the screen: nothing is drawn, and nothing takes long.
+        let mut b = backend(48, 40);
+        b.fill_circle(Point::new(9000, 9000), 5000, c).unwrap();
+        assert_ne!(b.pixel(10, 10), Some(c));
+        // A circle just above the threshold looks like one just below it.
+        let (mut small, mut big) = (backend(64, 64), backend(64, 64));
+        small.fill_circle(Point::new(32, 32), 30, c).unwrap();
+        big.fill_circle(Point::new(32, 32), 300, c).unwrap();
+        assert_eq!(small.pixel(32, 32), big.pixel(32, 32));
     }
 
     #[test]

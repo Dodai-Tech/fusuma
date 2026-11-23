@@ -230,6 +230,21 @@ pub(crate) enum Kind {
     Slider {
         permille: u16,
     },
+    /// A column that shows a window onto content taller than itself: `offset` pixels scrolled, of
+    /// `content` pixels of children.
+    Scroll {
+        offset: i32,
+        content: u32,
+    },
+}
+
+/// A press that may turn into a scroll: where it began and how far it has been dragged.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Drag {
+    pub scroll: NodeId,
+    pub start_y: i32,
+    pub offset0: i32,
+    pub moving: bool,
 }
 
 impl Kind {
@@ -396,6 +411,10 @@ pub struct Tree<const N: usize> {
     pub(crate) pointer: Option<Point>,
     /// The widget that gets the release of a press.
     pub(crate) captured: Option<NodeId>,
+    /// A press inside a scroll container, which becomes a scroll when dragged far enough.
+    pub(crate) drag: Option<Drag>,
+    /// A widget to scroll into view at the next layout.
+    pub(crate) pending_reveal: Option<NodeId>,
     pub(crate) hovered: Option<NodeId>,
     /// The widget the keyboard acts on.
     pub(crate) focus: Option<NodeId>,
@@ -427,6 +446,8 @@ impl<const N: usize> Tree<N> {
             root: None,
             pointer: None,
             captured: None,
+            drag: None,
+            pending_reveal: None,
             hovered: None,
             focus: None,
             focus_visible: false,
@@ -481,7 +502,7 @@ impl<const N: usize> Tree<N> {
     /// root whether anything below needs it.
     pub(crate) fn request(&mut self, i: usize, flag: u8) {
         if flag & Flags::PAINT != 0 {
-            let rect = self.nodes[i].rect;
+            let rect = self.visible_rect(i);
             self.add_damage(rect);
         }
         self.nodes[i].own.insert(flag);
@@ -490,6 +511,24 @@ impl<const N: usize> Tree<N> {
             self.nodes[c].sub.insert(flag);
             cur = self.nodes[c].parent.map(usize::from);
         }
+    }
+
+    /// The part of node `i` that can be seen: its rectangle cut to the viewports of the scroll containers
+    /// it is in.
+    pub(crate) fn visible_rect(&self, i: usize) -> Rect {
+        self.clip_to_viewports(i, self.nodes[i].rect)
+    }
+
+    /// `rect` cut to the viewports of the scroll containers above node `i`.
+    pub(crate) fn clip_to_viewports(&self, i: usize, mut rect: Rect) -> Rect {
+        let mut cur = self.nodes[i].parent.map(usize::from);
+        while let Some(p) = cur {
+            if matches!(self.nodes[p].kind, Kind::Scroll { .. }) {
+                rect = rect.intersect(&self.nodes[p].rect);
+            }
+            cur = self.nodes[p].parent.map(usize::from);
+        }
+        rect
     }
 
     /// Adds `rect` to the area that needs painting.
@@ -505,8 +544,12 @@ impl<const N: usize> Tree<N> {
     pub(crate) fn set_rect(&mut self, i: usize, rect: Rect) {
         let old = self.nodes[i].rect;
         if old != rect {
-            self.add_damage(old);
-            self.add_damage(rect);
+            let (old_seen, new_seen) = (
+                self.clip_to_viewports(i, old),
+                self.clip_to_viewports(i, rect),
+            );
+            self.add_damage(old_seen);
+            self.add_damage(new_seen);
             self.nodes[i].rect = rect;
         }
     }
@@ -534,7 +577,7 @@ impl<const N: usize> Tree<N> {
             }
             Some(p) => {
                 let i = self.slot(p).ok_or(BuildError::NoSuchParent)?;
-                if !matches!(self.nodes[i].kind, Kind::Stack(_)) {
+                if !matches!(self.nodes[i].kind, Kind::Stack(_) | Kind::Scroll { .. }) {
                     return Err(BuildError::NotContainer);
                 }
                 Some(i)
@@ -696,6 +739,24 @@ impl<const N: usize> Tree<N> {
             self.set_checked(id, true);
         }
         Ok(id)
+    }
+
+    /// Adds a scroll container: a column that clips its children to itself and scrolls them when they are
+    /// taller than it. Give it a height (`Length::Fixed` or `Length::Fill`); with `Length::Content` it grows
+    /// to its content and never scrolls. Children with a `Length::Fill` height take their natural size.
+    /// Dragging, the mouse wheel and moving the focus to a hidden widget scroll it.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn scroll(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Scroll {
+                offset: 0,
+                content: 0,
+            },
+            style,
+        )
     }
 
     /// Adds a switch (a toggle). Switching it by the user sends [`ActionKind::Toggled`].

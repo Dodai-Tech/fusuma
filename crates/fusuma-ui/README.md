@@ -22,6 +22,11 @@ can tell from the top whether anything below needs it.
 | animation | `advance(theme, dt_ms)` | steps only the widgets that asked for frames; says whether to keep drawing |
 | paint | `paint(renderer, theme)` or `take_damage_in(screen)` then `paint_region(renderer, theme, area)` | draws through `fusuma_render::Renderer` on any backend; the second redraws only what changed |
 
+**Scrolling.** `scroll(parent, style)` is a column that clips its children and shows a window onto them; give it a
+height. A drag scrolls it (a press that moves less than 8 px is still a click), `Pointer::Wheel(point, dy)` scrolls the
+container under the point, and moving the focus with the keys scrolls the widget into view. `scroll_to`, `scroll_offset`
+and `scroll_max` read and set it. A scrollbar shows the position.
+
 **Keyboard and focus.** Buttons, checkboxes, radio buttons and list items can take the focus. `key(Key::Next)`
 and `Prev` (Tab) walk them in drawing order, `Down` and `Up` do too and also choose in a group of radio
 buttons, `Activate` presses the focused one. A touch or a click focuses without drawing the ring; a key

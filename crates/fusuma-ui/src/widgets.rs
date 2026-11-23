@@ -15,6 +15,17 @@ struct Mark {
     text: Color,
 }
 
+/// `base` moved right or down by `d` pixels, held at the edge of the coordinate range instead of
+/// overflowing: a node can be placed anywhere.
+fn px(base: i32, d: u32) -> i32 {
+    pxs(base, i64::from(d))
+}
+
+/// `base` moved by `d` pixels (either way), held within the coordinate range.
+fn pxs(base: i32, d: i64) -> i32 {
+    (i64::from(base) + d).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
 impl<const N: usize> Tree<N> {
     /// What pressing node `i` does, from the pointer or the keyboard: the one place the widgets'
     /// behaviour lives.
@@ -152,6 +163,103 @@ impl<const N: usize> Tree<N> {
         }
     }
 
+    pub(crate) fn scroll_offset_at(&self, i: usize) -> i32 {
+        match self.nodes[i].kind {
+            Kind::Scroll { offset, .. } => offset,
+            _ => 0,
+        }
+    }
+
+    /// The furthest container `i` can scroll, in pixels, from the last layout.
+    pub(crate) fn scroll_max_at(&self, i: usize) -> i32 {
+        match self.nodes[i].kind {
+            Kind::Scroll { content, .. } => {
+                let view = self.nodes[i].rect.inset(self.nodes[i].style.padding).h;
+                i32::try_from(content.saturating_sub(view)).unwrap_or(i32::MAX)
+            }
+            _ => 0,
+        }
+    }
+
+    /// Scrolls container `i` to `to` pixels (cut to what the content allows); the layout is redone.
+    pub(crate) fn set_scroll(&mut self, i: usize, to: i32) {
+        let to = to.clamp(0, self.scroll_max_at(i));
+        if let Kind::Scroll { offset, .. } = &mut self.nodes[i].kind
+            && *offset != to
+        {
+            *offset = to;
+            self.request(i, Flags::LAYOUT | Flags::PAINT);
+        }
+    }
+
+    /// A press inside a scroll container that has moved far enough is a scroll: the widget that was
+    /// pressed lets go without a click, and the container follows the pointer.
+    pub(crate) fn drag_scroll(&mut self, p: Point) {
+        let Some(mut d) = self.drag else { return };
+        let Some(s) = self.slot(d.scroll) else {
+            self.drag = None;
+            return;
+        };
+        if !d.moving
+            && (i64::from(p.y) - i64::from(d.start_y)).abs() >= i64::from(crate::event::SCROLL_SLOP)
+        {
+            d.moving = true;
+            // Take the press away from the widget under the finger.
+            if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {
+                self.set_active(held, false);
+            }
+        }
+        if d.moving {
+            let to = i64::from(d.offset0) - (i64::from(p.y) - i64::from(d.start_y));
+            self.set_scroll(s, to.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32);
+        }
+        self.drag = Some(d);
+    }
+
+    /// Scrolls every container above node `i` just enough to show it.
+    pub(crate) fn reveal(&mut self, i: usize) {
+        let mut cur = self.nodes[i].parent.map(usize::from);
+        while let Some(s) = cur {
+            if matches!(self.nodes[s].kind, Kind::Scroll { .. }) {
+                let view = self.nodes[s].rect.inset(self.nodes[s].style.padding);
+                let r = self.nodes[i].rect;
+                let off = self.scroll_offset_at(s);
+                // 64-bit: the rectangles can be anywhere in the coordinate range.
+                let to = if r.y < view.y {
+                    i64::from(off) - (i64::from(view.y) - i64::from(r.y))
+                } else if r.bottom() > view.bottom() {
+                    i64::from(off) + (i64::from(r.bottom()) - i64::from(view.bottom()))
+                } else {
+                    i64::from(off)
+                };
+                self.set_scroll(s, to.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32);
+            }
+            cur = self.nodes[s].parent.map(usize::from);
+        }
+    }
+
+    /// How far container `id` is scrolled, in pixels.
+    #[must_use]
+    pub fn scroll_offset(&self, id: NodeId) -> Option<i32> {
+        let i = self.slot(id)?;
+        matches!(self.nodes[i].kind, Kind::Scroll { .. }).then(|| self.scroll_offset_at(i))
+    }
+
+    /// How far container `id` can scroll in all, in pixels (0 when its content fits), as of the last
+    /// layout.
+    #[must_use]
+    pub fn scroll_max(&self, id: NodeId) -> Option<i32> {
+        let i = self.slot(id)?;
+        matches!(self.nodes[i].kind, Kind::Scroll { .. }).then(|| self.scroll_max_at(i))
+    }
+
+    /// Scrolls container `id` to `offset` pixels, cut to what the content allows. Sends no action.
+    pub fn scroll_to(&mut self, id: NodeId, offset: i32) {
+        if let Some(i) = self.slot(id) {
+            self.set_scroll(i, offset);
+        }
+    }
+
     /// How full a progress bar is, in thousandths.
     #[must_use]
     pub fn progress_value(&self, id: NodeId) -> Option<u16> {
@@ -266,11 +374,11 @@ impl<const N: usize> Tree<N> {
                 let round = matches!(n.kind, Kind::Radio { .. });
                 let look = self.mark_look(i, theme, checked);
                 let ind = theme.indicator;
-                let top = rect.y + (rect.h.saturating_sub(ind) / 2) as i32;
+                let top = px(rect.y, rect.h.saturating_sub(ind) / 2);
                 let bx = Rect::new(rect.x, top, ind, ind);
                 let bw = theme.border_width;
                 if round {
-                    let centre = Point::new(bx.x + (ind / 2) as i32, bx.y + (ind / 2) as i32);
+                    let centre = Point::new(px(bx.x, ind / 2), px(bx.y, ind / 2));
                     r.fill_circle(centre, ind / 2, look.border)?;
                     r.fill_circle(centre, (ind / 2).saturating_sub(bw), look.fill)?;
                     if checked {
@@ -282,8 +390,8 @@ impl<const N: usize> Tree<N> {
                     if checked {
                         let at = |fx: i32, fy: i32| {
                             Point::new(
-                                bx.x + (ind as i32 * fx) / 100,
-                                bx.y + (ind as i32 * fy) / 100,
+                                pxs(bx.x, i64::from(ind) * i64::from(fx) / 100),
+                                pxs(bx.y, i64::from(ind) * i64::from(fy) / 100),
                             )
                         };
                         let tick = [
@@ -297,7 +405,7 @@ impl<const N: usize> Tree<N> {
                 let style = TextStyle::new(theme.text.body, look.text);
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(
-                    rect.x + (ind + theme.spacing.md) as i32,
+                    px(rect.x, ind.saturating_add(theme.spacing.md)),
                     centred(rect, size).y,
                 );
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
@@ -320,7 +428,7 @@ impl<const N: usize> Tree<N> {
                 }
                 let style = TextStyle::new(theme.text.body, label);
                 let size = r.measure_text(text.as_str(), &style);
-                let at = Point::new(rect.x + theme.spacing.md as i32, centred(rect, size).y);
+                let at = Point::new(px(rect.x, theme.spacing.md), centred(rect, size).y);
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
                 self.ring(i, r, theme, theme.radii.sm)
             }
@@ -328,7 +436,7 @@ impl<const N: usize> Tree<N> {
                 let look = self.mark_look(i, theme, on);
                 let h = theme.indicator;
                 let w = h.saturating_mul(2);
-                let top = rect.y + (rect.h.saturating_sub(h) / 2) as i32;
+                let top = px(rect.y, rect.h.saturating_sub(h) / 2);
                 let track = Rect::new(rect.x, top, w, h);
                 let off_fill = if n.disabled_eff {
                     c.surface
@@ -340,19 +448,19 @@ impl<const N: usize> Tree<N> {
                     r.stroke_rect(track, h / 2, theme.border_width, look.border)?;
                 }
                 let pad = (h / 6).max(2);
-                let d = h.saturating_sub(2 * pad);
+                let d = h.saturating_sub(pad.saturating_mul(2));
                 let knob_x = if on {
-                    track.x + (w - pad - d) as i32
+                    px(track.x, w.saturating_sub(pad).saturating_sub(d))
                 } else {
-                    track.x + pad as i32
+                    px(track.x, pad)
                 };
-                let knob = Point::new(knob_x + (d / 2) as i32, top + (h / 2) as i32);
+                let knob = Point::new(px(knob_x, d / 2), px(top, h / 2));
                 let knob_color = if on { look.glyph } else { look.border };
                 r.fill_circle(knob, d / 2, knob_color)?;
                 let style = TextStyle::new(theme.text.body, look.text);
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(
-                    rect.x + (w + theme.spacing.md) as i32,
+                    px(rect.x, w.saturating_add(theme.spacing.md)),
                     centred(rect, size).y,
                 );
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
@@ -363,14 +471,16 @@ impl<const N: usize> Tree<N> {
                 let span = rect.w.saturating_sub(thumb);
                 let th = theme.track_height.min(rect.h);
                 let track = Rect::new(
-                    rect.x + (thumb / 2) as i32,
-                    rect.y + (rect.h.saturating_sub(th) / 2) as i32,
+                    px(rect.x, thumb / 2),
+                    px(rect.y, rect.h.saturating_sub(th) / 2),
                     span,
                     th,
                 );
-                let cx = track.x + (u64::from(span) * u64::from(permille) / 1000) as i32;
+                // How far along the track the thumb is, in pixels.
+                let along = (u64::from(span) * u64::from(permille) / 1000) as u32;
+                let cx = px(track.x, along);
                 r.fill_rect(track, th / 2, c.surface_raised)?;
-                let filled = (cx - track.x).max(0) as u32;
+                let filled = along;
                 let accent = if n.disabled_eff {
                     c.border
                 } else if n.active {
@@ -383,7 +493,7 @@ impl<const N: usize> Tree<N> {
                 if filled > 0 {
                     r.fill_rect(Rect::new(track.x, track.y, filled, th), th / 2, accent)?;
                 }
-                let centre = Point::new(cx, rect.y + (rect.h / 2) as i32);
+                let centre = Point::new(cx, px(rect.y, rect.h / 2));
                 r.fill_circle(centre, thumb / 2, c.border_strong)?;
                 r.fill_circle(
                     centre,
@@ -394,12 +504,7 @@ impl<const N: usize> Tree<N> {
             }
             Kind::Progress { permille } => {
                 let h = rect.h.min(theme.track_height);
-                let track = Rect::new(
-                    rect.x,
-                    rect.y + (rect.h.saturating_sub(h) / 2) as i32,
-                    rect.w,
-                    h,
-                );
+                let track = Rect::new(rect.x, px(rect.y, rect.h.saturating_sub(h) / 2), rect.w, h);
                 r.fill_rect(track, h / 2, c.surface_raised)?;
                 let w = (u64::from(track.w) * u64::from(permille) / 1000) as u32;
                 if w > 0 {

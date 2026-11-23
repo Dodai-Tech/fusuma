@@ -3,7 +3,7 @@
 //! wrong parents, removing, changing text and style, disabling, pointer events in any order,
 //! layout in absurd bounds, animation and painting.
 
-use fusuma_ui::{BuildError, ButtonVariant, CrossAlign, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
+use fusuma_ui::{BuildError, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
 use fusuma_render_embedded::{Embedded, Frame};
 use libfuzzer_sys::fuzz_target;
@@ -49,11 +49,11 @@ fuzz_target!(|data: &[u8]| {
     while let (Some(op), Some(a), Some(b)) = (it.next(), it.next(), it.next()) {
         let pick = |ids: &[NodeId], k: u8| ids.get(usize::from(k) % ids.len().max(1)).copied();
         let point = Point::new(i32::from(a) * 3 - 30, i32::from(b) * 3 - 30);
-        match op % 15 {
+        match op % 18 {
             0..=4 => {
                 // The parent is sometimes none, sometimes stale, sometimes a leaf.
                 let parent = if a % 5 == 0 { None } else { pick(&ids, a) };
-                let added: Result<NodeId, BuildError> = match op % 15 {
+                let added: Result<NodeId, BuildError> = match op % 18 {
                     0 => tree.column(parent, style(a, b)),
                     1 => tree.row(parent, style(b, a)),
                     2 => tree.label(parent, &"éa".repeat(usize::from(b % 30)), [TextRole::Title, TextRole::Body, TextRole::Caption][usize::from(a) % 3]),
@@ -111,6 +111,35 @@ fuzz_target!(|data: &[u8]| {
                     let _ = tree.paint_region(&mut screen_renderer(), &theme, d);
                 }
                 let _ = tree.take_damage();
+            }
+            15 => {
+                // The widgets with state, and the scroll container that holds them.
+                let parent = if a % 5 == 0 { None } else { pick(&ids, a) };
+                let added = match b % 6 {
+                    0 => tree.scroll(parent, style(a, b)),
+                    1 => tree.checkbox(parent, "c", a % 2 == 0),
+                    2 => tree.switch(parent, "s", a % 2 == 0),
+                    3 => tree.slider(parent, u16::from(a) * 7),
+                    4 => tree.list_item(parent, "l", a % 2 == 0),
+                    _ => tree.radio(parent, "r", a % 2 == 0),
+                };
+                if let Ok(id) = added {
+                    ids.push(id);
+                }
+            }
+            16 => {
+                tree.pointer(Pointer::Wheel(point, i32::from(a) * 13 - 1500));
+                if let Some(id) = pick(&ids, b) {
+                    tree.scroll_to(id, i32::from(a) * i32::from(b) - 5000);
+                    tree.set_slider(id, u16::from(a) * 9);
+                    let _ = (tree.scroll_offset(id), tree.scroll_max(id), tree.slider_value(id), tree.is_checked(id));
+                }
+            }
+            17 => {
+                if let Some(id) = pick(&ids, b) {
+                    let _ = tree.focus(id);
+                }
+                tree.key([Key::Next, Key::Prev, Key::Up, Key::Down, Key::Activate, Key::Left, Key::Right][usize::from(a) % 7]);
             }
             _ => {
                 if let Some(id) = pick(&ids, a) {

@@ -9,6 +9,8 @@ mod event;
 mod focus;
 mod layout;
 mod paint;
+#[cfg(test)]
+mod scroll;
 mod theme;
 mod tree;
 mod widgets;

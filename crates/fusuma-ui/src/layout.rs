@@ -115,17 +115,30 @@ impl<const N: usize> Tree<N> {
             cur = if i == root { None } else { self.post_next(i) };
         }
         // Place: every node before its children.
-        self.set_rect(root, bounds);
-        let mut cur = Some(root);
-        while let Some(i) = cur {
-            self.place_children(i);
-            cur = self.preorder_next(i, root);
+        self.place_all(root, bounds);
+        // A widget the keyboard moved to may be scrolled out of sight: scroll to it with the fresh
+        // positions, then place again with the new offsets.
+        if let Some(target) = self.pending_reveal.take().and_then(|id| self.slot(id)) {
+            self.reveal(target);
+            if self.nodes[root].sub.has(Flags::LAYOUT) {
+                self.place_all(root, bounds);
+            }
         }
         self.clear_flag(Flags::LAYOUT);
         // Things may have moved under the pointer.
         if let Some(p) = self.pointer {
             let h = self.hit(p);
             self.set_hover(h);
+        }
+    }
+
+    /// Puts every node where its parent says, from the root down.
+    fn place_all(&mut self, root: usize, bounds: Rect) {
+        self.set_rect(root, bounds);
+        let mut cur = Some(root);
+        while let Some(i) = cur {
+            self.place_children(i);
+            cur = self.preorder_next(i, root);
         }
     }
 
@@ -155,7 +168,11 @@ impl<const N: usize> Tree<N> {
             | Kind::Progress { .. }
             | Kind::Switch { .. }
             | Kind::Slider { .. } => self.measure_widget(i, renderer, theme),
-            Kind::Stack(axis) => {
+            Kind::Stack(_) | Kind::Scroll { .. } => {
+                let axis = match n.kind {
+                    Kind::Stack(axis) => axis,
+                    _ => Axis::Column,
+                };
                 let (mut main, mut cross, mut count) = (0u32, 0u32, 0u32);
                 let mut c = n.first;
                 while let Some(ci) = c {
@@ -182,11 +199,19 @@ impl<const N: usize> Tree<N> {
 
     /// Puts the children of a container inside it.
     fn place_children(&mut self, i: usize) {
-        let Kind::Stack(axis) = self.nodes[i].kind else {
-            return;
+        let (axis, scrolls) = match self.nodes[i].kind {
+            Kind::Stack(axis) => (axis, false),
+            Kind::Scroll { .. } => (Axis::Column, true),
+            _ => return,
         };
         let st = self.nodes[i].style;
         let inner = self.nodes[i].rect.inset(st.padding);
+        // What a child's length means here: in a scroll container the height is the natural one, because
+        // there is no fixed room to share out.
+        let main_of_child = |style: &Style| match main_len(axis, style) {
+            Length::Fill(_) if scrolls => Length::Content,
+            other => other,
+        };
         let (main_total, cross_total) = match axis {
             Axis::Column => (inner.h, inner.w),
             Axis::Row => (inner.w, inner.h),
@@ -197,16 +222,27 @@ impl<const N: usize> Tree<N> {
         while let Some(ci) = c {
             let child = &self.nodes[usize::from(ci)];
             count += 1;
-            match main_len(axis, &child.style) {
+            match main_of_child(&child.style) {
                 Length::Fill(w) => weights = weights.saturating_add(weight(w)),
                 _ => taken = taken.saturating_add(main_of(axis, child.size)),
             }
             c = child.next;
         }
         let gaps = st.gap.saturating_mul(count.saturating_sub(1));
+        // A scroll container: how tall the content is, and where the window onto it starts.
+        let mut start: i64 = 0;
+        if scrolls {
+            let content = taken.saturating_add(gaps);
+            let max = content.saturating_sub(inner.h);
+            if let Kind::Scroll { offset, content: c } = &mut self.nodes[i].kind {
+                *offset = (*offset).clamp(0, i32::try_from(max).unwrap_or(i32::MAX));
+                *c = content;
+                start = -i64::from(*offset);
+            }
+        }
         let mut room = main_total.saturating_sub(gaps).saturating_sub(taken);
         let mut weights_left = weights;
-        let mut pos: i64 = 0;
+        let mut pos: i64 = start;
         let mut c = self.nodes[i].first;
         while let Some(ci) = c {
             let ci = usize::from(ci);
@@ -214,7 +250,7 @@ impl<const N: usize> Tree<N> {
                 let child = &self.nodes[ci];
                 (child.style, child.size, child.next)
             };
-            let main_px = match main_len(axis, &child_style) {
+            let main_px = match main_of_child(&child_style) {
                 Length::Fill(w) => {
                     let w = weight(w);
                     let share = if weights_left == 0 {
