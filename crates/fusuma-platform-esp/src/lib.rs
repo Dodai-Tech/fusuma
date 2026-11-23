@@ -6,7 +6,7 @@ mod surface;
 use std::time::{Duration, Instant};
 
 use fusuma::{App, Pointer};
-pub use fusuma_platform::Backend;
+pub use fusuma_platform::{Backend, BackendSetting, RenderLayer};
 use fusuma_platform::{Hardware, Machine, Render};
 use fusuma_render::Point;
 
@@ -25,10 +25,11 @@ pub const LINKED: &[Backend] = &[
 /// What the application chooses about the platform. The default is the best experience for the hardware.
 #[derive(Clone, Copy, Debug)]
 pub struct Options {
-    /// A backend to use whatever the automatic rule would pick (the build's layer).
-    pub backend: Option<Backend>,
-    /// Whether an explicit choice that does not fit in memory steps down to a lighter backend.
-    pub fallback: bool,
+    /// The text of the project's settings file (`fusuma.toml`), usually `Some(include_str!("../fusuma.toml"))`:
+    /// the middle layer of the renderer choice. `None` leaves it to the automatic rule and the build.
+    pub settings: Option<&'static str>,
+    /// The build's layer, the strongest: what a cargo feature or the program itself insists on.
+    pub build: RenderLayer,
     /// Backlight, 0 to 100.
     pub backlight: i32,
 }
@@ -36,8 +37,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            backend: None,
-            fallback: true,
+            settings: None,
+            build: RenderLayer::EMPTY,
             backlight: 80,
         }
     }
@@ -77,13 +78,17 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
     hw::init()?;
     hw::set_backlight(options.backlight);
     let (w, h) = (hw::WIDTH as u32, hw::HEIGHT as u32);
+    // The layers, weakest first: the automatic rule needs no layer, then the project's file, then the build.
+    let file = match options.settings {
+        Some(text) => RenderLayer::from_toml(text)
+            .map_err(|e| anyhow::anyhow!("fusuma.toml is not valid: {e}"))?,
+        None => RenderLayer::EMPTY,
+    };
+    let render = Render::layered(&[file, options.build]);
     let machine = Machine {
         screen: Some((w, h)),
         hardware: Some(hardware()),
-        render: Render {
-            backend: None,
-            fallback: options.fallback,
-        },
+        render,
     };
     let facts = machine.hardware.unwrap_or(Hardware {
         ram_kb: 0,
@@ -97,8 +102,18 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
         facts.psram_kb,
         facts.fpu
     );
-    let plan = fusuma_platform::plan(&machine, options.backend, LINKED)
+    let plan = fusuma_platform::plan(&machine, None, LINKED)
         .ok_or_else(|| anyhow::anyhow!("no renderer is linked"))?;
+    log::info!(
+        "renderer settings: fallback {}, keep {} KB free{}",
+        render.fallback,
+        render.min_free_kb,
+        match (options.build.backend, file.backend) {
+            (Some(BackendSetting::Fixed(_)), _) => ", backend from the build",
+            (_, Some(BackendSetting::Fixed(_))) => ", backend from fusuma.toml",
+            _ => "",
+        }
+    );
     log::info!("renderer: {plan}");
     let mut surface = Surface::new(plan.uses, w, h)
         .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;

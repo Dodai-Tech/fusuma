@@ -117,19 +117,123 @@ pub struct Hardware {
     pub gpu: bool,
 }
 
-/// What a board file may say about rendering.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Internal RAM, in kilobytes, that must stay free after a frame is placed in it, unless a setting says
+/// otherwise: room for the stack, the network stack and the app. **A conservative guess, not a
+/// measurement.** The real figure is what WiFi, Bluetooth and the app need at their peak; read it from the
+/// heap's minimum-free watermark while the firmware runs, then set `min_free_kb`.
+pub const DEFAULT_MIN_FREE_KB: u32 = 100;
+
+/// What the settings say about rendering, resolved: every field has a value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Render {
-    /// A backend to use whatever the rule would pick.
+    /// A backend to use whatever the rule would pick; `None` is automatic.
     pub backend: Option<Backend>,
     /// Whether to step down to a lighter backend if the chosen one does not fit in memory.
     pub fallback: bool,
+    /// Internal RAM that must stay free after the frame, in kilobytes (see [`DEFAULT_MIN_FREE_KB`]).
+    pub min_free_kb: u32,
 }
 
-/// Share of the internal RAM that a frame may take, in percent. The rest is for the code's data, the
-/// stack and the radio. This is an assumption, not a measurement: nothing here knows what the radio
-/// needs. Raise it when that is measured.
-pub const RAM_SHARE_PERCENT: u64 = 40;
+impl Default for Render {
+    /// Automatic, with a fallback, and [`DEFAULT_MIN_FREE_KB`].
+    fn default() -> Self {
+        Self {
+            backend: None,
+            fallback: true,
+            min_free_kb: DEFAULT_MIN_FREE_KB,
+        }
+    }
+}
+
+/// The `backend` setting of one layer: leave it to the rule, or name one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackendSetting {
+    /// `"auto"`: the automatic rule. Written explicitly, it lets a stronger layer undo a weaker one's pick.
+    Auto,
+    /// A named backend.
+    Fixed(Backend),
+}
+
+/// One layer of settings, as a file or the build says it: a field left out says nothing, so the layer
+/// below it decides. Layers are combined with [`Render::layered`], weakest first.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RenderLayer {
+    /// `backend`, if the layer says.
+    pub backend: Option<BackendSetting>,
+    /// `fallback`, if the layer says.
+    pub fallback: Option<bool>,
+    /// `min_free_kb`, if the layer says.
+    pub min_free_kb: Option<u32>,
+}
+
+impl RenderLayer {
+    /// A layer that says nothing.
+    pub const EMPTY: Self = Self {
+        backend: None,
+        fallback: None,
+        min_free_kb: None,
+    };
+
+    /// This layer over a weaker one: what this one says wins, the rest comes from `weaker`.
+    #[must_use]
+    pub const fn over(self, weaker: Self) -> Self {
+        Self {
+            backend: if self.backend.is_some() {
+                self.backend
+            } else {
+                weaker.backend
+            },
+            fallback: if self.fallback.is_some() {
+                self.fallback
+            } else {
+                weaker.fallback
+            },
+            min_free_kb: if self.min_free_kb.is_some() {
+                self.min_free_kb
+            } else {
+                weaker.min_free_kb
+            },
+        }
+    }
+
+    /// The settings with the defaults filled in for what no layer said.
+    #[must_use]
+    pub const fn resolve(self) -> Render {
+        Render {
+            backend: match self.backend {
+                Some(BackendSetting::Fixed(b)) => Some(b),
+                _ => None,
+            },
+            fallback: match self.fallback {
+                Some(f) => f,
+                None => true,
+            },
+            min_free_kb: match self.min_free_kb {
+                Some(k) => k,
+                None => DEFAULT_MIN_FREE_KB,
+            },
+        }
+    }
+}
+
+impl Render {
+    /// The settings from `layers`, weakest first (for example the project file, then the user's, then the
+    /// build's): the last layer that says something wins, and what none says is the default.
+    #[must_use]
+    pub fn layered(layers: &[RenderLayer]) -> Self {
+        layers
+            .iter()
+            .fold(RenderLayer::EMPTY, |weaker, &l| l.over(weaker))
+            .resolve()
+    }
+}
+
+#[cfg(feature = "toml")]
+extern crate std;
+#[cfg(feature = "toml")]
+mod settings;
+#[cfg(feature = "toml")]
+pub use settings::{RawRender, SETTINGS_SCHEMA, SettingsError};
 
 /// Why a backend was chosen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,10 +265,13 @@ pub struct Choice {
     pub reason: Reason,
 }
 
-/// The memory a frame may use on a device: its PSRAM and its share of internal RAM, in bytes.
+/// The memory one frame may use, in bytes: the larger of the PSRAM (a frame placed there costs internal RAM
+/// nothing) and the internal RAM left after keeping `min_free_kb` free.
 #[must_use]
-pub fn budget(hw: &Hardware) -> u64 {
-    u64::from(hw.psram_kb) * 1024 + u64::from(hw.ram_kb) * 1024 * RAM_SHARE_PERCENT / 100
+pub fn budget(hw: &Hardware, min_free_kb: u32) -> u64 {
+    let psram = u64::from(hw.psram_kb) * 1024;
+    let internal = u64::from(hw.ram_kb.saturating_sub(min_free_kb)) * 1024;
+    psram.max(internal)
 }
 
 /// Whether `backend` fits a surface of `width` x `height` in `budget_bytes`.
@@ -197,15 +304,15 @@ pub fn automatic(machine: &Machine) -> Option<Choice> {
     if u64::from(hw.psram_kb) * 1024 >= 2 * Backend::VelloCpu.memory(w, h) {
         return auto(Backend::VelloCpu, "PSRAM holds a Vello frame twice over");
     }
-    if fits(Backend::Skia, w, h, budget(&hw)) {
+    if fits(Backend::Skia, w, h, budget(&hw, machine.render.min_free_kb)) {
         return auto(
             Backend::Skia,
-            "an anti-aliased frame fits in the memory budget",
+            "an anti-aliased frame fits in the memory left after the free minimum",
         );
     }
     auto(
         Backend::Integer,
-        "only the 2 bytes per pixel of the integer renderer fit in the memory budget",
+        "only the 2 bytes per pixel of the integer renderer fit in the memory left after the free minimum",
     )
 }
 
@@ -257,7 +364,7 @@ pub fn check(machine: &Machine, choice: Choice) -> (Choice, Fit) {
     let (Some((w, h)), Some(hw)) = (machine.screen, machine.hardware) else {
         return (choice, Fit::Fits);
     };
-    let budget = budget(&hw);
+    let budget = budget(&hw, machine.render.min_free_kb);
     if choice.backend == Backend::VelloGpu || fits(choice.backend, w, h, budget) {
         return (choice, Fit::Fits);
     }
@@ -376,8 +483,9 @@ mod tests {
         fpu: true,
         gpu: false,
     };
+    // The heap the C6 benchmark had: 320 KB of its 512 KB.
     const C6: Hardware = Hardware {
-        ram_kb: 512,
+        ram_kb: 320,
         psram_kb: 0,
         fpu: false,
         gpu: false,
@@ -440,17 +548,17 @@ mod tests {
         assert_eq!(
             pick(160, 160, C6),
             Backend::Skia,
-            "a small C6 display: 102 KB fits in 40% of 512 KB"
+            "a small C6 display: 102 KB leaves 218 KB free"
         );
         assert_eq!(
             pick(172, 320, C6),
-            Backend::Integer,
-            "215 KB does not fit in 204 KB, the integer 108 KB does"
+            Backend::Skia,
+            "the C6's own LCD: 215 KB leaves 105 KB of the 320 KB free, above the 100 KB minimum"
         );
         assert_eq!(pick(240, 320, C6), Backend::Integer);
         assert_eq!(pick(1920, 1080, PC), Backend::VelloGpu);
         // A PSRAM too small for a Vello frame falls to the next backend.
-        // 410x502: integer 412 KB, skia 823 KB, vello 988 KB. Budget = PSRAM + 40% of 512 KB (205 KB).
+        // 410x502: integer 412 KB, skia 823 KB, vello 988 KB. Budget = the PSRAM (1 MB).
         let one_mb = Hardware {
             psram_kb: 1024,
             ..S3
@@ -494,6 +602,7 @@ mod tests {
         let board_says = Render {
             backend: Some(Backend::Skia),
             fallback: false,
+            ..Render::default()
         };
         let p = device(410, 502, Some(S3), board_says);
         assert_eq!(
@@ -572,6 +681,7 @@ mod tests {
             Render {
                 backend: Some(Backend::VelloCpu),
                 fallback: false,
+                ..Render::default()
             },
         );
         let (c, fit) = check(&strict, choose(&strict, None).unwrap());
@@ -584,6 +694,7 @@ mod tests {
             Render {
                 backend: Some(Backend::VelloCpu),
                 fallback: true,
+                ..Render::default()
             },
         );
         let (c, fit) = check(&relaxed, choose(&relaxed, None).unwrap());
@@ -593,7 +704,7 @@ mod tests {
                 from: Backend::VelloCpu,
                 to: Backend::Integer
             },
-            "300 KB skia does not fit 204 KB either"
+            "300 KB skia does not fit 220 KB either"
         );
         assert_eq!(
             (c.backend, c.reason),
@@ -607,6 +718,7 @@ mod tests {
             Render {
                 backend: Some(Backend::Skia),
                 fallback: true,
+                ..Render::default()
             },
         );
         assert_eq!(check(&s3, choose(&s3, None).unwrap()).1, Fit::Fits);
@@ -618,6 +730,7 @@ mod tests {
             Render {
                 backend: Some(Backend::Integer),
                 fallback: true,
+                ..Render::default()
             },
         );
         assert!(matches!(
@@ -627,16 +740,45 @@ mod tests {
     }
 
     #[test]
-    fn the_budget_adds_psram_and_a_share_of_internal_ram() {
-        assert_eq!(budget(&C6), 512 * 1024 * 40 / 100);
-        assert_eq!(budget(&S3), 8192 * 1024 + 512 * 1024 * 40 / 100);
+    fn the_budget_is_the_psram_or_the_internal_ram_left_after_the_free_minimum() {
         assert_eq!(
-            budget(&Hardware {
-                ram_kb: u32::MAX,
-                psram_kb: u32::MAX,
-                ..C6
-            }),
-            u64::from(u32::MAX) * 1024 + u64::from(u32::MAX) * 1024 * 40 / 100
+            budget(&C6, 100),
+            220 * 1024,
+            "no PSRAM: internal RAM minus the minimum"
+        );
+        assert_eq!(budget(&C6, 0), 320 * 1024);
+        assert_eq!(
+            budget(&C6, 9999),
+            0,
+            "a minimum above the RAM leaves nothing, no underflow"
+        );
+        assert_eq!(
+            budget(&S3, 100),
+            8192 * 1024,
+            "a frame goes to PSRAM, so internal RAM is not touched"
+        );
+        assert_eq!(
+            budget(
+                &Hardware {
+                    ram_kb: 20_000,
+                    psram_kb: 8,
+                    ..C6
+                },
+                100
+            ),
+            19_900 * 1024,
+            "internal RAM can be the larger one"
+        );
+        assert_eq!(
+            budget(
+                &Hardware {
+                    ram_kb: u32::MAX,
+                    psram_kb: u32::MAX,
+                    ..C6
+                },
+                0
+            ),
+            u64::from(u32::MAX) * 1024
         );
         assert!(
             fits(Backend::Integer, 100, 100, 20_000) && !fits(Backend::Integer, 100, 100, 19_999)
@@ -720,12 +862,13 @@ mod tests {
             Render {
                 backend: Some(Backend::VelloCpu),
                 fallback: false,
+                ..Render::default()
             },
         );
         let line = std::string::ToString::to_string(&plan(&tight, None, &Backend::ALL).unwrap());
         assert!(
             line.contains("needs 360 KB")
-                && line.contains("offers 204 KB")
+                && line.contains("offers 220 KB")
                 && line.contains("allow a fallback"),
             "{line}"
         );
@@ -736,12 +879,97 @@ mod tests {
             Render {
                 backend: Some(Backend::VelloCpu),
                 fallback: true,
+                ..Render::default()
             },
         );
         let line = std::string::ToString::to_string(&plan(&relaxed, None, &Backend::ALL).unwrap());
         assert!(
             line.contains("vello-cpu did not fit, fell back to integer"),
             "{line}"
+        );
+    }
+
+    #[test]
+    fn a_larger_free_minimum_steps_the_choice_down() {
+        let c6 = Hardware { ram_kb: 320, ..C6 };
+        let with = |min_free_kb| {
+            let m = device(
+                172,
+                320,
+                Some(c6),
+                Render {
+                    min_free_kb,
+                    ..Render::default()
+                },
+            );
+            let (c, fit) = check(&m, choose(&m, None).unwrap());
+            (c.backend, fit)
+        };
+        assert_eq!(with(0).0, Backend::Skia, "everything fits");
+        assert_eq!(with(100).0, Backend::Skia, "215 KB of 220 KB");
+        assert_eq!(
+            with(120).0,
+            Backend::Integer,
+            "a bigger reserve leaves room for the lighter one only"
+        );
+        assert!(matches!(
+            with(300),
+            (Backend::Integer, Fit::Fits | Fit::TooBig { .. })
+        ));
+    }
+
+    #[test]
+    fn the_defaults_are_automatic_with_a_fallback_and_the_documented_minimum() {
+        let r = Render::default();
+        assert_eq!(
+            (r.backend, r.fallback, r.min_free_kb),
+            (None, true, DEFAULT_MIN_FREE_KB)
+        );
+        assert_eq!(RenderLayer::EMPTY.resolve(), r);
+        assert_eq!(Render::layered(&[]), r);
+    }
+
+    #[test]
+    fn layers_combine_weakest_first_and_the_last_to_speak_wins() {
+        let project = RenderLayer {
+            backend: Some(BackendSetting::Fixed(Backend::Skia)),
+            fallback: Some(false),
+            min_free_kb: Some(150),
+        };
+        let user = RenderLayer {
+            fallback: Some(true),
+            ..RenderLayer::EMPTY
+        };
+        let build = RenderLayer {
+            backend: Some(BackendSetting::Fixed(Backend::VelloCpu)),
+            ..RenderLayer::EMPTY
+        };
+        let r = Render::layered(&[project, user, build]);
+        assert_eq!(r.backend, Some(Backend::VelloCpu));
+        assert!(r.fallback, "the user layer beat the project");
+        assert_eq!(r.min_free_kb, 150, "nobody stronger said anything");
+        assert_eq!(Render::layered(&[project]).backend, Some(Backend::Skia));
+        // Order matters: the same layers the other way round.
+        assert_eq!(
+            Render::layered(&[build, project]).backend,
+            Some(Backend::Skia)
+        );
+    }
+
+    #[test]
+    fn auto_in_a_stronger_layer_undoes_a_weaker_layers_pick() {
+        let pinned = RenderLayer {
+            backend: Some(BackendSetting::Fixed(Backend::Integer)),
+            ..RenderLayer::EMPTY
+        };
+        let auto = RenderLayer {
+            backend: Some(BackendSetting::Auto),
+            ..RenderLayer::EMPTY
+        };
+        assert_eq!(Render::layered(&[pinned, auto]).backend, None);
+        assert_eq!(
+            Render::layered(&[auto, pinned]).backend,
+            Some(Backend::Integer)
         );
     }
 }

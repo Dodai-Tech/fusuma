@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fusuma settings (fusuma.toml)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "render": {
+      "type": "object",
+      "description": "Which renderer draws. Every key is optional; a key left out says nothing, so the layer below decides.",
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "description": "auto (the default) picks by hardware; or name a backend.",
+          "enum": ["auto", "integer", "skia", "vello-cpu", "vello-gpu"]
+        },
+        "fallback": {
+          "type": "boolean",
+          "description": "Step down to a lighter backend if the chosen one does not fit in memory. Default true."
+        },
+        "min_free_kb": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Internal RAM, in kilobytes, that must stay free after the frame. Default 100, a conservative guess, not a measurement."
+        }
+      }
+    }
+  }
+}
