@@ -1,8 +1,9 @@
 //! Fusuma render: a small renderer abstraction for 2D user interfaces.
 //!
 //! A toolkit draws through the [`Renderer`] trait: filled and stroked rectangles, circles and
-//! paths, text, images, a clip and a translation. Backends implement it: Vello on the CPU
-//! (`fusuma-render-vello-cpu`) and on a GPU (`fusuma-render-vello`).
+//! paths, text, images, a clip and a translation. Backends implement it for different targets:
+//! an integer, `no_std` one for microcontroller displays (`fusuma-render-embedded`), an
+//! anti-aliased CPU one for desktops, phones and watches (`fusuma-render-vello-cpu`), and later a GPU one.
 //! The crate is `no_std`, needs no allocator and knows nothing about any operating system.
 //!
 //! With the `conformance` feature, [`conformance::run_all`] is the test-suite a backend runs to

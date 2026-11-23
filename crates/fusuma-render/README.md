@@ -10,6 +10,7 @@ A small renderer abstraction for 2D user interfaces. A toolkit draws through one
 | Crate | Backend | For |
 |---|---|---|
 | `fusuma-render` | the trait, geometry, colors, paths, the conformance suite (`no_std`, no allocator) | everyone |
+| `fusuma-render-embedded` | integer drawing on `embedded-graphics` targets (`no_std`) | microcontroller displays |
 | `fusuma-render-vello-cpu` | anti-aliased CPU drawing on `vello_cpu` | desktop, phone, watch without a GPU; screenshots |
 | `fusuma-render-vello` (planned) | GPU drawing on `vello_gpu` | desktop and phone with a GPU |
 

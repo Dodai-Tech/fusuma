@@ -6,20 +6,21 @@ it reads what the chip has (internal RAM, PSRAM, FPU), asks `fusuma-platform` wh
 which one it chose and why:
 
 ```
-renderer: vello-cpu (automatic: no GPU, so Vello on the CPU)
+renderer: vello-cpu (automatic: PSRAM holds a Vello frame twice over)
 ```
 
 ```rust
 fusuma_platform_esp::run(|w, h| MyApp::new(w, h), fusuma_platform_esp::Options::default())
 ```
 
-Fusuma draws with Vello only; a board has no GPU `wgpu` can use, so this is Vello on the CPU. A board without
-the memory for a frame (no PSRAM, like the ESP32-C6) is refused at start with a message instead of running out
-of memory later. `Options::backend` is the build's override layer.
+Overrides, strongest first: `Options::backend` (the build), then the automatic rule. With `Options::fallback`
+(on by default) an explicit choice that does not fit in memory steps down to a lighter one. Cargo features
+`skia` and `vello-cpu` (on by default) link those renderers next to the integer one; turn both off for the
+smallest firmware, and the choice is made among what is linked.
 
 Today it supports the Waveshare ESP32-P4 7" touch board (1024x600, GT911); the C shim for its display and touch
 is in `components/wt_display` (from the WeatherTrack P4 firmware). The firmware crate that uses it must list
 that directory in its `package.metadata.esp-idf-sys.extra_components`, see `examples/showcase-p4`.
 
-The check uses the memory the chip reports; an allocation failure inside the renderer cannot be caught, so it
-has to be right before the surface is made.
+A choice is predicted from the memory the chip reports; allocation failure inside a renderer cannot be caught,
+so the check has to be right before the surface is made.

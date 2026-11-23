@@ -14,11 +14,20 @@ publish = false
 # Not a member of the Fusuma workspace: it needs the ESP toolchain, so it builds as part of a firmware.
 [workspace]
 
+[features]
+default = ["skia", "vello-cpu"]
+# Link the `tiny-skia` and the `vello_cpu` renderers next to the integer one, which is always there.
+# Leaving both off links the integer renderer only (the smallest firmware).
+skia = ["dep:fusuma-render-skia"]
+vello-cpu = ["dep:fusuma-render-vello-cpu"]
+
 [dependencies]
 fusuma = { path = "../fusuma" }
 fusuma-platform = { path = "../fusuma-platform" }
 fusuma-render = { path = "../fusuma-render" }
-fusuma-render-vello-cpu = { path = "../fusuma-render-vello-cpu", default-features = false, features = ["std"] }
+fusuma-render-embedded = { path = "../fusuma-render-embedded" }
+fusuma-render-skia = { path = "../fusuma-render-skia", optional = true, default-features = false, features = ["std"] }
+fusuma-render-vello-cpu = { path = "../fusuma-render-vello-cpu", optional = true, default-features = false, features = ["std"] }
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 log = "0.4"
 anyhow = "1"

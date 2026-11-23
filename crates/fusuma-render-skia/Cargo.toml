@@ -1,0 +1,32 @@
+[package]
+name = "fusuma-render-skia"
+description = "Fusuma renderer backend on tiny-skia: anti-aliased CPU drawing, a lighter alternative to vello_cpu for small chips (no_std with alloc)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-render-skia"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = ["std", "png"]
+# The standard library. Without it the crate is `no_std` with `alloc`, and uses a software float library.
+std = ["tiny-skia/std", "tiny-skia/simd"]
+# `png()`: the surface as a PNG file.
+png = ["std", "tiny-skia/png-format"]
+
+[dependencies]
+fusuma-render.workspace = true
+fusuma-render-embedded.workspace = true
+embedded-graphics.workspace = true
+tiny-skia = { workspace = true, features = ["no-std-float"] }
+
+[dev-dependencies]
+fusuma-render = { workspace = true, features = ["conformance"] }
+
+[lints]
+workspace = true

@@ -29,6 +29,13 @@ anyhow = "1"
 # Direct, so the build script sees esp-idf-sys and passes the linker arguments on.
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 
+[features]
+# Ask the build for a renderer (the strongest layer of the choice). With none, the board's hardware decides.
+# If several are on, the lightest wins.
+render-integer = []
+render-skia = []
+render-vello-cpu = []
+
 [build-dependencies]
 embuild = "0.33"
 

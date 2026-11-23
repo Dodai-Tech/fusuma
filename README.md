@@ -13,13 +13,17 @@ A native Rust UI toolkit for everything from a microcontroller to a desktop, wit
 HTML and no CSS. A fusuma (襖) is the sliding door of a Japanese room.
 
 Apps depend on one crate, `fusuma`, which is `no_std` with no allocator by default, so it fits an ESP.
-Fusuma draws with Vello only: the GPU backend where there is a GPU, `vello_cpu` everywhere else, and
-`fusuma-platform` makes that choice for you (an app never names a renderer). A board needs PSRAM: without it
-there is no room for a frame. The renderer crates stay separate, because each is useful alone.
+The renderer is chosen for the target (a `std` feature will add the run-time choice between the GPU
+and the CPU backend). Several renderers pass the same conformance suite and a device picks a default by
+its hardware: the integer renderer (lightest), `tiny-skia` (anti-aliased, light), `vello_cpu` (richest) and the
+Vello GPU backend. The
+renderer crates stay separate, because each is useful alone.
 
 | Crate | What | `no_std` | Status |
 |---|---|---|---|
 | [`fusuma-render`](crates/fusuma-render) | the `Renderer` trait, geometry, colors, paths, the conformance suite | yes | working |
+| [`fusuma-render-embedded`](crates/fusuma-render-embedded) | integer drawing for small displays; kept: the lightest renderer and the default for chips that must keep RAM free | yes | working |
+| [`fusuma-render-skia`](crates/fusuma-render-skia) | anti-aliased CPU drawing on `tiny-skia`; lighter and about 3-4x faster than `vello_cpu` on a chip without an FPU; `no_std` with `alloc` | partly | working, measured on the ESP32-C6 |
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
 | [`fusuma-render-vello`](crates/fusuma-render-vello) | anti-aliased GPU drawing on `vello_gpu` and `wgpu` | no | working |
 | [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
@@ -32,7 +36,7 @@ there is no room for a frame. The renderer crates stay separate, because each is
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
 
 See the [roadmap](docs/ROADMAP.md). A renderer crate never depends on a toolkit crate: a firmware
-that needs only drawing depends on `fusuma-render-vello-cpu` and gets no toolkit code. CI checks
+that needs only drawing depends on `fusuma-render-embedded` and gets no toolkit code. CI checks
 this rule.
 
 ## Use
@@ -46,7 +50,7 @@ fn card<R: Renderer>(r: &mut R) -> Result<(), R::Error> {
 }
 ```
 
-Both Vello backends pass `fusuma_render::conformance::run_all`, so the same scene draws the same picture on
+Every backend passes `fusuma_render::conformance::run_all`, so the same scene draws the same picture on
 each of them.
 
 ## Development
@@ -58,6 +62,7 @@ Nushell tests. `just fuzz-all` runs the fuzz targets (nightly).
 
 ```
 crates/fusuma-render               the Renderer trait, geometry, colors, paths, conformance suite
+crates/fusuma-render-embedded      integer drawing
 crates/fusuma-render-vello-common  the Renderer on a Vello scene, shared by the CPU and GPU backends
 crates/fusuma-render-vello-cpu     anti-aliased drawing on vello_cpu
 crates/fusuma-render-vello         anti-aliased drawing on vello_gpu (run the bench: cargo run --release -p fusuma-render-vello --example bench)
