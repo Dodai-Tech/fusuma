@@ -108,12 +108,12 @@ mod tests {
     use crate::theme::{ButtonVariant, TextRole};
     use crate::tree::Style;
     use fusuma_render::{Point, Rect};
-    use fusuma_render_embedded::{Embedded, Frame};
+    use fusuma_render_vello_cpu::VelloCpu;
 
     const THEME: Theme = Theme::DARK;
 
-    fn screen() -> Embedded<Frame<Vec<u16>>> {
-        Embedded::new(Frame::new(8, 8, vec![0u16; 64]).unwrap())
+    fn screen() -> VelloCpu {
+        fusuma_render_vello_cpu::new(8, 8).unwrap()
     }
 
     fn app() -> (Tree<8>, crate::tree::NodeId, crate::tree::NodeId, Point) {

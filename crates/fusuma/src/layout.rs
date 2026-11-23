@@ -252,12 +252,12 @@ impl<const N: usize> Tree<N> {
 mod tests {
     use super::*;
     use crate::theme::{ButtonVariant, TextRole};
-    use fusuma_render_embedded::{Embedded, Frame};
+    use fusuma_render_vello_cpu::VelloCpu;
 
-    type Screen = Embedded<Frame<Vec<u16>>>;
+    type Screen = VelloCpu;
 
     fn screen() -> Screen {
-        Embedded::new(Frame::new(8, 8, vec![0u16; 64]).unwrap())
+        fusuma_render_vello_cpu::new(8, 8).unwrap()
     }
 
     const THEME: Theme = Theme::DARK;

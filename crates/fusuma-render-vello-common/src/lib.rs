@@ -3,6 +3,8 @@
 
 extern crate alloc;
 
+mod font;
+
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -16,11 +18,11 @@ use embedded_graphics::{
     prelude::{DrawTarget, Drawable, Point as EgPoint},
     text::{Baseline, Text},
 };
+pub use font::{font_for, text_size};
 use fusuma_render::{
     Capabilities, Color, Error, Image, PathCmd, Point, Probe, Rect, Renderer, Size, TextStyle,
     left_edge,
 };
-use fusuma_render_embedded::{font_for, text_size};
 pub use vello_common::{
     color, kurbo,
     paint::{ImageSource, PaintType},

@@ -21,7 +21,6 @@ libm = ["vello_common/libm"]
 
 [dependencies]
 fusuma-render.workspace = true
-fusuma-render-embedded.workspace = true
 embedded-graphics.workspace = true
 vello_common.workspace = true
 

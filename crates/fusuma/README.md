@@ -33,7 +33,6 @@ replace it.
 ```rust
 use fusuma::{ButtonVariant, CrossAlign, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
-use fusuma_render_embedded::{Embedded, Frame};
 
 let theme = Theme::DARK;
 let mut tree = Tree::<8>::new();
@@ -43,7 +42,7 @@ let root = tree
 tree.label(Some(root), "Hello", TextRole::Title).unwrap();
 let ok = tree.button(Some(root), "OK", ButtonVariant::Primary).unwrap();
 
-let mut screen = Embedded::new(Frame::new(160, 120, vec![0u16; 160 * 120]).unwrap());
+let mut screen = fusuma_render_vello_cpu::new(160, 120).unwrap();
 let bounds = Rect::new(0, 0, 160, 120);
 
 // One frame: update, then draw what changed.

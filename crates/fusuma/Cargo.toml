@@ -17,7 +17,6 @@ fusuma-anim.workspace = true
 fusuma-render.workspace = true
 
 [dev-dependencies]
-fusuma-render-embedded.workspace = true
 fusuma-render-vello-cpu.workspace = true
 
 [lints]

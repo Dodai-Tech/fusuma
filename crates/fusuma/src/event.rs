@@ -160,10 +160,10 @@ mod tests {
     use crate::theme::{ButtonVariant, TextRole, Theme};
     use crate::tree::{ActionKind, Style};
     use fusuma_render::Rect;
-    use fusuma_render_embedded::{Embedded, Frame};
+    use fusuma_render_vello_cpu::VelloCpu;
 
-    fn screen() -> Embedded<Frame<Vec<u16>>> {
-        Embedded::new(Frame::new(8, 8, vec![0u16; 64]).unwrap())
+    fn screen() -> VelloCpu {
+        fusuma_render_vello_cpu::new(8, 8).unwrap()
     }
 
     /// A column with a heading and two buttons, laid out in a 200 x 200 area.

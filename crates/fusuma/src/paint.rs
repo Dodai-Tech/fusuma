@@ -141,19 +141,14 @@ mod tests {
     use crate::theme::{ButtonVariant, Round, Surface, TextRole};
     use crate::tree::{CrossAlign, Length, NodeId, Style};
     use fusuma_render::{Probe, Renderer};
-    use fusuma_render_embedded::{Embedded, Frame};
+    use fusuma_render_vello_cpu::VelloCpu;
 
     const THEME: Theme = Theme::DARK;
     const W: u32 = 160;
     const H: u32 = 120;
 
-    fn screen() -> Embedded<Frame<Vec<u16>>> {
-        Embedded::new(Frame::new(W as u16, H as u16, vec![0u16; (W * H) as usize]).unwrap())
-    }
-
-    /// What a colour looks like on a 16-bit panel.
-    fn on_panel(c: Color) -> Color {
-        Color::from_rgb565(c.to_rgb565())
+    fn screen() -> VelloCpu {
+        fusuma_render_vello_cpu::new(W, H).unwrap()
     }
 
     fn app() -> (Tree<8>, NodeId, NodeId, NodeId) {
@@ -179,7 +174,7 @@ mod tests {
         (t, title, primary, secondary)
     }
 
-    fn frame(t: &mut Tree<8>, s: &mut Embedded<Frame<Vec<u16>>>) {
+    fn frame(t: &mut Tree<8>, s: &mut VelloCpu) {
         t.update(s, &THEME, Rect::new(0, 0, W, H));
         s.clear(THEME.colors.background).unwrap();
         t.paint(s, &THEME).unwrap();
@@ -196,21 +191,18 @@ mod tests {
         let (mut t, _, primary, secondary) = app();
         let mut s = screen();
         frame(&mut t, &mut s);
-        let at = |s: &Embedded<Frame<Vec<u16>>>, (x, y)| s.pixel(x, y).unwrap();
-        assert_eq!(at(&s, edge_of(&t, primary)), on_panel(THEME.colors.primary));
-        assert_eq!(
-            at(&s, edge_of(&t, secondary)),
-            on_panel(THEME.colors.surface_raised)
-        );
+        let at = |s: &VelloCpu, (x, y)| s.pixel(x, y).unwrap();
+        assert_eq!(at(&s, edge_of(&t, primary)), THEME.colors.primary);
+        assert_eq!(at(&s, edge_of(&t, secondary)), THEME.colors.surface_raised);
         // Inside the container, between the widgets, and outside of it.
         let panel = t.rect(t.root().unwrap()).unwrap();
         assert_eq!(
             s.pixel(panel.x + 5, panel.y + 50).unwrap(),
-            on_panel(THEME.colors.surface)
+            THEME.colors.surface
         );
         assert_eq!(
             s.pixel(0, 0).unwrap(),
-            on_panel(THEME.colors.background),
+            THEME.colors.background,
             "the panel's rounded corner shows the page behind it"
         );
     }
@@ -223,12 +215,12 @@ mod tests {
         let sr = t.rect(secondary).unwrap();
         assert_eq!(
             s.pixel(sr.x + (sr.w / 2) as i32, sr.y).unwrap(),
-            on_panel(THEME.colors.border)
+            THEME.colors.border
         );
         let pr = t.rect(primary).unwrap();
         assert_eq!(
             s.pixel(pr.x + (pr.w / 2) as i32 + 30, pr.y).unwrap(),
-            on_panel(THEME.colors.primary)
+            THEME.colors.primary
         );
     }
 
@@ -238,7 +230,7 @@ mod tests {
         let mut s = screen();
         frame(&mut t, &mut s);
         let r = t.rect(title).unwrap();
-        let lit = |c: Color| c == on_panel(THEME.colors.text);
+        let lit = |c: Color| c == THEME.colors.text;
         let inside =
             (r.x..r.right()).any(|x| (r.y..r.bottom()).any(|y| lit(s.pixel(x, y).unwrap())));
         assert!(inside, "text pixels inside {r:?}");
@@ -259,23 +251,16 @@ mod tests {
         t.advance(&THEME, THEME.motion.fast_ms / 3);
         frame(&mut t, &mut s);
         let mid = s.pixel(spot.0, spot.1).unwrap();
-        assert_ne!(mid, on_panel(THEME.colors.primary));
-        assert_ne!(
-            mid,
-            on_panel(THEME.colors.primary_hover),
-            "part-way: neither end"
-        );
+        assert_ne!(mid, THEME.colors.primary);
+        assert_ne!(mid, THEME.colors.primary_hover, "part-way: neither end");
         t.advance(&THEME, 1000);
         frame(&mut t, &mut s);
-        assert_eq!(
-            s.pixel(spot.0, spot.1).unwrap(),
-            on_panel(THEME.colors.primary_hover)
-        );
+        assert_eq!(s.pixel(spot.0, spot.1).unwrap(), THEME.colors.primary_hover);
         t.pointer(Pointer::Down(centre));
         frame(&mut t, &mut s);
         assert_eq!(
             s.pixel(spot.0, spot.1).unwrap(),
-            on_panel(THEME.colors.primary_active),
+            THEME.colors.primary_active,
             "no waiting for the fade"
         );
     }
@@ -289,7 +274,7 @@ mod tests {
         assert_eq!(
             s.pixel(edge_of(&t, primary).0, edge_of(&t, primary).1)
                 .unwrap(),
-            on_panel(THEME.colors.surface)
+            THEME.colors.surface
         );
     }
 
@@ -314,10 +299,7 @@ mod tests {
         s.clear(Theme::LIGHT.colors.background).unwrap();
         t.paint(&mut s, &Theme::LIGHT).unwrap();
         let (x, y) = edge_of(&t, primary);
-        assert_eq!(
-            s.pixel(x, y).unwrap(),
-            on_panel(Theme::LIGHT.colors.primary)
-        );
+        assert_eq!(s.pixel(x, y).unwrap(), Theme::LIGHT.colors.primary);
     }
 
     #[test]

@@ -452,7 +452,6 @@ version = "0.2.0"
 dependencies = [
  "fusuma-anim",
  "fusuma-render",
- "fusuma-render-embedded",
  "fusuma-render-vello-cpu",
 ]
 
@@ -491,7 +490,6 @@ version = "0.2.0"
 dependencies = [
  "embedded-graphics",
  "fusuma-render",
- "fusuma-render-embedded",
  "vello_common",
 ]
 
