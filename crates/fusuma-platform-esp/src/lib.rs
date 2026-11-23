@@ -13,22 +13,14 @@ use fusuma_render::Point;
 use hw::{Touch, TouchTracker};
 use surface::Surface;
 
-/// The backends linked into this program: the integer one always, the others by cargo feature.
-pub const LINKED: &[Backend] = &[
-    Backend::Integer,
-    #[cfg(feature = "skia")]
-    Backend::Skia,
-    #[cfg(feature = "vello-cpu")]
-    Backend::VelloCpu,
-];
+/// The backends linked into this program: Vello on the CPU, the only one a board can run.
+pub const LINKED: &[Backend] = &[Backend::VelloCpu];
 
-/// What the application chooses about the platform. The default is the best experience for the hardware.
+/// What the application chooses about the platform. The default is the best choice for the hardware.
 #[derive(Clone, Copy, Debug)]
 pub struct Options {
     /// A backend to use whatever the automatic rule would pick (the build's layer).
     pub backend: Option<Backend>,
-    /// Whether an explicit choice that does not fit in memory steps down to a lighter backend.
-    pub fallback: bool,
     /// Backlight, 0 to 100.
     pub backlight: i32,
 }
@@ -37,7 +29,6 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             backend: None,
-            fallback: true,
             backlight: 80,
         }
     }
@@ -80,10 +71,7 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
     let machine = Machine {
         screen: Some((w, h)),
         hardware: Some(hardware()),
-        render: Render {
-            backend: None,
-            fallback: options.fallback,
-        },
+        render: Render::default(),
     };
     let facts = machine.hardware.unwrap_or(Hardware {
         ram_kb: 0,
@@ -100,6 +88,13 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
     let plan = fusuma_platform::plan(&machine, options.backend, LINKED)
         .ok_or_else(|| anyhow::anyhow!("no renderer is linked"))?;
     log::info!("renderer: {plan}");
+    if let fusuma_platform::Fit::TooBig { need, budget } = plan.fit {
+        anyhow::bail!(
+            "this board cannot run Fusuma: a frame needs {} KB and it has {} KB for one",
+            need / 1024,
+            budget / 1024
+        );
+    }
     let mut surface = Surface::new(plan.uses, w, h)
         .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;
 

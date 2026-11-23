@@ -27,7 +27,6 @@ vello_cpu.workspace = true
 
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
-fusuma-render-embedded.workspace = true
 
 [lints]
 workspace = true

@@ -20,7 +20,6 @@ wgpu.workspace = true
 
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
-fusuma-render-embedded.workspace = true
 fusuma-render-vello-cpu.workspace = true
 
 [lints]

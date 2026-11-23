@@ -10,17 +10,18 @@ works and is tested.
   widgets crate); the backend is chosen by target and, on a desktop, at run time (GPU first, CPU if
   there is no usable adapter). The renderer crates stay separate: each is useful alone, and a firmware
   that only draws must not pull in a toolkit.
-* **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
-  one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
-  `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
-* **Several renderers, one trait, a default by hardware.** The integer renderer (`fusuma-render-embedded`),
-  `tiny-skia` (`fusuma-render-skia`), `vello_cpu` and the Vello GPU backend all pass the same conformance suite.
-  A device uses the default that fits it and the others stay available: the GPU backend when there is a usable
-  GPU, `vello_cpu` on a chip with PSRAM, `tiny-skia` or the integer renderer on a chip without. This replaces an
-  earlier decision to use Vello only and to delete the integer renderer: the ESP32-C6 measurements
-  (`tools/bench-c6` in `hibari-os`) showed `tiny-skia` 3 to 4 times faster and lighter than `vello_cpu` there, and
-  the integer renderer another 3 to 4 times faster, with half the memory per pixel. On the ESP32-S3 `vello_cpu` is
-  about 4 times slower than the integer renderer for a full frame but felt richer with partial redraws.
+* **Vello only.** `vello_gpu` where there is a GPU, `vello_cpu` everywhere else, both implementing the
+  `Renderer` trait through one shared implementation (`fusuma-render-vello-common`). The integer renderer
+  (`fusuma-render-embedded`) and the `tiny-skia` one (`fusuma-render-skia`) were deleted (they stay in git
+  history; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained). The choice between the two is
+  automatic (`fusuma-platform`) and an app never names a renderer, as with Iced.
+  *Why:* three renderers meant measuring and ranking them per chip, and the ranking did not hold. On the
+  ESP32-C6 `tiny-skia` was 3 to 4 times faster and lighter than `vello_cpu`; on the ESP32-P4 it looked much
+  slower (a 1316 ms first frame against about 210 ms for `vello_cpu`, one frame, cause not investigated). One
+  renderer removes the question. *What it costs:* a chip without PSRAM cannot run Fusuma (`vello_cpu` ran out
+  of memory at 240x320 on the C6); the platform refuses such a board at start with a clear message, and a text
+  UI (ratatui) serves those boards. On the ESP32-S3 `vello_cpu` is about 4 times slower than the integer
+  renderer for a full frame, so a full-screen launcher there needs partial redraws.
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
@@ -77,17 +78,16 @@ works and is tested.
 - [ ] **P4:** run the benchmark on an ESP32-P4 (400 MHz, FPU, vector extension)
 - [ ] **A fair A/B on the board:** the same card demo with the integer renderer, and with anti-aliasing added to it, to compare look, speed and memory
 
-### The integer renderer is kept (the removal below is cancelled)
+### One renderer, chosen for you
 
-- [x] The bitmap fonts (`font_for`, `text_size`) live in `fusuma-render-vello-common`; `fusuma-render-embedded` keeps its own copy until it is deleted
-- [x] Dirty-rectangle redraws in `fusuma`: every change records the area it touches (`take_damage`, `take_damage_in(screen)`), layout records the old and the new place of anything that moved, and `paint_region` draws only what overlaps. A random-change property test proves the damage covers every pixel that changed and that redrawing only the damage equals a full redraw; fuzzed (329k runs)
-- [ ] Use it for the launcher: needs a tile widget (an icon, a label, a press state), a pager with slide transitions and a `compose` pass for offsets, then rebuild the Hibari launcher on them; the launcher still has its own view and the integer renderer
-- [ ] A region renderer that reuses its surface between updates (today a region means a new `vello_cpu` surface), and a flush that sends just the region to the panel
-- [x] Move the `fusuma` toolkit tests from `Embedded` to `vello_cpu` (done); the launcher and host tests in `hibari-os` still use `Embedded`
-- [x] ~~Delete `fusuma-render-embedded`~~ cancelled: it stays, see Decisions
-- [ ] A choice of default backend by hardware: a `std` feature with `fusuma-render-vello` when `gpu_available()` else `vello_cpu` on a desktop; on a chip, a `[render]` setting in `board.toml` (integer, `tiny-skia` or `vello_cpu`)
-- [ ] Measure `tiny-skia` on the ESP32-S3 and a conformance run on the C6
-- [ ] Publish `fusuma-render-skia` 0.3.0 (the 0.1.0 on crates.io is the old `std` version)
+- [x] `fusuma-render-embedded` and `fusuma-render-skia` deleted; the toolkit, the showcase and the fuzz targets run on Vello
+- [x] `fusuma-platform`: the choice (build, settings, automatic rule: GPU else CPU) and a memory check that refuses a board with no room for a frame
+- [x] `fusuma::App` and `fusuma-platform-esp`: an app runs on a board without naming a renderer (the P4 showcase)
+- [x] Dirty-rectangle redraws in `fusuma`: every change records the area it touches (`take_damage`, `take_damage_in(screen)`), layout records the old and the new place of anything that moved, and `paint_region` draws only what overlaps
+- [ ] Damage as several rectangles instead of one bounding box (a click at the top and a status line at the bottom redraw everything between them)
+- [ ] Use it for the launcher: needs a tile widget, a pager with slide transitions and a `compose` pass, then rebuild the Hibari launcher on them
+- [ ] A region renderer that reuses its surface between updates (today the P4 clears and converts the whole surface for a small update: about 60 ms)
+- [ ] `fusuma-platform-desktop`: a window, the GPU backend when an adapter exists, `vello_cpu` otherwise; then mobile
 
 ## Phase 2: animation (out of the box)
 - [x] `fusuma-anim`: `Fx` (Q16.16), easing (quad, cubic, quart, smooth, back, bounce, CSS Bezier), `Tween` with delay, stagger and retarget, `Keyframes`

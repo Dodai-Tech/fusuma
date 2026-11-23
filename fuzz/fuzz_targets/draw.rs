@@ -1,10 +1,9 @@
 #![no_main]
-//! Random drawing calls never panic on either backend, whatever the coordinates, and the save
+//! Random drawing calls never panic on the Vello backend, whatever the coordinates, and the save
 //! stack, clip and translation stay consistent.
 
 use libfuzzer_sys::fuzz_target;
 use fusuma_render::{Align, Color, Image, PathCmd, Point, Probe, Rect, Renderer, TextStyle};
-use fusuma_render_embedded::{Embedded, Frame};
 
 
 struct Bytes<'a>(&'a [u8]);
@@ -108,8 +107,6 @@ fn run<R: Renderer + Probe>(r: &mut R, data: &[u8]) {
 }
 
 fuzz_target!(|data: &[u8]| {
-    let mut e = Embedded::new(Frame::new(48, 40, vec![0u16; 48 * 40]).unwrap());
-    run(&mut e, data);
     let mut s = fusuma_render_vello_cpu::new(48, 40).unwrap();
     run(&mut s, data);
 });

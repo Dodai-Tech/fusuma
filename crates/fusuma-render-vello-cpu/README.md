@@ -19,7 +19,7 @@ let png = fusuma_render_vello_cpu::png(&r).unwrap();
 assert_eq!(&png[1..4], b"PNG");
 ```
 
-Text uses the same built-in bitmap fonts as `fusuma-render-embedded` for now; Vello's glyph runs
+Text uses the same built-in bitmap fonts (three monospace sizes) for now; Vello's glyph runs
 (real fonts, shaping) come with the text stack.
 
 `no_std` with `alloc` for a microcontroller: `default-features = false, features = ["libm"]` (the PNG output needs `std`). Built for the ESP32-S3 and the ESP32-C6 targets, run on the S3.

@@ -6,7 +6,7 @@ the same code is tested on the host (`just showcase-shots` writes a PNG of every
 `docs/screenshots/`) and runs on a board.
 
 **`showcase-p4/`** is that app on the Waveshare ESP32-P4 7" touch board (1024x600, GT911 touch), drawn with
-`vello_cpu` straight into the DSI frame buffer, redrawing only the part that changed. It is an ESP-IDF
+`vello_cpu` (chosen by `fusuma-platform-esp`, which the app never names) straight into the DSI frame buffer, redrawing only the part that changed. It is an ESP-IDF
 project of its own (it needs the ESP toolchain, so it is not a workspace member); the display and touch C
 shim in `components/wt_display` comes from the WeatherTrack P4 firmware.
 

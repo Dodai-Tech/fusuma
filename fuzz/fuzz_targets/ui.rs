@@ -5,13 +5,12 @@
 
 use fusuma::{BuildError, ButtonVariant, CrossAlign, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
-use fusuma_render_embedded::{Embedded, Frame};
 use libfuzzer_sys::fuzz_target;
 
 const N: usize = 12;
 
-fn screen_renderer() -> Embedded<Frame<Vec<u16>>> {
-    Embedded::new(Frame::new(48, 40, vec![0u16; 48 * 40]).unwrap())
+fn screen_renderer() -> fusuma_render_vello_cpu::VelloCpu {
+    fusuma_render_vello_cpu::new(48, 40).unwrap()
 }
 
 fn length(a: u8, b: u8) -> Length {
@@ -43,7 +42,7 @@ fn check<const M: usize>(t: &Tree<M>, ids: &[NodeId]) {
 fuzz_target!(|data: &[u8]| {
     let mut tree = Tree::<N>::new();
     let mut ids: Vec<NodeId> = Vec::new();
-    let mut screen = Embedded::new(Frame::new(48, 40, vec![0u16; 48 * 40]).unwrap());
+    let mut screen = screen_renderer();
     let theme = if data.first().is_some_and(|b| b & 1 == 1) { Theme::LIGHT } else { Theme::DARK };
     let mut it = data.iter().copied();
     while let (Some(op), Some(a), Some(b)) = (it.next(), it.next(), it.next()) {
