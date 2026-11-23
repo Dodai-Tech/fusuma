@@ -13,10 +13,14 @@ works and is tested.
 * **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
   one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
   `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
-* **Microcontrollers keep the integer renderer** (`fusuma-render-embedded`). Measured on the ESP32-S3
-  (240 MHz, 8 MB PSRAM): `vello_cpu` builds with `libm` and no `std` and draws the same picture, but is
-  about 4 times slower than the integer renderer (261 ms against 61 ms for a full-screen launcher frame)
-  and needs 1.4 MB. Details in `hibari-os`, `crates/hibari-os-s3-bench/RESULT.md`. The P4 is untested.
+* **Vello on the ESP chips that have PSRAM, the integer renderer elsewhere.** Measured on the ESP32-S3
+  (240 MHz, 8 MB PSRAM, `crates/hibari-os-s3-bench` in `hibari-os`): `vello_cpu` builds with `libm` and no `std`
+  and draws the same picture, but a full-screen launcher frame takes 261 ms against 61 ms for the integer
+  renderer, and 1.4 MB. Full frames are not how a good UI updates, though: a demo that repaints only the
+  touched card (about 41 ms to render, 11 ms to send) felt richer and more responsive on the real screen, with
+  smooth edges and a press animation. So the preference is `vello_cpu` on the S3 (and the P4, untested) with
+  partial redraws; the integer renderer stays for chips without PSRAM (the C6, the original ESP32) and as the
+  fallback. This depends on the work listed under Phase 1b.
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
@@ -57,8 +61,21 @@ works and is tested.
 - [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the toolkit's GPU-first choice
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
 - [ ] Benchmark more: a complex scene (many paths, large blurs), the GPU drawing to a surface with no read-back, and a shader chain with read-back versus as a texture
-- [x] Experiment: `vello_cpu` on the S3 measured, see Decisions: about 4x slower and 1.4 MB, so the ESP keeps the integer renderer. Open: the P4 (400 MHz, vector extension) and text
+- [x] Experiment: `vello_cpu` on the S3 measured, see Decisions and Phase 1b
 - [ ] Text: Vello glyph runs with a Rust text stack replace the bitmap fonts on the CPU and GPU backends
+
+## Phase 1b: Vello on the ESP
+
+- [x] `vello_cpu` builds for the S3 (Xtensa) and the C6 (RISC-V) with `libm`, no `std`
+- [x] Benchmark and a touch demo on the S3 (`hibari-os-s3-bench`, `hibari-os-s3-vello-demo`)
+- [ ] **Tearing:** updates are written while the panel scans, so cards tear. Enable the tearing-effect output (GPIO 13) the way Waveshare's driver does and wait for the pulse before each update; check whether narrow windows need the 22-column offset
+- [ ] **`no_std` backend:** `fusuma-render-vello-common` and `fusuma-render-vello-cpu` use `std` only for `RefCell`, `Arc`, `Vec` and PNG output; move them to `core` and `alloc` behind a default `std` feature, so the shared `Renderer` implementation runs on the ESP and the toolkit and the shell can use it unchanged
+- [ ] **Partial redraws in the API:** a dirty-rectangle pass in `fusuma` (the flags exist; today the whole tree is redone) that gives the backend the regions to render, with even-aligned windows for the panel; reuse one pixmap and context per region size instead of allocating each time
+- [ ] **Memory budget:** a full frame needs 1.4 MB, a card region far less; decide the region size and keep the frame buffer out of the path where possible
+- [ ] **Speed:** the render step is 41 ms for a card; look for what dominates (path flattening, the scalar fallback without SIMD) and whether a cheaper circle and rounded-rectangle path helps
+- [ ] **Text:** `vello_cpu`'s glyph painter (`glifo`) builds for the S3; shaping is the open question, since Parley's ICU4X data is large
+- [ ] **P4:** run the benchmark on an ESP32-P4 (400 MHz, FPU, vector extension)
+- [ ] **A fair A/B on the board:** the same card demo with the integer renderer, and with anti-aliasing added to it, to compare look, speed and memory
 
 ## Phase 2: animation (out of the box)
 - [x] `fusuma-anim`: `Fx` (Q16.16), easing (quad, cubic, quart, smooth, back, bounce, CSS Bezier), `Tween` with delay, stagger and retarget, `Keyframes`
