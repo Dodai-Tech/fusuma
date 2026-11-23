@@ -6,9 +6,10 @@ works and is tested.
 
 ## Decisions
 
-* **One dependency for apps.** Apps use `fusuma`; the backend is chosen by target and, on a
-  desktop, at run time (GPU first, CPU if there is no usable adapter). The backend crates are
-  published because crates.io needs them, but their READMEs say "internal".
+* **One dependency for apps.** Apps use `fusuma` (the toolkit, one crate, no separate core or
+  widgets crate); the backend is chosen by target and, on a desktop, at run time (GPU first, CPU if
+  there is no usable adapter). The renderer crates stay separate: each is useful alone, and a firmware
+  that only draws must not pull in a toolkit.
 * **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
   one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
   `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
@@ -36,15 +37,13 @@ works and is tested.
 | `fusuma-render-vello` | `vello_gpu` backend | no |
 | `fusuma-anim` | easing, tweens, keyframes, springs, fling decay | yes |
 | `fusuma-shaders` | shader contract implementation and engine (WGSL, prebuilt rust-gpu kernels, CPU path) | no |
-| `fusuma-text` | text layout and fonts in pure Rust (`parley`, or `cosmic-text`) | no |
-| `fusuma-core` | widget tree, layout (`taffy`), events, focus, state | partly |
-| `fusuma-widgets` | label, button, toggle, slider, list, dialog, tabs, text field | partly |
+| `fusuma-text` | text on Parley: fonts, shaping, line breaking, bidi, selection; optional, desktop and phone only | no |
+| `fusuma` | **the toolkit**: widget tree, layout, theme, events, animation, paint, and the widgets as modules; `no_std`, no allocator by default; a `std` feature adds the desktop extras (run-time GPU or CPU choice). Apps depend on this one crate | yes |
 | `fusuma-platform-mcu` | microcontroller displays and touch | yes |
 | `fusuma-platform-desktop` | `winit` window, pixel buffer or GPU surface | no |
 | `fusuma-platform-android`, `-ios` | native windows and touch | no |
 | `fusuma-platform-tui` | semantic rendering of the widget tree as text cells (ratatui) | no |
 | `fusuma-platform-web` | later, optional: WebAssembly into a canvas | no |
-| `fusuma` | facade: one dependency, features and run-time backend choice | no |
 
 ## Phase 1: renderer
 - [x] `fusuma-render`: `Renderer` trait, conformance suite, fuzzed
@@ -54,7 +53,7 @@ works and is tested.
 - [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
 - [ ] Publish `fusuma-render-vello-common` and `-vello-cpu`, move `hibari-os` to them
 - [x] `fusuma-render-vello` on `vello_gpu` and `wgpu` 30: headless device, renders into an `Rgba8Unorm` texture and reads it back; passes the conformance suite on a real GPU (AMD RX 7800 XT, Vulkan) and matches the CPU backend; tests skip on machines without a GPU. Images go to the GPU as external textures through a `Scene::image_source` hook
-- [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the facade's GPU-first choice
+- [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the toolkit's GPU-first choice
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
 - [ ] Benchmark more: a complex scene (many paths, large blurs), the GPU drawing to a surface with no read-back, and a shader chain with read-back versus as a texture
 - [ ] Experiment: run `vello_cpu` on the S3 (it builds with `libm`) and measure frame time and memory
@@ -99,10 +98,39 @@ What `dodai-core` looks like (read before designing the interface):
 
 Plan:
 - [ ] Read `dodai-core`'s token model and the `dodai-slint` and `dodai-iced` adapters; shape the Fusuma theme interface so the Dodai themes map onto it without loss (per-widget tokens and states, shape system, motion, effects)
-- [ ] `fusuma-core`: a `Theme` trait and a default light and dark theme (colours, spacing, radii, text sizes, motion timings), and widgets that read only from it
+- [ ] `fusuma`: a `Theme` trait and a default light and dark theme (colours, spacing, radii, text sizes, motion timings), and widgets that read only from it
 - [ ] `dodai-fusuma` in the `dodai-ui` repository: Dodai themes as a Fusuma theme, generated from the component spec where possible (a Fusuma target for `dodai-gen`), plus Dodai-only widgets
 - [ ] Theme switching at run time, and density scaling
 - [ ] **Animation overlap:** `fusuma-anim` (fixed point, `no_std`, runs without an FPU) and `dodai-core::motion` (`f32`, `std`, richer: reactions, glide, mixins) do the same job. Keep both for now, because Hibari on a microcontroller cannot take the `f32`/`std` one; map the theme's motion tokens (duration, easing, spring response) onto `fusuma-anim`; consider moving shared curves and presets to one source later, and do not add features to both
+
+## Text
+
+Two tiers, because a microcontroller and a phone need different things.
+
+* **Microcontrollers keep the built-in bitmap fonts.** They need no allocator, no font files and no
+  Unicode tables. Today these are three monospace sizes; a proportional pixel font and a glyph atlas
+  for a larger character set are the way to grow them.
+* **Desktop and phone use Parley** (the Linebender text stack, which `/home/sorin/Projects/linebender/parley`
+  is a checkout of). Parley is layout: it needs `alloc`, and its dependencies are Fontique (font lookup and
+  fallback), HarfRust (shaping), Skrifa (glyph outlines) and ICU4X (bidi, line and word breaking,
+  normalisation). It ships `std`, `libm` and `system` features, and published 0.13 needs Rust 1.88 and is
+  Apache-2.0 or MIT, so it fits our 1.90 and our licence.
+* **Drawing the glyphs.** Parley gives positioned glyph runs; the draw side is `vello_cpu`'s and
+  `vello_gpu`'s glyph runs (the `text` feature, built on `glifo`), so text and shapes go through the same
+  engine. Fusuma's `Renderer` trait has no glyph call today: it needs a small, optional `draw_glyphs`
+  that the Vello backends implement and the integer backend does not (it keeps its bitmap fonts).
+
+Costs, honestly: ICU4X's compiled data is large (the `icu_segmenter` source alone is 23 MB), so a Parley
+build is a megabyte-class dependency and out of the question for the S3's firmware. The `complex-scripts`
+feature (dictionary breaking for CJK, Thai and others) adds more. Whether Parley builds for the ESP at all
+with `libm` is unmeasured, and I would not try before the desktop path works.
+
+- [ ] A `TextEngine` seam in `fusuma` so labels measure and draw through either tier: bitmap on a chip, Parley on a desktop
+- [ ] `fusuma-text`: Parley layout (font selection, shaping, wrapping, bidi, alignment) behind the seam; system fonts through Fontique, with a bundled fallback font so tests do not depend on the machine
+- [ ] An optional `draw_glyphs` on `Renderer`, implemented by `fusuma-render-vello-cpu` and `-vello` using their glyph runs; conformance test with a bundled font
+- [ ] Text widgets: wrapped and multi-line labels, then an input field using Parley's selection and editing utilities (cursor, selection, IME) and a placeholder
+- [ ] Measure: the Parley build size for a desktop binary, and whether a no-ICU path (the lightweight segmenter) is enough for Latin text
+- [ ] Per-widget style: font family, size, weight and line height as theme tokens, so a design system can set them
 
 ## Phase 4: the toolkit
 
@@ -113,7 +141,7 @@ of the tree, and an optional view layer on top (as in Xilem) that rebuilds into 
 ESP the tree is a fixed arena with the widgets as a closed enum, text stored inline and no heap;
 desktop-sized trees use the same code with a bigger `N`.
 
-- [x] `fusuma-core` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
+- [x] `fusuma` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
 - [ ] Show it on the ESP32-S3 board (a toolkit screen in `hibari-os`), measure frame time and memory
 - [ ] Layout and paint only the changed subtrees (the flags are there; today the whole tree is redone when anything asks)
 - [ ] A compose pass: offsets for scrolling without a layout
@@ -122,11 +150,11 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature (the built-in set stays a closed enum for the no-allocator case)
 - [ ] A view layer: a lightweight description built from application state and diffed into the retained tree, with messages routed back
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
-- [ ] `fusuma-core`: retained widget tree, layout on `taffy`, events, focus, theming from design tokens; a semantic tree so that other front ends (terminal, accessibility) can read it
-- [ ] `fusuma-widgets`: label, button, toggle, slider, list with scrolling, dialog, tabs, text field
+- [ ] `fusuma`: retained widget tree, layout on `taffy`, events, focus, theming from design tokens; a semantic tree so that other front ends (terminal, accessibility) can read it
+- [ ] Widgets as modules of `fusuma`: toggle, slider, progress, list with scrolling, dialog, tabs, text field (split into a crate only if it grows large)
 - [ ] Text input with an input method, and accessibility with `AccessKit`
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
-- [ ] `fusuma` facade and run-time backend choice (GPU first, CPU fallback)
+- [ ] A `std` feature on `fusuma` with the run-time backend choice (GPU first, CPU fallback)
 - [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
 
 ## Phase 5: more platforms

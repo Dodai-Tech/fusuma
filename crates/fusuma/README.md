@@ -1,7 +1,7 @@
-# fusuma-core
+# fusuma
 
-[![Crates.io](https://img.shields.io/crates/v/fusuma-core.svg)](https://crates.io/crates/fusuma-core)
-[![docs.rs](https://img.shields.io/docsrs/fusuma-core)](https://docs.rs/fusuma-core)
+[![Crates.io](https://img.shields.io/crates/v/fusuma.svg)](https://crates.io/crates/fusuma)
+[![docs.rs](https://img.shields.io/docsrs/fusuma)](https://docs.rs/fusuma)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 
 The core of the [Fusuma](https://github.com/Dodai-Tech/fusuma) toolkit, designed for the smallest
@@ -31,7 +31,7 @@ with a default dark and light theme. Widgets read only from the theme, so a desi
 replace it.
 
 ```rust
-use fusuma_core::{ButtonVariant, CrossAlign, Pointer, Style, TextRole, Theme, Tree};
+use fusuma::{ButtonVariant, CrossAlign, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
 use fusuma_render_embedded::{Embedded, Frame};
 

@@ -3,7 +3,7 @@
 //! wrong parents, removing, changing text and style, disabling, pointer events in any order,
 //! layout in absurd bounds, animation and painting.
 
-use fusuma_core::{BuildError, ButtonVariant, CrossAlign, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
+use fusuma::{BuildError, ButtonVariant, CrossAlign, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
 use fusuma_render_embedded::{Embedded, Frame};
 use libfuzzer_sys::fuzz_target;

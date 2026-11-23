@@ -4,7 +4,7 @@ members = [
     "crates/fusuma-render",
     "crates/fusuma-render-embedded",
     "crates/fusuma-anim",
-    "crates/fusuma-core",
+    "crates/fusuma",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-vello-cpu",
     "crates/fusuma-render-vello",

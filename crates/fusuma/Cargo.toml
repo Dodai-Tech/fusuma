@@ -1,8 +1,8 @@
 [package]
-name = "fusuma-core"
+name = "fusuma"
 description = "Fusuma toolkit core: a fixed-size widget tree, layout, theme tokens, pointer input and painting through the Renderer trait (no_std, no allocator)"
 readme = "README.md"
-documentation = "https://docs.rs/fusuma-core"
+documentation = "https://docs.rs/fusuma"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

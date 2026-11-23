@@ -12,9 +12,10 @@
 A native Rust UI toolkit for everything from a microcontroller to a desktop, with no webview, no
 HTML and no CSS. A fusuma (襖) is the sliding door of a Japanese room.
 
-Apps depend on one crate, `fusuma` (planned), and the right renderer is chosen for the target:
-the integer one on a microcontroller, the GPU one on a desktop or phone, the CPU one when there is
-no usable GPU. The crates below are the parts it is built from.
+Apps depend on one crate, `fusuma`, which is `no_std` with no allocator by default, so it fits an ESP.
+The renderer is chosen for the target (a `std` feature will add the run-time choice between the GPU
+and the CPU backend): the integer one on a microcontroller, Vello on a desktop or phone. The
+renderer crates stay separate, because each is useful alone.
 
 | Crate | What | `no_std` | Status |
 |---|---|---|---|
@@ -23,12 +24,11 @@ no usable GPU. The crates below are the parts it is built from.
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
 | [`fusuma-render-vello`](crates/fusuma-render-vello) | anti-aliased GPU drawing on `vello_gpu` and `wgpu` | no | working |
 | [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
-| [`fusuma-core`](crates/fusuma-core) | retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer | yes | working, first slice |
+| [`fusuma`](crates/fusuma) | **the toolkit:** retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer. Apps depend on this one crate | yes | working, first slice |
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, in fixed point | yes | working |
 | `fusuma-shaders` | shader contract and engine | no | planned |
-| `fusuma-widgets`, `fusuma-text` | more widgets (toggle, slider, list, text field), real text and fonts | partly | planned |
+| `fusuma-text` | real text: fonts, shaping, line breaking (on Parley) for desktop and phone; the bitmap fonts stay for microcontrollers | no | planned |
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
-| `fusuma` | the facade: one dependency, the backend chosen by target | no | planned |
 
 See the [roadmap](docs/ROADMAP.md). A renderer crate never depends on a toolkit crate: a firmware
 that needs only drawing depends on `fusuma-render-embedded` and gets no toolkit code. CI checks
@@ -61,7 +61,7 @@ crates/fusuma-render-embedded      integer drawing for embedded-graphics targets
 crates/fusuma-render-vello-common  the Renderer on a Vello scene, shared by the CPU and GPU backends
 crates/fusuma-render-vello-cpu     anti-aliased drawing on vello_cpu
 crates/fusuma-render-vello         anti-aliased drawing on vello_gpu (run the bench: cargo run --release -p fusuma-render-vello --example bench)
-crates/fusuma-core                 retained widget tree, layout, theme, events, animation and paint passes
+crates/fusuma                 retained widget tree, layout, theme, events, animation and paint passes
 crates/fusuma-anim                 easing, tweens, keyframes, springs, fling decay
 docs/ROADMAP.md                    what is done and what comes next
 fuzz/                              cargo-fuzz targets (geometry, draw, anim, ui)
