@@ -7,8 +7,8 @@
 # `otadata` entry selects it; `restore` erases `otadata` so the board boots its factory app again.
 #
 #   nu scripts/showcase.nu gen-sdkconfig
-#   nu scripts/showcase.nu build
-#   nu scripts/showcase.nu install [--slot ota_0] [--port /dev/ttyACM0]
+#   nu scripts/showcase.nu build [--features render-skia]
+#   nu scripts/showcase.nu install [--slot ota_0] [--port /dev/ttyACM0] [--features render-skia]
 #   nu scripts/showcase.nu restore [--port P]
 #   nu scripts/showcase.nu monitor [--port P]
 # ──────────────────────────────────────────────────────────────────────────────
@@ -113,15 +113,22 @@ def "main gen-sdkconfig" [] {
     print -e $"Generated sdkconfig.defaults \(partitions: ($csv))"
 }
 
-def "main build" [] {
-    main gen-sdkconfig
-    cd ($ROOT | path join $CRATE)
-    with-env (esp_env $nu.home-dir) { ^cargo build --release }
+# The cargo arguments for a comma or space separated list of features: `[--features a,b]`, or nothing.
+export def feature_args [features: string]: nothing -> list<string> {
+    let list = $features | split row --regex '[,\s]+' | where { |f| $f | is-not-empty }
+    if ($list | is-empty) { [] } else { ["--features" ($list | str join ",")] }
 }
 
-def "main install" [--slot: string = "ota_0", --port: string = ""] {
+def "main build" [--features: string = ""] {
+    main gen-sdkconfig
+    cd ($ROOT | path join $CRATE)
+    let extra = feature_args $features
+    with-env (esp_env $nu.home-dir) { ^cargo build --release ...$extra }
+}
+
+def "main install" [--slot: string = "ota_0", --port: string = "", --features: string = ""] {
     let seq = slot_seq $slot
-    main build
+    main build --features $features
     let image = mktemp --suffix .bin
     ^espflash save-image --chip esp32p4 --flash-size 32mb (elf_path) $image
     let table_file = mktemp --suffix .bin

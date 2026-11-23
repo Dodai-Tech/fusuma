@@ -4,7 +4,7 @@
 
 use std/assert
 use runner.nu *
-use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args]
+use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args]
 
 def "test showcase: the partition path is filled in everywhere" [] {
     let out = sdkconfig "A=1\nP=\"@PARTITIONS@\"\nQ=\"@PARTITIONS@\"\n" "/x/p.csv"
@@ -64,6 +64,12 @@ def "test showcase: an image that is too big for its slot is refused" [] {
 def "test showcase: the port is passed only when given" [] {
     assert equal (port_args "") []
     assert equal (port_args "/dev/ttyACM0") ["--port" "/dev/ttyACM0"]
+}
+
+def "test showcase: cargo features are passed through, in any list format" [] {
+    assert equal (feature_args "") []
+    assert equal (feature_args "render-skia") ["--features" "render-skia"]
+    assert equal (feature_args "a b , c") ["--features" "a,b,c"]
 }
 
 def main [] { run-tests }

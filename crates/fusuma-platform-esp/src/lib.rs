@@ -6,7 +6,8 @@ mod surface;
 use std::time::{Duration, Instant};
 
 use fusuma::{App, Pointer};
-use fusuma_platform::{Backend, Hardware, Machine, Render};
+pub use fusuma_platform::Backend;
+use fusuma_platform::{Hardware, Machine, Render};
 use fusuma_render::Point;
 
 use hw::{Touch, TouchTracker};

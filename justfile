@@ -309,8 +309,8 @@ showcase-p4-build:
     nu scripts/showcase.nu build
 
 # Flash the showcase to the P4's ota_0 slot (the factory app stays); e.g. just showcase-p4-install /dev/ttyACM0
-showcase-p4-install port="":
-    nu scripts/showcase.nu install --port "{{ port }}"
+showcase-p4-install port="" features="":
+    nu scripts/showcase.nu install --port "{{ port }}" --features "{{ features }}"
 
 # Boot the P4's factory app again
 showcase-p4-restore port="":
