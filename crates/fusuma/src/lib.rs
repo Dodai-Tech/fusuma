@@ -5,12 +5,15 @@ mod anim;
 #[cfg(test)]
 mod damage;
 mod event;
+mod focus;
 mod layout;
 mod paint;
 mod theme;
 mod tree;
+mod widgets;
 
 pub use event::Pointer;
+pub use focus::Key;
 pub use theme::{
     ButtonState, ButtonStyle, ButtonVariant, Colors, MotionTimes, Radii, Round, Spacing, Surface,
     TextRole, TextSizes, Theme,

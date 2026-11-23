@@ -95,6 +95,10 @@ pub struct Theme {
     pub control_height: u32,
     /// Width of outlines, in pixels.
     pub border_width: u32,
+    /// Side of the box of a checkbox and the diameter of a radio button, in pixels.
+    pub indicator: u32,
+    /// Height of a progress bar, in pixels.
+    pub track_height: u32,
     /// Motion durations.
     pub motion: MotionTimes,
 }
@@ -211,6 +215,8 @@ impl Theme {
         },
         control_height: 44,
         border_width: 1,
+        indicator: 20,
+        track_height: 8,
         motion: MotionTimes {
             fast_ms: 100,
             normal_ms: 220,

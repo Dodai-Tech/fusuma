@@ -33,7 +33,7 @@ fn mix_border(a: Option<Color>, b: Option<Color>, t: Fx) -> Option<Color> {
 }
 
 /// The left and top of something `inner` big, centred in `outer`.
-fn centred(outer: Rect, inner: Size) -> Point {
+pub(crate) fn centred(outer: Rect, inner: Size) -> Point {
     let c = |o: u32, i: u32| (i64::from(o) - i64::from(i)) / 2;
     let clamp = |v: i64| v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     Point::new(
@@ -149,6 +149,10 @@ impl<const N: usize> Tree<N> {
                 Ok(())
             }
             Kind::Spacer => Ok(()),
+            Kind::Checkbox { .. }
+            | Kind::Radio { .. }
+            | Kind::ListItem { .. }
+            | Kind::Progress { .. } => self.paint_widget(i, r, theme),
             Kind::Label { text, role } => {
                 let style = theme.text_style(role);
                 let size = r.measure_text(text.as_str(), &style);
@@ -165,13 +169,14 @@ impl<const N: usize> Tree<N> {
                 }
                 let style = TextStyle::new(theme.text.body, look.text);
                 let at = centred(rect, r.measure_text(text.as_str(), &style));
-                Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))
+                Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
+                self.ring(i, r, theme, look.radius)
             }
         }
     }
 
     /// Runs `draw` limited to `rect`, and always puts the clip back.
-    fn in_clip<R: Renderer>(
+    pub(crate) fn in_clip<R: Renderer>(
         r: &mut R,
         rect: Rect,
         draw: impl FnOnce(&mut R) -> Result<(), R::Error>,

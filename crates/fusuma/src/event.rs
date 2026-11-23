@@ -3,7 +3,7 @@
 
 use fusuma_render::Point;
 
-use crate::tree::{Action, ActionKind, Flags, Kind, NodeId, Tree};
+use crate::tree::{Flags, NodeId, Tree};
 
 /// A pointer event: a finger or a mouse, in tree coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,7 +33,7 @@ impl<const N: usize> Tree<N> {
         let mut cur = Some(root);
         while let Some(i) = cur {
             let n = &self.nodes[i];
-            if matches!(n.kind, Kind::Button { .. }) && !n.disabled_eff && n.rect.contains(p) {
+            if n.kind.pressable() && !n.disabled_eff && n.rect.contains(p) {
                 found = Some(i);
             }
             cur = self.preorder_next(i, root);
@@ -67,29 +67,27 @@ impl<const N: usize> Tree<N> {
 
     /// What a widget does with an event; true when it took it and the event stops here.
     fn on_pointer(&mut self, i: usize, phase: Phase) -> bool {
-        match (&self.nodes[i].kind, phase) {
-            (Kind::Button { .. }, Phase::Down) => {
+        if !self.nodes[i].kind.pressable() {
+            return false;
+        }
+        match phase {
+            Phase::Down => {
                 if self.nodes[i].disabled_eff {
                     return false;
                 }
                 self.set_active(i, true);
                 true
             }
-            (Kind::Button { .. }, Phase::Up { inside }) => {
+            Phase::Up { inside } => {
                 if !self.nodes[i].active {
                     return false;
                 }
                 self.set_active(i, false);
                 if inside && !self.nodes[i].disabled_eff {
-                    let source = self.id_of(i);
-                    self.push_action(Action {
-                        source,
-                        kind: ActionKind::Clicked,
-                    });
+                    self.activate(i);
                 }
                 true
             }
-            _ => false,
         }
     }
 
@@ -119,6 +117,8 @@ impl<const N: usize> Tree<N> {
                 let h = self.hit(p);
                 self.set_hover(h);
                 if let Some(t) = h {
+                    // A touch or a click focuses without showing the ring; a key shows it.
+                    self.set_focus(Some(t), false);
                     self.captured = Some(self.id_of(t));
                     self.dispatch(t, Phase::Down);
                 }

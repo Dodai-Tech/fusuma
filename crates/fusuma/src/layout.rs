@@ -89,6 +89,11 @@ impl<const N: usize> Tree<N> {
                     if self.hovered == Some(id) {
                         self.hovered = None;
                     }
+                    // Nor can it keep the keyboard.
+                    if self.focus == Some(id) {
+                        self.focus = None;
+                        self.focus_visible = false;
+                    }
                 }
             }
             cur = self.preorder_next(i, root);
@@ -145,6 +150,10 @@ impl<const N: usize> Tree<N> {
                 )
             }
             Kind::Spacer => Size::new(0, 0),
+            Kind::Checkbox { .. }
+            | Kind::Radio { .. }
+            | Kind::ListItem { .. }
+            | Kind::Progress { .. } => self.measure_widget(i, renderer, theme),
             Kind::Stack(axis) => {
                 let (mut main, mut cross, mut count) = (0u32, 0u32, 0u32);
                 let mut c = n.first;

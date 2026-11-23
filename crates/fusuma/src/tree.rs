@@ -206,6 +206,66 @@ pub(crate) enum Kind {
         blend: Fx,
     },
     Spacer,
+    Checkbox {
+        text: SmallText,
+        checked: bool,
+    },
+    Radio {
+        text: SmallText,
+        checked: bool,
+    },
+    ListItem {
+        text: SmallText,
+        selected: bool,
+    },
+    /// Progress in thousandths, 0 to 1000.
+    Progress {
+        permille: u16,
+    },
+}
+
+impl Kind {
+    /// Whether the widget reacts to the pointer and the keyboard (it can be pressed and focused).
+    pub(crate) const fn pressable(&self) -> bool {
+        matches!(
+            self,
+            Self::Button { .. }
+                | Self::Checkbox { .. }
+                | Self::Radio { .. }
+                | Self::ListItem { .. }
+        )
+    }
+
+    pub(crate) const fn text(&self) -> Option<&SmallText> {
+        match self {
+            Self::Label { text, .. }
+            | Self::Button { text, .. }
+            | Self::Checkbox { text, .. }
+            | Self::Radio { text, .. }
+            | Self::ListItem { text, .. } => Some(text),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn text_mut(&mut self) -> Option<&mut SmallText> {
+        match self {
+            Self::Label { text, .. }
+            | Self::Button { text, .. }
+            | Self::Checkbox { text, .. }
+            | Self::Radio { text, .. }
+            | Self::ListItem { text, .. } => Some(text),
+            _ => None,
+        }
+    }
+
+    /// The on/off state of a checkbox, a radio button or a list item.
+    pub(crate) const fn flag_mut(&mut self) -> Option<&mut bool> {
+        match self {
+            Self::Checkbox { checked, .. } | Self::Radio { checked, .. } => Some(checked),
+            Self::ListItem { selected, .. } => Some(selected),
+            _ => None,
+        }
+    }
 }
 
 /// Which passes have work, as a small bit set.
@@ -286,8 +346,13 @@ impl Node {
 /// What a widget reports to the application.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionKind {
-    /// A button was pressed and released on itself.
+    /// A button was pressed and released on itself (or activated from the keyboard).
     Clicked,
+    /// A checkbox was switched by the user; carries the new state.
+    Toggled(bool),
+    /// A radio button or a list item was chosen by the user. It is not sent when the one already
+    /// chosen is activated again, nor for changes made with [`Tree::set_checked`].
+    Selected,
 }
 
 /// Something that happened in the tree, for the application to handle.
@@ -316,6 +381,10 @@ pub struct Tree<const N: usize> {
     /// The widget that gets the release of a press.
     pub(crate) captured: Option<NodeId>,
     pub(crate) hovered: Option<NodeId>,
+    /// The widget the keyboard acts on.
+    pub(crate) focus: Option<NodeId>,
+    /// Whether to draw the focus ring: after a key, not after a touch or a click.
+    pub(crate) focus_visible: bool,
     pub(crate) bounds: Option<Rect>,
     pub(crate) disabled_dirty: bool,
     /// The area that needs painting again: everything that changed, as one bounding rectangle.
@@ -343,6 +412,8 @@ impl<const N: usize> Tree<N> {
             pointer: None,
             captured: None,
             hovered: None,
+            focus: None,
+            focus_visible: false,
             bounds: None,
             disabled_dirty: false,
             damage: None,
@@ -540,6 +611,96 @@ impl<const N: usize> Tree<N> {
         )
     }
 
+    /// Adds a checkbox. Switching it by the user sends [`ActionKind::Toggled`].
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn checkbox(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        checked: bool,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Checkbox {
+                text: SmallText::new(text),
+                checked,
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Adds a radio button. The radio buttons that share a parent are one group: choosing one
+    /// clears the others, so put each group in its own container. Choosing sends
+    /// [`ActionKind::Selected`].
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn radio(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        checked: bool,
+    ) -> Result<NodeId, BuildError> {
+        let id = self.add(
+            parent,
+            Kind::Radio {
+                text: SmallText::new(text),
+                checked: false,
+            },
+            Style::DEFAULT,
+        )?;
+        if checked {
+            self.set_checked(id, true);
+        }
+        Ok(id)
+    }
+
+    /// Adds a row of a list that can be chosen from. The list items that share a parent are one
+    /// list with at most one chosen; choosing sends [`ActionKind::Selected`].
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn list_item(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        selected: bool,
+    ) -> Result<NodeId, BuildError> {
+        let id = self.add(
+            parent,
+            Kind::ListItem {
+                text: SmallText::new(text),
+                selected: false,
+            },
+            Style::DEFAULT,
+        )?;
+        if selected {
+            self.set_checked(id, true);
+        }
+        Ok(id)
+    }
+
+    /// Adds a progress bar, `permille` thousandths full (0 to 1000, more is 1000). It takes the width
+    /// its parent gives it: use [`CrossAlign::Stretch`] in a column or a [`Length::Fill`] width.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn progress_bar(
+        &mut self,
+        parent: Option<NodeId>,
+        permille: u16,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Progress {
+                permille: permille.min(1000),
+            },
+            Style::DEFAULT,
+        )
+    }
+
     /// Adds empty space, usually with a [`Length::Fill`] size.
     ///
     /// # Errors
@@ -578,6 +739,9 @@ impl<const N: usize> Tree<N> {
             }
             if self.hovered == Some(id) {
                 self.hovered = None;
+            }
+            if self.focus == Some(id) {
+                self.focus = None;
             }
             let gone = self.nodes[c].rect;
             self.add_damage(gone);
@@ -651,13 +815,13 @@ impl<const N: usize> Tree<N> {
         Some(self.nodes[self.slot(id)?].rect)
     }
 
-    /// The text of a label or a button.
+    /// The text of a label, a button, a checkbox, a radio button or a list item.
     #[must_use]
     pub fn text(&self, id: NodeId) -> Option<&str> {
-        match &self.nodes[self.slot(id)?].kind {
-            Kind::Label { text, .. } | Kind::Button { text, .. } => Some(text.as_str()),
-            _ => None,
-        }
+        self.nodes[self.slot(id)?]
+            .kind
+            .text()
+            .map(SmallText::as_str)
     }
 
     /// Whether the pointer is over `id`.
@@ -678,10 +842,11 @@ impl<const N: usize> Tree<N> {
         self.slot(id).is_some_and(|i| self.nodes[i].disabled_eff)
     }
 
-    /// Changes the text of a label or a button; the layout is redone.
+    /// Changes the text of a label, a button, a checkbox, a radio button or a list item; the layout is
+    /// redone.
     pub fn set_text(&mut self, id: NodeId, text: &str) {
         let Some(i) = self.slot(id) else { return };
-        if let Kind::Label { text: t, .. } | Kind::Button { text: t, .. } = &mut self.nodes[i].kind
+        if let Some(t) = self.nodes[i].kind.text_mut()
             && t.as_str() != SmallText::new(text).as_str()
         {
             t.set(text);
