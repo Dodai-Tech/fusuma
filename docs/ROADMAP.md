@@ -13,9 +13,10 @@ works and is tested.
 * **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
   one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
   `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
-* **Microcontrollers keep the integer renderer** (`fusuma-render-embedded`). `vello_cpu` builds for
-  the ESP32-S3 (Xtensa) and the C6 (RISC-V) with `libm` and no `std`; whether it runs well there is
-  an experiment (see below), not a promise.
+* **Microcontrollers keep the integer renderer** (`fusuma-render-embedded`). Measured on the ESP32-S3
+  (240 MHz, 8 MB PSRAM): `vello_cpu` builds with `libm` and no `std` and draws the same picture, but is
+  about 4 times slower than the integer renderer (261 ms against 61 ms for a full-screen launcher frame)
+  and needs 1.4 MB. Details in `hibari-os`, `crates/hibari-os-s3-bench/RESULT.md`. The P4 is untested.
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
@@ -56,7 +57,7 @@ works and is tested.
 - [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the toolkit's GPU-first choice
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
 - [ ] Benchmark more: a complex scene (many paths, large blurs), the GPU drawing to a surface with no read-back, and a shader chain with read-back versus as a texture
-- [ ] Experiment: run `vello_cpu` on the S3 (it builds with `libm`) and measure frame time and memory
+- [x] Experiment: `vello_cpu` on the S3 measured, see Decisions: about 4x slower and 1.4 MB, so the ESP keeps the integer renderer. Open: the P4 (400 MHz, vector extension) and text
 - [ ] Text: Vello glyph runs with a Rust text stack replace the bitmap fonts on the CPU and GPU backends
 
 ## Phase 2: animation (out of the box)
@@ -142,7 +143,7 @@ ESP the tree is a fixed arena with the widgets as a closed enum, text stored inl
 desktop-sized trees use the same code with a bigger `N`.
 
 - [x] `fusuma` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
-- [ ] Show it on the ESP32-S3 board (a toolkit screen in `hibari-os`), measure frame time and memory
+- [ ] Show it on the ESP32-S3 board with the integer renderer (a toolkit screen in `hibari-os`), measure frame time and memory; the integer renderer itself needs speeding up (61 ms for a full-screen frame)
 - [ ] Layout and paint only the changed subtrees (the flags are there; today the whole tree is redone when anything asks)
 - [ ] A compose pass: offsets for scrolling without a layout
 - [ ] Focus and keyboard, text input with an input method; accessibility with `AccessKit`
