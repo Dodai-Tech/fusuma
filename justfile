@@ -297,3 +297,21 @@ setup-remotes:
 clean:
     cargo clean
     rm -rf dist
+
+# ── Showcase (examples/showcase, examples/showcase-p4) ────────────────────────
+
+# Render every showcase page to PNG on the host (docs/screenshots)
+showcase-shots:
+    FUSUMA_SHOWCASE_PNG=docs/screenshots cargo test -p fusuma-showcase
+
+# Build the ESP32-P4 showcase firmware (needs the ESP toolchain)
+showcase-p4-build:
+    nu scripts/showcase.nu build
+
+# Flash the showcase to the P4's ota_0 slot (the factory app stays); e.g. just showcase-p4-install /dev/ttyACM0
+showcase-p4-install port="":
+    nu scripts/showcase.nu install --port "{{ port }}"
+
+# Boot the P4's factory app again
+showcase-p4-restore port="":
+    nu scripts/showcase.nu restore --port "{{ port }}"

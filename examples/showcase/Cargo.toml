@@ -1,0 +1,20 @@
+[package]
+name = "fusuma-showcase"
+description = "A Fusuma components showcase: one app, drawn on a host window-less renderer or flashed on a board"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+fusuma.workspace = true
+fusuma-render.workspace = true
+
+[dev-dependencies]
+fusuma-render-vello-cpu = { workspace = true, features = ["png"] }
+
+[lints]
+workspace = true

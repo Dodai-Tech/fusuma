@@ -926,6 +926,15 @@ impl<const N: usize> Tree<N> {
         (!clipped.is_empty()).then_some(clipped)
     }
 
+    /// Asks for everything to be painted again, for a change the tree cannot see: another theme.
+    pub fn invalidate(&mut self) {
+        let Some(root) = self.root.map(usize::from) else {
+            return;
+        };
+        self.add_damage(self.nodes[root].rect);
+        self.request(root, Flags::PAINT);
+    }
+
     /// Whether anything needs a new frame: a redraw, a layout or a running animation.
     #[must_use]
     pub fn needs_frame(&self) -> bool {

@@ -122,7 +122,6 @@ impl<const N: usize> Tree<N> {
             cur = self.preorder_next(i, root);
         }
         self.clear_flag(Flags::LAYOUT);
-        self.request(root, Flags::PAINT);
         // Things may have moved under the pointer.
         if let Some(p) = self.pointer {
             let h = self.hit(p);

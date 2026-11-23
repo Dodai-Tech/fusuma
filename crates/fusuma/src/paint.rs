@@ -413,4 +413,16 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn invalidating_repaints_everything_and_an_empty_tree_ignores_it() {
+        let (mut t, ..) = app();
+        let mut s = screen();
+        frame(&mut t, &mut s);
+        assert!(!t.needs_frame() && t.take_damage().is_none());
+        t.invalidate();
+        assert!(t.needs_frame());
+        assert_eq!(t.take_damage(), t.rect(t.root().unwrap()));
+        Tree::<2>::new().invalidate();
+    }
 }

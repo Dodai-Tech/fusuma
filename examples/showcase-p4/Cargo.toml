@@ -1,0 +1,41 @@
+[package]
+name = "fusuma-showcase-p4"
+description = "The Fusuma components showcase on the Waveshare ESP32-P4 7-inch touch board (1024x600), drawn with vello_cpu"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Sorin Albu-Irimies"]
+publish = false
+
+# Not a member of the Fusuma workspace: it needs the ESP toolchain (see ../../scripts/showcase.nu).
+[workspace]
+
+[[bin]]
+name = "fusuma-showcase-p4"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+[profile.dev]
+debug = true
+opt-level = "s"
+
+[dependencies]
+fusuma-showcase = { path = "../showcase" }
+fusuma = { path = "../../crates/fusuma" }
+fusuma-render = { path = "../../crates/fusuma-render" }
+fusuma-render-vello-cpu = { path = "../../crates/fusuma-render-vello-cpu", default-features = false, features = ["std"] }
+esp-idf-svc = { version = "0.53", features = ["experimental"] }
+log = "0.4"
+anyhow = "1"
+
+[build-dependencies]
+embuild = "0.33"
+
+# Local C shim: MIPI-DSI panel (EK79007), backlight and GT911 touch.
+[[package.metadata.esp-idf-sys.extra_components]]
+component_dirs = ["components"]
+bindings_header = "components/wt_display/include/wt_display.h"
+bindings_module = "wt_display"
