@@ -1,8 +1,12 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(not(test), no_std)]
 
+extern crate alloc;
+
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::convert::Infallible;
-use std::cell::RefCell;
-use std::sync::Arc;
 
 use embedded_graphics::{
     Pixel,

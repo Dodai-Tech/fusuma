@@ -41,8 +41,12 @@ def main [--skip-fmt, --skip-test, --skip-nu] {
         cargo clippy --workspace --all-targets --all-features -- -D warnings
     }) and $ok
     # Users may turn the default features off: the library alone must still build clean.
+    # The Vello backends are `no_std` without their default `std` feature, and then need `libm`.
     $ok = (run_step "cargo clippy --lib --no-default-features -- -D warnings" {
-        cargo clippy --lib --no-default-features -- -D warnings
+        cargo clippy --lib --no-default-features --workspace --exclude fusuma-render-vello --exclude fusuma-render-vello-common --exclude fusuma-render-vello-cpu -- -D warnings
+    }) and $ok
+    $ok = (run_step "vello backends without std, with libm" {
+        cargo clippy --lib --no-default-features --features libm -p fusuma-render-vello-common -p fusuma-render-vello-cpu -- -D warnings
     }) and $ok
     if not $skip_test {
         $ok = (run_step "cargo test --workspace" { cargo test --workspace --all-features }) and $ok

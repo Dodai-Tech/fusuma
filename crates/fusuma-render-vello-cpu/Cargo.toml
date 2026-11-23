@@ -12,6 +12,14 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = ["std", "png"]
+# The standard library. Without it the crate is `no_std` with `alloc`, and needs `libm`.
+std = ["fusuma-render-vello-common/std", "vello_cpu/std"]
+libm = ["fusuma-render-vello-common/libm", "vello_cpu/libm"]
+# `png()`: the surface as a PNG file.
+png = ["std", "vello_cpu/png"]
+
 [dependencies]
 fusuma-render.workspace = true
 fusuma-render-vello-common.workspace = true

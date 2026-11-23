@@ -29,9 +29,9 @@ vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wg
 pollster = "1"
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "vulkan", "metal", "dx12", "gles"] }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
-fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0" }
-vello_common = { version = "0.4", default-features = false, features = ["std"] }
-vello_cpu = { version = "0.4", default-features = false, features = ["std", "u8_pipeline", "png"] }
+fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
+vello_common = { version = "0.4", default-features = false }
+vello_cpu = { version = "0.4", default-features = false, features = ["u8_pipeline"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

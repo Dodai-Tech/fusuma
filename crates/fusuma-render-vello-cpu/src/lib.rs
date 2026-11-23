@@ -1,8 +1,13 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(not(test), no_std)]
+
+#[cfg(feature = "png")]
+extern crate alloc;
 
 use fusuma_render::Renderer;
+pub use fusuma_render_vello_common::Scene;
 use fusuma_render_vello_common::{
-    Backend, MAX_SIDE, PaintType, Scene,
+    Backend, MAX_SIDE, PaintType,
     kurbo::{Affine, BezPath, Rect as KRect},
     peniko::Fill,
     stroke,
@@ -115,20 +120,24 @@ pub fn new(width: u32, height: u32) -> Option<VelloCpu> {
 }
 
 /// The PNG encoder failed.
+#[cfg(feature = "png")]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct EncodeError(pub String);
+pub struct EncodeError(pub alloc::string::String);
 
 /// The surface as a PNG file.
 ///
 /// # Errors
 /// [`EncodeError`] with the encoder's message.
-pub fn png(renderer: &VelloCpu) -> Result<Vec<u8>, EncodeError> {
+#[cfg(feature = "png")]
+pub fn png(renderer: &VelloCpu) -> Result<alloc::vec::Vec<u8>, EncodeError> {
     renderer.with_scene(|scene| {
         let (w, h) = scene.size();
         let rgba = scene.pixels().to_vec();
         let mut pixmap = Pixmap::new(w, h);
         pixmap.data_as_u8_slice_mut().copy_from_slice(&rgba);
-        pixmap.into_png().map_err(|e| EncodeError(e.to_string()))
+        pixmap
+            .into_png()
+            .map_err(|e| EncodeError(alloc::string::ToString::to_string(&e)))
     })
 }
 

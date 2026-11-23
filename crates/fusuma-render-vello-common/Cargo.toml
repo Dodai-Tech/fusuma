@@ -12,6 +12,13 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = ["std"]
+# The standard library. Without it the crate is `no_std` with `alloc`, and needs `libm` for the
+# floating-point maths (an ESP32-S3 or similar).
+std = ["vello_common/std"]
+libm = ["vello_common/libm"]
+
 [dependencies]
 fusuma-render.workspace = true
 fusuma-render-embedded.workspace = true
