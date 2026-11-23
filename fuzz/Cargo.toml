@@ -11,6 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 fusuma-render = { path = "../crates/fusuma-render" }
 fusuma-anim = { path = "../crates/fusuma-anim" }
+fusuma-core = { path = "../crates/fusuma-core" }
 fusuma-render-embedded = { path = "../crates/fusuma-render-embedded" }
 fusuma-render-vello-cpu = { path = "../crates/fusuma-render-vello-cpu" }
 
@@ -34,6 +35,13 @@ bench = false
 [[bin]]
 name = "anim"
 path = "fuzz_targets/anim.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ui"
+path = "fuzz_targets/ui.rs"
 test = false
 doc = false
 bench = false

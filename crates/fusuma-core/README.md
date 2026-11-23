@@ -1,0 +1,64 @@
+# fusuma-core
+
+[![Crates.io](https://img.shields.io/crates/v/fusuma-core.svg)](https://crates.io/crates/fusuma-core)
+[![docs.rs](https://img.shields.io/docsrs/fusuma-core)](https://docs.rs/fusuma-core)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
+
+The core of the [Fusuma](https://github.com/Dodai-Tech/fusuma) toolkit, designed for the smallest
+target first: `no_std`, no allocator, no floating point. If it runs on an ESP32 it runs everywhere.
+
+**A retained tree.** `Tree<N>` is a fixed-size arena of at most `N` nodes (rows, columns, labels,
+buttons, spacers). Nodes keep their state between frames: text (inline, up to 32 bytes), hover,
+pressed, an animation. The application changes them through methods (`set_text`, `set_enabled`,
+`remove`, ...), each marking what needs redoing, with the request travelling up to the root so a pass
+can tell from the top whether anything below needs it.
+
+**Passes** run on that tree, in this order each frame:
+
+| Pass | Call | What it does |
+|---|---|---|
+| events | `pointer(event)` | the press target keeps the release; clicks are queued as actions; an unhandled event goes up to the parent |
+| update | `update(renderer, theme, bounds)` | disabled state flows down, layout is redone if asked for, hover is refreshed against the new layout |
+| animation | `advance(theme, dt_ms)` | steps only the widgets that asked for frames; says whether to keep drawing |
+| paint | `paint(renderer, theme)` | draws through `fusuma_render::Renderer` on any backend |
+
+**Layout** is flex-like, in whole pixels: sizes are `Content`, `Fixed` or `Fill(weight)`, containers
+have padding, a gap and a cross-axis alignment. Text is measured through the renderer, so the same
+tree lays out the same on every backend.
+
+**Theme** is plain tokens: colours as semantic roles, spacing, radii, text sizes and motion times,
+with a default dark and light theme. Widgets read only from the theme, so a design system can
+replace it.
+
+```rust
+use fusuma_core::{ButtonVariant, CrossAlign, Pointer, Style, TextRole, Theme, Tree};
+use fusuma_render::{Point, Rect, Renderer};
+use fusuma_render_embedded::{Embedded, Frame};
+
+let theme = Theme::DARK;
+let mut tree = Tree::<8>::new();
+let root = tree
+    .column(None, Style::new().padding(theme.spacing.md).gap(theme.spacing.sm).align(CrossAlign::Center))
+    .unwrap();
+tree.label(Some(root), "Hello", TextRole::Title).unwrap();
+let ok = tree.button(Some(root), "OK", ButtonVariant::Primary).unwrap();
+
+let mut screen = Embedded::new(Frame::new(160, 120, vec![0u16; 160 * 120]).unwrap());
+let bounds = Rect::new(0, 0, 160, 120);
+
+// One frame: update, then draw what changed.
+tree.update(&screen, &theme, bounds);
+if tree.needs_frame() {
+    screen.clear(theme.colors.background).unwrap();
+    tree.paint(&mut screen, &theme).unwrap();
+}
+
+// A tap: down, up, then leave (a lifted finger hovers over nothing).
+let r = tree.rect(ok).unwrap();
+let tap = Point::new(r.x + 5, r.y + 5);
+for e in [Pointer::Down(tap), Pointer::Up(tap), Pointer::Leave] {
+    tree.pointer(e);
+}
+let action = tree.pop_action().unwrap();
+assert_eq!(action.source, ok);
+```

@@ -204,10 +204,19 @@ name = "fusuma-anim"
 version = "0.2.0"
 
 [[package]]
+name = "fusuma-core"
+version = "0.2.0"
+dependencies = [
+ "fusuma-anim",
+ "fusuma-render",
+]
+
+[[package]]
 name = "fusuma-fuzz"
 version = "0.0.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-core",
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-cpu",

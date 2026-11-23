@@ -23,9 +23,10 @@ no usable GPU. The crates below are the parts it is built from.
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
 | [`fusuma-render-vello`](crates/fusuma-render-vello) | anti-aliased GPU drawing on `vello_gpu` and `wgpu` | no | working |
 | [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
+| [`fusuma-core`](crates/fusuma-core) | retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer | yes | working, first slice |
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, in fixed point | yes | working |
 | `fusuma-shaders` | shader contract and engine | no | planned |
-| `fusuma-core`, `fusuma-widgets`, `fusuma-text` | widget tree, layout, widgets, text | partly | planned |
+| `fusuma-widgets`, `fusuma-text` | more widgets (toggle, slider, list, text field), real text and fonts | partly | planned |
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
 | `fusuma` | the facade: one dependency, the backend chosen by target | no | planned |
 
@@ -60,9 +61,10 @@ crates/fusuma-render-embedded      integer drawing for embedded-graphics targets
 crates/fusuma-render-vello-common  the Renderer on a Vello scene, shared by the CPU and GPU backends
 crates/fusuma-render-vello-cpu     anti-aliased drawing on vello_cpu
 crates/fusuma-render-vello         anti-aliased drawing on vello_gpu (run the bench: cargo run --release -p fusuma-render-vello --example bench)
+crates/fusuma-core                 retained widget tree, layout, theme, events, animation and paint passes
 crates/fusuma-anim                 easing, tweens, keyframes, springs, fling decay
 docs/ROADMAP.md                    what is done and what comes next
-fuzz/                              cargo-fuzz targets (geometry, draw, anim)
+fuzz/                              cargo-fuzz targets (geometry, draw, anim, ui)
 scripts/                           Nushell scripts used by the justfile and CI
 ```
 

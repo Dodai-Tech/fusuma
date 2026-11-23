@@ -105,6 +105,23 @@ Plan:
 - [ ] **Animation overlap:** `fusuma-anim` (fixed point, `no_std`, runs without an FPU) and `dodai-core::motion` (`f32`, `std`, richer: reactions, glide, mixins) do the same job. Keep both for now, because Hibari on a microcontroller cannot take the `f32`/`std` one; map the theme's motion tokens (duration, easing, spring response) onto `fusuma-anim`; consider moving shared curves and presets to one source later, and do not add features to both
 
 ## Phase 4: the toolkit
+
+Design, from reading Masonry (Xilem's widget layer; ideas only, our own names and API): a **retained
+tree** that keeps widget state, **passes** over it (events, update, animation, paint), **invalidation
+flags** per node that travel to the root, **pointer capture** and **bubbling**, **actions** queued out
+of the tree, and an optional view layer on top (as in Xilem) that rebuilds into the tree. For the
+ESP the tree is a fixed arena with the widgets as a closed enum, text stored inline and no heap;
+desktop-sized trees use the same code with a bigger `N`.
+
+- [x] `fusuma-core` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
+- [ ] Show it on the ESP32-S3 board (a toolkit screen in `hibari-os`), measure frame time and memory
+- [ ] Layout and paint only the changed subtrees (the flags are there; today the whole tree is redone when anything asks)
+- [ ] A compose pass: offsets for scrolling without a layout
+- [ ] Focus and keyboard, text input with an input method; accessibility with `AccessKit`
+- [ ] More widgets: toggle, slider, progress, list with scrolling and fling (using `fusuma-anim`), dialog, tabs, text field; overlays and z-order
+- [ ] A `Widget` trait for custom widgets behind an `alloc` feature (the built-in set stays a closed enum for the no-allocator case)
+- [ ] A view layer: a lightweight description built from application state and diffed into the retained tree, with messages routed back
+- [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
 - [ ] `fusuma-core`: retained widget tree, layout on `taffy`, events, focus, theming from design tokens; a semantic tree so that other front ends (terminal, accessibility) can read it
 - [ ] `fusuma-widgets`: label, button, toggle, slider, list with scrolling, dialog, tabs, text field
 - [ ] Text input with an input method, and accessibility with `AccessKit`

@@ -4,6 +4,7 @@ members = [
     "crates/fusuma-render",
     "crates/fusuma-render-embedded",
     "crates/fusuma-anim",
+    "crates/fusuma-core",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-vello-cpu",
     "crates/fusuma-render-vello",
@@ -27,6 +28,7 @@ fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "
 vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wgpu_default", "full_image_support"] }
 pollster = "1"
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "vulkan", "metal", "dx12", "gles"] }
+fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0" }
 vello_common = { version = "0.4", default-features = false, features = ["std"] }
 vello_cpu = { version = "0.4", default-features = false, features = ["std", "u8_pipeline", "png"] }

@@ -438,6 +438,16 @@ name = "fusuma-anim"
 version = "0.2.0"
 
 [[package]]
+name = "fusuma-core"
+version = "0.2.0"
+dependencies = [
+ "fusuma-anim",
+ "fusuma-render",
+ "fusuma-render-embedded",
+ "fusuma-render-vello-cpu",
+]
+
+[[package]]
 name = "fusuma-render"
 version = "0.2.0"
 

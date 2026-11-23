@@ -1,0 +1,925 @@
+//! The retained widget tree: a fixed-size arena whose nodes keep their own state between frames.
+
+use fusuma_anim::Fx;
+use fusuma_render::{Point, Rect, Size};
+
+use crate::theme::{ButtonVariant, Round, Surface, TextRole};
+
+/// How many bytes of text a label or a button keeps.
+pub const TEXT_CAP: usize = 32;
+
+/// A short piece of text stored inline, so a widget owns its text and needs no allocator. Longer
+/// text is cut at a character boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SmallText {
+    len: u8,
+    buf: [u8; TEXT_CAP],
+}
+
+impl SmallText {
+    /// No text.
+    pub const EMPTY: Self = Self {
+        len: 0,
+        buf: [0; TEXT_CAP],
+    };
+
+    /// Text from `s`, cut to [`TEXT_CAP`] bytes.
+    #[must_use]
+    pub fn new(s: &str) -> Self {
+        let mut t = Self::EMPTY;
+        t.set(s);
+        t
+    }
+
+    /// Replaces the text, cutting it at a character boundary if it is too long.
+    pub fn set(&mut self, s: &str) {
+        let mut end = s.len().min(TEXT_CAP);
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        self.buf[..end].copy_from_slice(&s.as_bytes()[..end]);
+        self.len = end as u8;
+    }
+
+    /// The text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.buf[..usize::from(self.len)]).unwrap_or("")
+    }
+}
+
+/// A handle to a node. It goes stale when the node is removed: its slot may be reused, but the old
+/// handle then finds nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NodeId {
+    pub(crate) index: u16,
+    pub(crate) generation: u8,
+}
+
+/// The direction a container lays its children out in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Axis {
+    /// Top to bottom.
+    #[default]
+    Column,
+    /// Left to right.
+    Row,
+}
+
+/// How much room a node takes along one axis.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Length {
+    /// What its content needs.
+    #[default]
+    Content,
+    /// Exactly this many pixels.
+    Fixed(u32),
+    /// A share of the room that is left, in proportion to the weight (0 counts as 1).
+    Fill(u16),
+}
+
+/// Where a container puts a child across its own direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum CrossAlign {
+    /// At the start.
+    #[default]
+    Start,
+    /// In the middle.
+    Center,
+    /// At the end.
+    End,
+    /// Stretched to the full width (or height); a fixed size stays as it is.
+    Stretch,
+}
+
+/// How a node is sized and drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Style {
+    /// Width.
+    pub width: Length,
+    /// Height.
+    pub height: Length,
+    /// Space between the edge and the content, on all sides.
+    pub padding: u32,
+    /// Space between children.
+    pub gap: u32,
+    /// Where children sit across the container's direction.
+    pub align: CrossAlign,
+    /// The container's background.
+    pub background: Surface,
+    /// The container's corner rounding.
+    pub round: Round,
+}
+
+impl Style {
+    /// Content-sized, no padding, transparent.
+    pub const DEFAULT: Self = Self {
+        width: Length::Content,
+        height: Length::Content,
+        padding: 0,
+        gap: 0,
+        align: CrossAlign::Start,
+        background: Surface::None,
+        round: Round::None,
+    };
+
+    /// The default style.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self::DEFAULT
+    }
+
+    /// With a width.
+    #[must_use]
+    pub const fn width(self, width: Length) -> Self {
+        Self { width, ..self }
+    }
+
+    /// With a height.
+    #[must_use]
+    pub const fn height(self, height: Length) -> Self {
+        Self { height, ..self }
+    }
+
+    /// With padding.
+    #[must_use]
+    pub const fn padding(self, padding: u32) -> Self {
+        Self { padding, ..self }
+    }
+
+    /// With a gap between children.
+    #[must_use]
+    pub const fn gap(self, gap: u32) -> Self {
+        Self { gap, ..self }
+    }
+
+    /// With a cross-axis alignment.
+    #[must_use]
+    pub const fn align(self, align: CrossAlign) -> Self {
+        Self { align, ..self }
+    }
+
+    /// With a background.
+    #[must_use]
+    pub const fn background(self, background: Surface) -> Self {
+        Self { background, ..self }
+    }
+
+    /// With rounded corners.
+    #[must_use]
+    pub const fn round(self, round: Round) -> Self {
+        Self { round, ..self }
+    }
+}
+
+impl Default for Style {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Why a node could not be added.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuildError {
+    /// The tree has no free slot.
+    Full,
+    /// The parent handle is stale or was never valid.
+    NoSuchParent,
+    /// The parent is a label, a button or a spacer: only rows and columns have children.
+    NotContainer,
+    /// The tree already has a root.
+    SecondRoot,
+}
+
+/// What a node is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Stack(Axis),
+    Label {
+        text: SmallText,
+        role: TextRole,
+    },
+    Button {
+        text: SmallText,
+        variant: ButtonVariant,
+        /// 0 at rest, 1 fully hovered or pressed; moves over time in the animation pass.
+        blend: Fx,
+    },
+    Spacer,
+}
+
+/// Which passes have work, as a small bit set.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Flags(u8);
+
+impl Flags {
+    pub(crate) const LAYOUT: u8 = 1;
+    pub(crate) const PAINT: u8 = 2;
+    pub(crate) const ANIM: u8 = 4;
+
+    pub(crate) const fn has(self, f: u8) -> bool {
+        self.0 & f != 0
+    }
+
+    pub(crate) fn insert(&mut self, f: u8) {
+        self.0 |= f;
+    }
+
+    pub(crate) fn remove(&mut self, f: u8) {
+        self.0 &= !f;
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Node {
+    pub(crate) alive: bool,
+    pub(crate) generation: u8,
+    pub(crate) kind: Kind,
+    pub(crate) style: Style,
+    pub(crate) parent: Option<u16>,
+    pub(crate) first: Option<u16>,
+    pub(crate) last: Option<u16>,
+    pub(crate) next: Option<u16>,
+    pub(crate) prev: Option<u16>,
+    /// The size the node wants, from the layout pass.
+    pub(crate) size: Size,
+    /// Where the node is, in tree coordinates, from the layout pass.
+    pub(crate) rect: Rect,
+    /// Passes this node asked for.
+    pub(crate) own: Flags,
+    /// Passes this node or one of its descendants asked for.
+    pub(crate) sub: Flags,
+    pub(crate) hovered: bool,
+    pub(crate) active: bool,
+    pub(crate) disabled: bool,
+    /// Disabled itself or through an ancestor.
+    pub(crate) disabled_eff: bool,
+}
+
+impl Node {
+    const EMPTY: Self = Self {
+        alive: false,
+        generation: 0,
+        kind: Kind::Spacer,
+        style: Style::DEFAULT,
+        parent: None,
+        first: None,
+        last: None,
+        next: None,
+        prev: None,
+        size: Size { w: 0, h: 0 },
+        rect: Rect {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+        },
+        own: Flags(0),
+        sub: Flags(0),
+        hovered: false,
+        active: false,
+        disabled: false,
+        disabled_eff: false,
+    };
+}
+
+/// What a widget reports to the application.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActionKind {
+    /// A button was pressed and released on itself.
+    Clicked,
+}
+
+/// Something that happened in the tree, for the application to handle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Action {
+    /// The widget it came from.
+    pub source: NodeId,
+    /// What happened.
+    pub kind: ActionKind,
+}
+
+const ACTION_QUEUE: usize = 8;
+
+/// A retained widget tree of at most `N` nodes.
+///
+/// Nodes keep their state (text, hover, pressed, animation) between frames, and the application
+/// changes them through methods that mark what needs redoing. The passes that follow are
+/// [`pointer`](Self::pointer) (events), [`update`](Self::update) (state and layout),
+/// [`advance`](Self::advance) (animation) and [`paint`](Self::paint).
+#[derive(Clone, Debug)]
+pub struct Tree<const N: usize> {
+    pub(crate) nodes: [Node; N],
+    pub(crate) root: Option<u16>,
+    /// The last place the pointer was, if it is over the tree.
+    pub(crate) pointer: Option<Point>,
+    /// The widget that gets the release of a press.
+    pub(crate) captured: Option<NodeId>,
+    pub(crate) hovered: Option<NodeId>,
+    pub(crate) bounds: Option<Rect>,
+    pub(crate) disabled_dirty: bool,
+    actions: [Option<Action>; ACTION_QUEUE],
+    action_head: usize,
+    action_len: usize,
+    dropped_actions: u32,
+}
+
+impl<const N: usize> Default for Tree<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> Tree<N> {
+    /// An empty tree.
+    #[must_use]
+    pub fn new() -> Self {
+        const { assert!(N <= u16::MAX as usize, "a tree holds at most 65535 nodes") };
+        Self {
+            nodes: [Node::EMPTY; N],
+            root: None,
+            pointer: None,
+            captured: None,
+            hovered: None,
+            bounds: None,
+            disabled_dirty: false,
+            actions: [None; ACTION_QUEUE],
+            action_head: 0,
+            action_len: 0,
+            dropped_actions: 0,
+        }
+    }
+
+    /// Removes every node.
+    pub fn clear(&mut self) {
+        *self = Self::new();
+    }
+
+    /// The index of `id` if it still names a node.
+    pub(crate) fn slot(&self, id: NodeId) -> Option<usize> {
+        let i = usize::from(id.index);
+        let n = self.nodes.get(i)?;
+        (n.alive && n.generation == id.generation).then_some(i)
+    }
+
+    pub(crate) fn id_of(&self, i: usize) -> NodeId {
+        NodeId {
+            index: i as u16,
+            generation: self.nodes[i].generation,
+        }
+    }
+
+    /// The root, if there is one.
+    #[must_use]
+    pub fn root(&self) -> Option<NodeId> {
+        self.root.map(|i| self.id_of(usize::from(i)))
+    }
+
+    /// How many nodes there are.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.nodes.iter().filter(|n| n.alive).count()
+    }
+
+    /// Whether the tree has no nodes.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
+    }
+
+    /// Marks that a pass has work for node `i`, and for every ancestor, so a pass can tell from the
+    /// root whether anything below needs it.
+    pub(crate) fn request(&mut self, i: usize, flag: u8) {
+        self.nodes[i].own.insert(flag);
+        let mut cur = Some(i);
+        while let Some(c) = cur {
+            self.nodes[c].sub.insert(flag);
+            cur = self.nodes[c].parent.map(usize::from);
+        }
+    }
+
+    pub(crate) fn clear_flag(&mut self, flag: u8) {
+        for n in &mut self.nodes {
+            n.own.remove(flag);
+            n.sub.remove(flag);
+        }
+    }
+
+    /// Adds a node under `parent` (or as the root when `parent` is `None`).
+    fn add(
+        &mut self,
+        parent: Option<NodeId>,
+        kind: Kind,
+        style: Style,
+    ) -> Result<NodeId, BuildError> {
+        let parent_slot = match parent {
+            None => {
+                if self.root.is_some() {
+                    return Err(BuildError::SecondRoot);
+                }
+                None
+            }
+            Some(p) => {
+                let i = self.slot(p).ok_or(BuildError::NoSuchParent)?;
+                if !matches!(self.nodes[i].kind, Kind::Stack(_)) {
+                    return Err(BuildError::NotContainer);
+                }
+                Some(i)
+            }
+        };
+        let free = self
+            .nodes
+            .iter()
+            .position(|n| !n.alive)
+            .ok_or(BuildError::Full)?;
+        let generation = self.nodes[free].generation;
+        let prev = parent_slot.and_then(|p| self.nodes[p].last);
+        self.nodes[free] = Node {
+            alive: true,
+            generation,
+            kind,
+            style,
+            parent: parent_slot.map(|p| p as u16),
+            prev,
+            disabled_eff: parent_slot.is_some_and(|p| self.nodes[p].disabled_eff),
+            ..Node::EMPTY
+        };
+        if let Some(p) = parent_slot {
+            match prev {
+                Some(l) => self.nodes[usize::from(l)].next = Some(free as u16),
+                None => self.nodes[p].first = Some(free as u16),
+            }
+            self.nodes[p].last = Some(free as u16);
+        } else {
+            self.root = Some(free as u16);
+        }
+        self.request(free, Flags::LAYOUT | Flags::PAINT);
+        Ok(self.id_of(free))
+    }
+
+    /// Adds a column.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn column(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
+        self.add(parent, Kind::Stack(Axis::Column), style)
+    }
+
+    /// Adds a row.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn row(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
+        self.add(parent, Kind::Stack(Axis::Row), style)
+    }
+
+    /// Adds a label.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn label(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        role: TextRole,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Label {
+                text: SmallText::new(text),
+                role,
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Adds a button.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn button(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        variant: ButtonVariant,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Button {
+                text: SmallText::new(text),
+                variant,
+                blend: Fx::ZERO,
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Adds empty space, usually with a [`Length::Fill`] size.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn spacer(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
+        self.add(parent, Kind::Spacer, style)
+    }
+
+    /// Removes a node and everything below it. Handles to them go stale. Returns false for a stale
+    /// handle.
+    pub fn remove(&mut self, id: NodeId) -> bool {
+        let Some(top) = self.slot(id) else {
+            return false;
+        };
+        // Unlink from the parent first; the subtree keeps its own links while it is walked.
+        let (parent, prev, next) = {
+            let n = &self.nodes[top];
+            (n.parent.map(usize::from), n.prev, n.next)
+        };
+        if let Some(p) = prev {
+            self.nodes[usize::from(p)].next = next;
+        } else if let Some(p) = parent {
+            self.nodes[p].first = next;
+        }
+        if let Some(nx) = next {
+            self.nodes[usize::from(nx)].prev = prev;
+        } else if let Some(p) = parent {
+            self.nodes[p].last = prev;
+        }
+        let mut cur = Some(top);
+        while let Some(c) = cur {
+            let following = self.preorder_next(c, top);
+            let id = self.id_of(c);
+            if self.captured == Some(id) {
+                self.captured = None;
+            }
+            if self.hovered == Some(id) {
+                self.hovered = None;
+            }
+            let n = &mut self.nodes[c];
+            n.alive = false;
+            n.generation = n.generation.wrapping_add(1);
+            n.own = Flags::default();
+            n.sub = Flags::default();
+            cur = following;
+        }
+        match parent {
+            Some(p) => self.request(p, Flags::LAYOUT | Flags::PAINT),
+            None => {
+                self.root = None;
+                self.bounds = None;
+            }
+        }
+        true
+    }
+
+    /// The next node in depth-first order after `i`, staying inside the subtree of `top`.
+    pub(crate) fn preorder_next(&self, i: usize, top: usize) -> Option<usize> {
+        if let Some(c) = self.nodes[i].first {
+            return Some(usize::from(c));
+        }
+        let mut cur = i;
+        while cur != top {
+            if let Some(n) = self.nodes[cur].next {
+                return Some(usize::from(n));
+            }
+            cur = usize::from(self.nodes[cur].parent?);
+        }
+        None
+    }
+
+    pub(crate) fn leftmost_leaf(&self, mut i: usize) -> usize {
+        while let Some(c) = self.nodes[i].first {
+            i = usize::from(c);
+        }
+        i
+    }
+
+    /// The next node with all of its descendants already visited, after `i`.
+    pub(crate) fn post_next(&self, i: usize) -> Option<usize> {
+        match self.nodes[i].next {
+            Some(n) => Some(self.leftmost_leaf(usize::from(n))),
+            None => self.nodes[i].parent.map(usize::from),
+        }
+    }
+
+    /// The children of `id`, first to last.
+    pub fn children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        let mut next = self.slot(id).and_then(|i| self.nodes[i].first);
+        core::iter::from_fn(move || {
+            let i = usize::from(next?);
+            next = self.nodes[i].next;
+            Some(self.id_of(i))
+        })
+    }
+
+    /// The parent of `id`.
+    #[must_use]
+    pub fn parent(&self, id: NodeId) -> Option<NodeId> {
+        let p = self.nodes[self.slot(id)?].parent?;
+        Some(self.id_of(usize::from(p)))
+    }
+
+    /// Where `id` is, as of the last layout pass.
+    #[must_use]
+    pub fn rect(&self, id: NodeId) -> Option<Rect> {
+        Some(self.nodes[self.slot(id)?].rect)
+    }
+
+    /// The text of a label or a button.
+    #[must_use]
+    pub fn text(&self, id: NodeId) -> Option<&str> {
+        match &self.nodes[self.slot(id)?].kind {
+            Kind::Label { text, .. } | Kind::Button { text, .. } => Some(text.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Whether the pointer is over `id`.
+    #[must_use]
+    pub fn is_hovered(&self, id: NodeId) -> bool {
+        self.slot(id).is_some_and(|i| self.nodes[i].hovered)
+    }
+
+    /// Whether `id` is being pressed.
+    #[must_use]
+    pub fn is_active(&self, id: NodeId) -> bool {
+        self.slot(id).is_some_and(|i| self.nodes[i].active)
+    }
+
+    /// Whether `id` cannot be used, itself or through an ancestor (as of the last update pass).
+    #[must_use]
+    pub fn is_disabled(&self, id: NodeId) -> bool {
+        self.slot(id).is_some_and(|i| self.nodes[i].disabled_eff)
+    }
+
+    /// Changes the text of a label or a button; the layout is redone.
+    pub fn set_text(&mut self, id: NodeId, text: &str) {
+        let Some(i) = self.slot(id) else { return };
+        if let Kind::Label { text: t, .. } | Kind::Button { text: t, .. } = &mut self.nodes[i].kind
+            && t.as_str() != SmallText::new(text).as_str()
+        {
+            t.set(text);
+            self.request(i, Flags::LAYOUT | Flags::PAINT);
+        }
+    }
+
+    /// Changes the size and look of a node; the layout is redone.
+    pub fn set_style(&mut self, id: NodeId, style: Style) {
+        let Some(i) = self.slot(id) else { return };
+        if self.nodes[i].style != style {
+            self.nodes[i].style = style;
+            self.request(i, Flags::LAYOUT | Flags::PAINT);
+        }
+    }
+
+    /// Changes the look of a button.
+    pub fn set_variant(&mut self, id: NodeId, variant: ButtonVariant) {
+        let Some(i) = self.slot(id) else { return };
+        if let Kind::Button { variant: v, .. } = &mut self.nodes[i].kind
+            && *v != variant
+        {
+            *v = variant;
+            self.request(i, Flags::PAINT);
+        }
+    }
+
+    /// Enables or disables a node and everything below it.
+    pub fn set_enabled(&mut self, id: NodeId, enabled: bool) {
+        let Some(i) = self.slot(id) else { return };
+        if self.nodes[i].disabled == enabled {
+            self.nodes[i].disabled = !enabled;
+            self.disabled_dirty = true;
+            self.request(i, Flags::PAINT);
+        }
+    }
+
+    pub(crate) fn push_action(&mut self, action: Action) {
+        if self.action_len == ACTION_QUEUE {
+            self.dropped_actions = self.dropped_actions.saturating_add(1);
+            return;
+        }
+        let at = (self.action_head + self.action_len) % ACTION_QUEUE;
+        self.actions[at] = Some(action);
+        self.action_len += 1;
+    }
+
+    /// The next action the widgets produced, oldest first.
+    pub fn pop_action(&mut self) -> Option<Action> {
+        if self.action_len == 0 {
+            return None;
+        }
+        let a = self.actions[self.action_head].take();
+        self.action_head = (self.action_head + 1) % ACTION_QUEUE;
+        self.action_len -= 1;
+        a
+    }
+
+    /// How many actions were lost because the queue (8 deep) was full.
+    #[must_use]
+    pub const fn dropped_actions(&self) -> u32 {
+        self.dropped_actions
+    }
+
+    /// Whether anything needs a new frame: a redraw, a layout or a running animation.
+    #[must_use]
+    pub fn needs_frame(&self) -> bool {
+        self.root.is_some_and(|r| {
+            let f = self.nodes[usize::from(r)].sub;
+            f.has(Flags::LAYOUT) || f.has(Flags::PAINT) || f.has(Flags::ANIM)
+        }) || self.disabled_dirty
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn small_text_cuts_on_a_character_boundary_and_keeps_short_text() {
+        assert_eq!(SmallText::new("hello").as_str(), "hello");
+        assert_eq!(SmallText::EMPTY.as_str(), "");
+        let long = "é".repeat(40);
+        let t = SmallText::new(&long);
+        assert!(t.as_str().len() <= TEXT_CAP && t.as_str().chars().all(|c| c == 'é'));
+        let mut t = SmallText::new("abc");
+        t.set("");
+        assert_eq!(t.as_str(), "");
+        assert_eq!(SmallText::new(&"x".repeat(100)).as_str().len(), TEXT_CAP);
+    }
+
+    #[test]
+    fn building_rules_are_enforced() {
+        let mut t = Tree::<3>::new();
+        assert!(t.is_empty() && t.root().is_none());
+        assert_eq!(t.len(), 0);
+        let root = t.column(None, Style::new()).unwrap();
+        assert_eq!(t.column(None, Style::new()), Err(BuildError::SecondRoot));
+        let label = t.label(Some(root), "a", TextRole::Body).unwrap();
+        assert_eq!(
+            t.label(Some(label), "b", TextRole::Body),
+            Err(BuildError::NotContainer)
+        );
+        t.button(Some(root), "ok", ButtonVariant::Primary).unwrap();
+        assert_eq!(t.spacer(Some(root), Style::new()), Err(BuildError::Full));
+        assert_eq!(t.len(), 3);
+        let stale = NodeId {
+            index: 2,
+            generation: 9,
+        };
+        assert_eq!(
+            t.spacer(Some(stale), Style::new()),
+            Err(BuildError::NoSuchParent)
+        );
+        let outside = NodeId {
+            index: 500,
+            generation: 0,
+        };
+        assert!(t.rect(outside).is_none() && t.text(outside).is_none() && !t.is_hovered(outside));
+    }
+
+    #[test]
+    fn children_come_in_order_and_know_their_parent() {
+        let mut t = Tree::<8>::new();
+        let root = t.row(None, Style::new()).unwrap();
+        let a = t.label(Some(root), "a", TextRole::Body).unwrap();
+        let b = t.label(Some(root), "b", TextRole::Body).unwrap();
+        let c = t.label(Some(root), "c", TextRole::Body).unwrap();
+        assert!(t.children(root).eq([a, b, c]));
+        assert_eq!(t.parent(b), Some(root));
+        assert_eq!(t.parent(root), None);
+        assert_eq!(t.children(a).count(), 0);
+        assert_eq!(t.text(b), Some("b"));
+        assert_eq!(t.text(root), None);
+    }
+
+    #[test]
+    fn removing_a_subtree_unlinks_it_and_stales_its_handles() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let a = t.label(Some(root), "a", TextRole::Body).unwrap();
+        let group = t.row(Some(root), Style::new()).unwrap();
+        let g1 = t.label(Some(group), "g1", TextRole::Body).unwrap();
+        let g2 = t
+            .button(Some(group), "g2", ButtonVariant::Secondary)
+            .unwrap();
+        let z = t.label(Some(root), "z", TextRole::Body).unwrap();
+        assert_eq!(t.len(), 6);
+        assert!(t.remove(group));
+        assert_eq!(t.len(), 3);
+        assert!(t.children(root).eq([a, z]), "siblings are joined up");
+        for gone in [group, g1, g2] {
+            assert!(t.rect(gone).is_none() && !t.remove(gone));
+        }
+        // The freed slots are reused, and the old handles stay stale.
+        let again = t.label(Some(root), "new", TextRole::Body).unwrap();
+        assert!(t.rect(group).is_none() && t.rect(g1).is_none());
+        assert_eq!(t.text(again), Some("new"));
+        assert!(t.children(root).eq([a, z, again]));
+        // Removing the first and the last child.
+        assert!(t.remove(a) && t.remove(again));
+        assert!(t.children(root).eq([z]));
+        assert!(t.remove(root));
+        assert!(t.is_empty());
+        assert!(
+            t.column(None, Style::new()).is_ok(),
+            "a new root can follow"
+        );
+    }
+
+    #[test]
+    fn requests_travel_up_so_the_root_knows() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let row = t.row(Some(root), Style::new()).unwrap();
+        let leaf = t.label(Some(row), "x", TextRole::Body).unwrap();
+        t.clear_flag(Flags::LAYOUT | Flags::PAINT | Flags::ANIM);
+        assert!(!t.needs_frame());
+        t.set_text(leaf, "y");
+        let (r, m, l) = (
+            t.slot(root).unwrap(),
+            t.slot(row).unwrap(),
+            t.slot(leaf).unwrap(),
+        );
+        for i in [r, m, l] {
+            assert!(
+                t.nodes[i].sub.has(Flags::LAYOUT) && t.nodes[i].sub.has(Flags::PAINT),
+                "node {i}"
+            );
+        }
+        assert!(t.nodes[l].own.has(Flags::LAYOUT) && !t.nodes[r].own.has(Flags::LAYOUT));
+        assert!(t.needs_frame());
+    }
+
+    #[test]
+    fn setters_change_things_only_when_they_change_and_ignore_stale_handles() {
+        let mut t = Tree::<4>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let b = t.button(Some(root), "go", ButtonVariant::Primary).unwrap();
+        t.clear_flag(Flags::LAYOUT | Flags::PAINT);
+        t.set_text(b, "go");
+        t.set_style(b, Style::new());
+        t.set_variant(b, ButtonVariant::Primary);
+        assert!(!t.needs_frame(), "setting the same value is a no-op");
+        t.set_variant(b, ButtonVariant::Secondary);
+        assert!(t.needs_frame());
+        t.set_text(root, "not text");
+        assert_eq!(t.text(root), None);
+        t.remove(b);
+        t.set_text(b, "x");
+        t.set_enabled(b, false);
+        t.set_style(b, Style::new().padding(3));
+        t.set_variant(b, ButtonVariant::Primary);
+    }
+
+    #[test]
+    fn the_action_queue_is_first_in_first_out_and_bounded() {
+        let mut t = Tree::<2>::new();
+        let id = t.button(None, "x", ButtonVariant::Primary).unwrap();
+        assert_eq!(t.pop_action(), None);
+        for _ in 0..12 {
+            t.push_action(Action {
+                source: id,
+                kind: ActionKind::Clicked,
+            });
+        }
+        assert_eq!(t.dropped_actions(), 4);
+        let mut n = 0;
+        while t.pop_action().is_some() {
+            n += 1;
+        }
+        assert_eq!(n, 8);
+        t.push_action(Action {
+            source: id,
+            kind: ActionKind::Clicked,
+        });
+        assert!(t.pop_action().is_some() && t.pop_action().is_none());
+    }
+
+    #[test]
+    fn depth_first_walks_visit_every_node_once_in_the_right_order() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let a = t.row(Some(root), Style::new()).unwrap();
+        let a1 = t.label(Some(a), "a1", TextRole::Body).unwrap();
+        let a2 = t.label(Some(a), "a2", TextRole::Body).unwrap();
+        let b = t.label(Some(root), "b", TextRole::Body).unwrap();
+        let top = t.slot(root).unwrap();
+        let mut pre = [usize::MAX; 8];
+        let (mut n, mut cur) = (0, Some(top));
+        while let Some(c) = cur {
+            pre[n] = c;
+            n += 1;
+            cur = t.preorder_next(c, top);
+        }
+        let order = [root, a, a1, a2, b].map(|id| t.slot(id).unwrap());
+        assert_eq!(&pre[..n], &order);
+        // Post-order: children before parents, ending at the root.
+        let mut post = [usize::MAX; 8];
+        let (mut n, mut cur) = (0, Some(t.leftmost_leaf(top)));
+        while let Some(c) = cur {
+            post[n] = c;
+            n += 1;
+            cur = if c == top { None } else { t.post_next(c) };
+        }
+        let want = [a1, a2, a, b, root].map(|id| t.slot(id).unwrap());
+        assert_eq!(&post[..n], &want);
+    }
+}

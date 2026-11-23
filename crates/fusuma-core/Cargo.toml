@@ -1,0 +1,24 @@
+[package]
+name = "fusuma-core"
+description = "Fusuma toolkit core: a fixed-size widget tree, layout, theme tokens, pointer input and painting through the Renderer trait (no_std, no allocator)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "toolkit", "layout", "embedded", "no-std"]
+categories = ["gui", "embedded", "no-std"]
+
+[dependencies]
+fusuma-anim.workspace = true
+fusuma-render.workspace = true
+
+[dev-dependencies]
+fusuma-render-embedded.workspace = true
+fusuma-render-vello-cpu.workspace = true
+
+[lints]
+workspace = true
