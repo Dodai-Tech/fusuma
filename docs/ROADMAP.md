@@ -19,9 +19,11 @@ works and is tested.
   launcher frame takes 267 ms there (the integer renderer took 61 ms), so a good UI on a microcontroller needs
   partial redraws, and a demo that repaints only the touched card felt richer and more responsive on the real
   screen. The integer renderer `fusuma-render-embedded` is removed once nothing depends on it (see Phase 1b);
-  0.2.0 stays on crates.io, unmaintained. Consequence: chips without PSRAM (ESP32-C6, the original ESP32) are
-  not supported for rendering, except a very small display, which is unmeasured. A headless C6 uses the planned
-  terminal front end instead.
+  0.2.0 stays on crates.io, unmaintained. Consequence: on the ESP32-C6 (no PSRAM, no FPU) `vello_cpu` was measured: it runs up to about
+  240x240 on a 320 KB heap, but 10 to 20 times slower than the integer renderer, and it leaves only 54 to 63 KB
+  of RAM, so a C6 with a screen would have to give up the radio. This is the case where dropping the integer
+  renderer costs most; the decision stands, but the C6 is where it should be revisited. A headless C6 uses the
+  planned terminal front end.
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
