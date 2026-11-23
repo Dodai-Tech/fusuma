@@ -1,6 +1,6 @@
 //! The surface of the renderer that was chosen, behind one type: draw the app, then show what changed.
 
-use fusuma::App;
+use fusuma::{App, Shell};
 use fusuma::platform::Backend;
 use fusuma::render::Rect;
 use fusuma::renderers::embedded::{Embedded, Frame};
@@ -33,17 +33,17 @@ impl Surface {
         }
     }
 
-    /// Has the app draw what changed; the rectangle it redrew, if any.
-    pub fn draw<A: App>(&mut self, app: &mut A) -> Option<Rect> {
+    /// One frame of the shell: time passes, then the app draws what changed; the rectangle it redrew, if any.
+    pub fn frame<A: App>(&mut self, shell: &mut Shell<A>, now_ms: u64) -> Option<Rect> {
         let drawn = match self {
-            Self::Integer(r) => app.frame(r).map_err(|e| format!("{e:?}")),
+            Self::Integer(r) => shell.frame(now_ms, r).map_err(|e| format!("{e:?}")),
             #[cfg(feature = "skia")]
-            Self::Skia(r) => app.frame(r).map_err(|e| format!("{e:?}")),
+            Self::Skia(r) => shell.frame(now_ms, r).map_err(|e| format!("{e:?}")),
             #[cfg(feature = "vello-cpu")]
             Self::Vello(r) => {
                 // The scene forgets what it drew before; this frame redraws only the damaged part.
                 r.with_scene(fusuma::renderers::vello_cpu::Scene::reset);
-                app.frame(r).map_err(|e| format!("{e:?}"))
+                shell.frame(now_ms, r).map_err(|e| format!("{e:?}"))
             }
         };
         match drawn {

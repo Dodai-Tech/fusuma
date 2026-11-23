@@ -13,6 +13,13 @@ pub trait App {
     /// A key.
     fn key(&mut self, key: Key);
 
+    /// The drawing area changed to `width` x `height` pixels, or the display's scale did (`scale_percent`: 100
+    /// is one pixel per logical pixel). A window being resized or a phone being rotated calls this; a fixed
+    /// screen never does, so the default does nothing.
+    fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
+        let _ = (width, height, scale_percent);
+    }
+
     /// Time passes by `dt_ms`. Returns whether the app wants a frame.
     fn tick(&mut self, dt_ms: u32) -> bool;
 

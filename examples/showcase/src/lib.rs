@@ -609,6 +609,14 @@ impl App for Showcase {
         Self::tick(self, dt_ms)
     }
 
+    fn resized(&mut self, width: u32, height: u32, _scale_percent: u32) {
+        let bounds = Rect::new(0, 0, width, height);
+        if bounds != self.bounds {
+            self.bounds = bounds;
+            self.tree.invalidate();
+        }
+    }
+
     fn frame<R: Renderer>(&mut self, renderer: &mut R) -> Result<Option<Rect>, R::Error> {
         Self::frame(self, renderer)
     }
@@ -914,28 +922,27 @@ mod tests {
             Some("Chosen: Glacier")
         );
     }
-}
 
-#[cfg(test)]
-mod probe {
-    use super::*;
-    use fusuma::render::Probe;
     #[test]
-    fn probe_rows() {
-        let mut s = Showcase::new(1024, 600);
-        let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
-        s.frame(&mut r).unwrap();
-        let rc = s.rect_of(s.sidebar_item(Page::List).unwrap()).unwrap();
-        let p = fusuma::render::Point::new(rc.x + 5, rc.y + 5);
-        s.pointer(Pointer::Down(p));
-        s.pointer(Pointer::Up(p));
-        s.frame(&mut r).unwrap();
-        let bg = s.theme().colors.surface;
-        for y in (400..520).step_by(4) {
-            let n = (300..640).filter(|&x| r.pixel(x, y) != Some(bg)).count();
-            std::eprintln!("ROW y={y} lit={n}");
-        }
-        let list = s.widgets().list.unwrap();
-        std::eprintln!("LISTRECT {:?}", s.rect_of(list));
+    fn a_resize_lays_the_app_out_again_in_the_new_size() {
+        let (mut s, mut r) = app();
+        let before = s.rect_of(s.theme_button().unwrap()).unwrap();
+        App::resized(&mut s, 800, 480, 100);
+        let mut small = fusuma::renderers::vello_cpu::new(800, 480).unwrap();
+        let region = s.frame(&mut small).unwrap().unwrap();
+        assert_eq!(
+            region,
+            Rect::new(0, 0, 800, 480),
+            "everything is drawn again"
+        );
+        let after = s.rect_of(s.theme_button().unwrap()).unwrap();
+        assert!(
+            after.right() <= 800 && after.right() < before.right(),
+            "the header button moved in"
+        );
+        // The same size again is nothing to do.
+        App::resized(&mut s, 800, 480, 200);
+        assert_eq!(s.frame(&mut small).unwrap(), None);
+        let _ = &mut r;
     }
 }

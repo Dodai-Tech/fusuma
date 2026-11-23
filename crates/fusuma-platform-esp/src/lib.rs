@@ -5,12 +5,10 @@ mod surface;
 
 use std::time::{Duration, Instant};
 
-use fusuma::{App, Pointer};
+use fusuma::{App, Input, Shell, TouchTracker};
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
 use fusuma::platform::{Hardware, Machine, Render};
-use fusuma::render::Point;
 
-use hw::{Touch, TouchTracker};
 use surface::Surface;
 
 /// The backends linked into this program: the integer one always, the others by cargo feature.
@@ -124,42 +122,34 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
     // nothing else writes to it.
     let screen = unsafe { std::slice::from_raw_parts_mut(fb, hw::WIDTH * hw::HEIGHT) };
 
-    let mut app = make(w, h);
-    let mut touch = TouchTracker::default();
-    let mut last = Instant::now();
+    let mut shell = Shell::new(make(w, h));
+    let mut touch = TouchTracker::new();
+    let started_at = Instant::now();
     let mut report = Instant::now();
-    let (mut frames, mut busy) = (0u32, Duration::ZERO);
 
     loop {
-        let at = |x: u16, y: u16| Point::new(i32::from(x), i32::from(y));
-        match touch.poll() {
-            Some(Touch::Down { x, y }) => app.pointer(Pointer::Down(at(x, y))),
-            Some(Touch::Move { x, y }) => app.pointer(Pointer::Move(at(x, y))),
-            Some(Touch::Up { x, y }) => {
-                app.pointer(Pointer::Up(at(x, y)));
-                app.pointer(Pointer::Leave);
-            }
-            None => {}
+        for event in touch.step(hw::touch_sample()).into_iter().flatten() {
+            shell.input(Input::Pointer(event));
         }
-        let now = Instant::now();
-        let dt = u32::try_from(now.duration_since(last).as_millis()).unwrap_or(u32::MAX);
-        last = now;
-        app.tick(dt);
-
-        let started = Instant::now();
-        if let Some(region) = surface.draw(&mut app) {
+        let now = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let begun = Instant::now();
+        if let Some(region) = surface.frame(&mut shell, now) {
             surface.present(region, screen);
             hw::flush_rows(
                 region.y.max(0) as u32,
                 region.bottom().clamp(0, hw::HEIGHT as i32) as u32,
             );
-            frames += 1;
-            busy += started.elapsed();
+            shell
+                .stats
+                .record(u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX));
         }
         if report.elapsed() > Duration::from_secs(10) {
             report = Instant::now();
-            let average = busy.as_millis().checked_div(u128::from(frames)).unwrap_or(0);
-            log::info!("alive: {frames} frames, {average} ms each on average");
+            log::info!(
+                "alive: {} frames, {} ms each on average",
+                shell.stats.frames,
+                shell.stats.average_ms()
+            );
         }
         std::thread::sleep(Duration::from_millis(8));
     }

@@ -186,6 +186,7 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] More widgets: multi-line text view, text input, dialog, tabs, menu, toast
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [x] `fusuma` is a facade crate (`fusuma-ui` is the toolkit): `renderer-*` features link backends, `toml` reads settings, `fusuma-platform` chooses
+- [x] `fusuma::Shell`, `Input`, `TouchTracker`, `Clock`, `wheel_pixels` and `App::resized` in `fusuma-ui`: the frame step and input handling every platform shares; a CI rule keeps widgets and renderers out of `fusuma-platform-*`
 - [ ] Platform picked by target automatically (`fusuma-platform-desktop`, `-mobile`; the ESP one is a separate firmware-side crate)
 - [ ] A gesture recogniser (tap, long press, swipe, drag with `fusuma-anim`): Hibari OS has one in `hibari-hal` that moves here, since a desktop and a phone need it too
 - [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository

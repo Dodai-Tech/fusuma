@@ -34,64 +34,11 @@ pub fn set_backlight(percent: i32) {
     unsafe { ffi::wt_display_backlight(percent) }
 }
 
-/// A finger event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Touch {
-    Down { x: u16, y: u16 },
-    Move { x: u16, y: u16 },
-    Up { x: u16, y: u16 },
-}
-
-/// Turns the polled "is a finger down, where" state of the GT911 into down / move / up events.
-#[derive(Debug, Default)]
-pub struct TouchTracker {
-    down: bool,
-    last: (u16, u16),
-}
-
-impl TouchTracker {
-    pub fn poll(&mut self) -> Option<Touch> {
-        let (mut x, mut y) = (0u16, 0u16);
-        // SAFETY: out-pointers are valid for the call.
-        let pressed = unsafe { ffi::wt_touch_read(&mut x, &mut y) };
-        self.step(pressed.then_some((x, y)))
-    }
-
-    /// The pure part of [`poll`]: feed the sampled finger position (None = no finger).
-    pub fn step(&mut self, sample: Option<(u16, u16)>) -> Option<Touch> {
-        match (sample, self.down) {
-            (Some((x, y)), false) => {
-                self.down = true;
-                self.last = (x, y);
-                Some(Touch::Down { x, y })
-            }
-            (Some((x, y)), true) => {
-                self.last = (x, y);
-                Some(Touch::Move { x, y })
-            }
-            (None, true) => {
-                self.down = false;
-                Some(Touch::Up {
-                    x: self.last.0,
-                    y: self.last.1,
-                })
-            }
-            (None, false) => None,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_tap_is_down_then_up_at_the_last_position() {
-        let mut t = TouchTracker::default();
-        assert_eq!(t.step(None), None);
-        assert_eq!(t.step(Some((10, 20))), Some(Touch::Down { x: 10, y: 20 }));
-        assert_eq!(t.step(Some((12, 22))), Some(Touch::Move { x: 12, y: 22 }));
-        assert_eq!(t.step(None), Some(Touch::Up { x: 12, y: 22 }));
-        assert_eq!(t.step(None), None);
-    }
+/// Samples the GT911: where the finger is, or `None` when there is none. Turning samples into pointer events
+/// is `fusuma::TouchTracker`, shared with every platform.
+pub(crate) fn touch_sample() -> Option<fusuma::render::Point> {
+    let (mut x, mut y) = (0u16, 0u16);
+    // SAFETY: out-pointers are valid for the call.
+    let pressed = unsafe { ffi::wt_touch_read(&mut x, &mut y) };
+    pressed.then(|| fusuma::render::Point::new(i32::from(x), i32::from(y)))
 }

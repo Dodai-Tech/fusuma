@@ -25,3 +25,10 @@ that directory in its `package.metadata.esp-idf-sys.extra_components`, see `exam
 
 A choice is predicted from the memory the chip reports; allocation failure inside a renderer cannot be caught,
 so the check has to be right before the surface is made.
+
+## What this crate does not contain
+
+Components, layout, theme, focus, scrolling, the frame clock and the turning of touch samples into pointer events
+are in `fusuma-ui` (`Shell`, `TouchTracker`, `Input`), shared by every platform. This crate has only what is
+specific to a board: the DSI display and the GT911 (`hw.rs`), converting the renderer's pixels to RGB565, and the
+loop that ties them together. CI fails if a `fusuma-platform-*` crate builds a widget tree or implements a renderer.
