@@ -76,33 +76,33 @@ works and is tested.
 - [ ] `Capabilities`: `effects` and `shaders` flags next to `alpha` and `antialiasing`
 - [ ] `Effects` extension trait (feature-gated, unstable): gradients (linear, radial, sweep), drop shadow, blur, blurred rounded rectangle, opacity and blend layers, masks. First on `vello_cpu` (it has filter layers and blurs), then `vello_gpu`; the integer backend does not implement it and widgets fall back to a plain fill
 - [ ] Shader contract: `ShaderSource` (WGSL text or a named prebuilt kernel), uniforms as bytes, a `draw_shader` call on GPU backends, one conformance shader
-- [ ] `fusuma-shaders`: the engine of `dodai-ui-shaders` (GPU compute kernels from rust-gpu as embedded WGSL, plus the CPU path from the same Rust source), render to a texture on the host's `wgpu` device so there is no read-back; raw WGSL for custom shaders. Decide with `dodai-ui` where the line between engine and looks is
+- [ ] `fusuma-shaders`: the engine of `dodai-shaders` (GPU compute kernels from rust-gpu as embedded WGSL, plus the CPU path from the same Rust source), render to a texture on the host's `wgpu` device so there is no read-back; raw WGSL for custom shaders. Decide with `dodai-ui` where the line between engine and looks is
 - [ ] Shader widgets: a `ShaderView`, backdrop blur, animated backgrounds, transitions
-- [ ] MSRV: `dodai-ui-shaders` needs Rust 1.97 and Fusuma is at 1.90; keep shaders behind a feature or raise the MSRV
+- [ ] MSRV: `dodai-shaders` needs Rust 1.97 and Fusuma is at 1.90; keep shaders behind a feature or raise the MSRV
 - [ ] Optimization pass with numbers: no read-back, skip invisible shaders, render small and scale, one frame clock, pipeline warm-up
 
 ## Theming: the Dodai look must be easy to apply
 
 Fusuma ships a plain default theme (light and dark) and a theme interface that every widget reads;
 design systems plug in from outside, as with iced's per-widget styles. Fusuma never imports
-`dodai-ui`; `dodai-ui-fusuma` maps the Dodai themes onto the interface.
+`dodai-ui` (the design-system repository); `dodai-fusuma` maps the Dodai themes onto the interface.
 
-What `dodai-ui-core` looks like (read before designing the interface):
+What `dodai-core` looks like (read before designing the interface):
 * A `Theme` is a palette of semantic colour roles (surfaces, borders, text, brand, status tones) plus
   typography, spacing, shape (corner radii, a shape system), effects, motion, density and a panel
   border. It is `f32` and `std`.
 * Components resolve to token structs through `Theme` methods (`ButtonTokens`, `KitStyle`, ...), and
-  a `ComponentSpec` (derived with `TokenSpec`) describes them; `dodai-ui-gen` writes the per-toolkit
+  a `ComponentSpec` (derived with `TokenSpec`) describes them; `dodai-gen` writes the per-toolkit
   glue from that spec. A Fusuma target for the generator is the way to keep the adapters in step.
-* `dodai-ui-core` already has a motion module: easing, springs, decay, rubber band, page snap,
+* `dodai-core` already has a motion module: easing, springs, decay, rubber band, page snap,
   tweens, an animator, entry effects and per-personality reactions, all `f32`.
 
 Plan:
-- [ ] Read `dodai-ui-core`'s token model and the `dodai-ui-slint` and `dodai-ui-iced` adapters; shape the Fusuma theme interface so the Dodai themes map onto it without loss (per-widget tokens and states, shape system, motion, effects)
+- [ ] Read `dodai-core`'s token model and the `dodai-slint` and `dodai-iced` adapters; shape the Fusuma theme interface so the Dodai themes map onto it without loss (per-widget tokens and states, shape system, motion, effects)
 - [ ] `fusuma-core`: a `Theme` trait and a default light and dark theme (colours, spacing, radii, text sizes, motion timings), and widgets that read only from it
-- [ ] `dodai-ui-fusuma` in the `dodai-ui` repository: Dodai themes as a Fusuma theme, generated from the component spec where possible (a Fusuma target for `dodai-ui-gen`), plus Dodai-only widgets
+- [ ] `dodai-fusuma` in the `dodai-ui` repository: Dodai themes as a Fusuma theme, generated from the component spec where possible (a Fusuma target for `dodai-gen`), plus Dodai-only widgets
 - [ ] Theme switching at run time, and density scaling
-- [ ] **Animation overlap:** `fusuma-anim` (fixed point, `no_std`, runs without an FPU) and `dodai-ui-core::motion` (`f32`, `std`, richer: reactions, glide, mixins) do the same job. Keep both for now, because Hibari on a microcontroller cannot take the `f32`/`std` one; map the theme's motion tokens (duration, easing, spring response) onto `fusuma-anim`; consider moving shared curves and presets to one source later, and do not add features to both
+- [ ] **Animation overlap:** `fusuma-anim` (fixed point, `no_std`, runs without an FPU) and `dodai-core::motion` (`f32`, `std`, richer: reactions, glide, mixins) do the same job. Keep both for now, because Hibari on a microcontroller cannot take the `f32`/`std` one; map the theme's motion tokens (duration, easing, spring response) onto `fusuma-anim`; consider moving shared curves and presets to one source later, and do not add features to both
 
 ## Phase 4: the toolkit
 - [ ] `fusuma-core`: retained widget tree, layout on `taffy`, events, focus, theming from design tokens; a semantic tree so that other front ends (terminal, accessibility) can read it
@@ -110,7 +110,7 @@ Plan:
 - [ ] Text input with an input method, and accessibility with `AccessKit`
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [ ] `fusuma` facade and run-time backend choice (GPU first, CPU fallback)
-- [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-ui-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
+- [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
 
 ## Phase 5: more platforms
 - [ ] `fusuma-platform-android` and `-ios`: native windows and touch, no web wrapper
