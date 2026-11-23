@@ -8,8 +8,8 @@
 use core::fmt::{self, Write};
 
 use fusuma::{
-    ActionKind, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Round, Style, Surface,
-    TextRole, Theme, Tree,
+    ActionKind, App, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Round, Style,
+    Surface, TextRole, Theme, Tree,
 };
 use fusuma_render::{Rect, Renderer};
 
@@ -541,6 +541,24 @@ impl Showcase {
         result?;
         restored?;
         Ok(Some(region))
+    }
+}
+
+impl App for Showcase {
+    fn pointer(&mut self, event: Pointer) {
+        Self::pointer(self, event);
+    }
+
+    fn key(&mut self, key: Key) {
+        Self::key(self, key);
+    }
+
+    fn tick(&mut self, dt_ms: u32) -> bool {
+        Self::tick(self, dt_ms)
+    }
+
+    fn frame<R: Renderer>(&mut self, renderer: &mut R) -> Result<Option<Rect>, R::Error> {
+        Self::frame(self, renderer)
     }
 }
 

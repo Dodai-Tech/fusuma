@@ -29,6 +29,8 @@ renderer crates stay separate, because each is useful alone.
 | [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
 | [`fusuma`](crates/fusuma) | **the toolkit:** retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer. Apps depend on this one crate | yes | first slice, not published |
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, an animator and drag helpers, in fixed point | yes | working (the animator and drag helpers are not in the published 0.2.0) |
+| [`fusuma-platform`](crates/fusuma-platform) | **the out-of-the-box renderer choice:** which backend a machine draws with, from its screen and hardware (RAM, PSRAM, FPU, GPU), with overrides, a memory check and a reason for the answer | yes | working |
+| `fusuma-platform-esp` | runs an `App` on an ESP-IDF board (display, touch, frame loop) and picks the renderer itself; today the Waveshare ESP32-P4 7" ([`crates/fusuma-platform-esp`](crates/fusuma-platform-esp)) | no | working |
 | `fusuma-shaders` | shader contract and engine | no | planned |
 | `fusuma-text` | real text: fonts, shaping, line breaking (on Parley) for desktop and phone; the bitmap fonts stay for microcontrollers | no | planned |
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |

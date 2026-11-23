@@ -24,18 +24,16 @@ opt-level = "s"
 
 [dependencies]
 fusuma-showcase = { path = "../showcase" }
-fusuma = { path = "../../crates/fusuma" }
-fusuma-render = { path = "../../crates/fusuma-render" }
-fusuma-render-vello-cpu = { path = "../../crates/fusuma-render-vello-cpu", default-features = false, features = ["std"] }
-esp-idf-svc = { version = "0.53", features = ["experimental"] }
-log = "0.4"
+fusuma-platform-esp = { path = "../../crates/fusuma-platform-esp" }
 anyhow = "1"
+# Direct, so the build script sees esp-idf-sys and passes the linker arguments on.
+esp-idf-svc = { version = "0.53", features = ["experimental"] }
 
 [build-dependencies]
 embuild = "0.33"
 
-# Local C shim: MIPI-DSI panel (EK79007), backlight and GT911 touch.
+# The platform crate's C shim: MIPI-DSI panel (EK79007), backlight and GT911 touch.
 [[package.metadata.esp-idf-sys.extra_components]]
-component_dirs = ["components"]
-bindings_header = "components/wt_display/include/wt_display.h"
+component_dirs = ["../../crates/fusuma-platform-esp/components"]
+bindings_header = "../../crates/fusuma-platform-esp/components/wt_display/include/wt_display.h"
 bindings_module = "wt_display"

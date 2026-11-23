@@ -2,6 +2,7 @@
 #![cfg_attr(not(test), no_std)]
 
 mod anim;
+mod app;
 #[cfg(test)]
 mod damage;
 mod event;
@@ -12,6 +13,7 @@ mod theme;
 mod tree;
 mod widgets;
 
+pub use app::App;
 pub use event::Pointer;
 pub use focus::Key;
 pub use theme::{

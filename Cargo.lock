@@ -466,6 +466,10 @@ name = "fusuma-anim"
 version = "0.2.0"
 
 [[package]]
+name = "fusuma-platform"
+version = "0.2.0"
+
+[[package]]
 name = "fusuma-render"
 version = "0.2.0"
 

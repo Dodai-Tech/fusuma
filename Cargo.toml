@@ -5,6 +5,7 @@ members = [
     "crates/fusuma-render-embedded",
     "crates/fusuma-anim",
     "crates/fusuma",
+    "crates/fusuma-platform",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-skia",
     "crates/fusuma-render-vello-cpu",
@@ -13,7 +14,7 @@ members = [
 ]
 
 # The firmware needs the ESP toolchain, so it builds on its own (scripts/showcase.nu).
-exclude = ["examples/showcase-p4"]
+exclude = ["examples/showcase-p4", "crates/fusuma-platform-esp"]
 
 [workspace.package]
 version = "0.2.0"
@@ -34,6 +35,7 @@ vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wg
 pollster = "1"
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "vulkan", "metal", "dx12", "gles"] }
 fusuma = { path = "crates/fusuma", version = "0.2.0" }
+fusuma-platform = { path = "crates/fusuma-platform", version = "0.2.0" }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
 vello_common = { version = "0.4", default-features = false }

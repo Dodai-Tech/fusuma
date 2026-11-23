@@ -7,7 +7,7 @@ pub const WIDTH: usize = ffi::WT_LCD_W as usize;
 pub const HEIGHT: usize = ffi::WT_LCD_H as usize;
 
 /// Bring up panel, backlight and touch.
-pub fn init() -> anyhow::Result<()> {
+pub(crate) fn init() -> anyhow::Result<()> {
     // SAFETY: called once at startup, before anything else touches the display.
     let err = unsafe { ffi::wt_display_init() };
     anyhow::ensure!(err == 0, "wt_display_init failed: esp_err {err}");

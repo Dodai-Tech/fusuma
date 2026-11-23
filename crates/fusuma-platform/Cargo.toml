@@ -1,0 +1,16 @@
+[package]
+name = "fusuma-platform"
+description = "Fusuma's out-of-the-box choice of renderer: which backend a machine draws with, from its hardware, with overrides and a memory check (no_std, no dependencies)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "renderer", "embedded", "no-std", "hardware"]
+categories = ["gui", "embedded", "no-std"]
+
+[lints]
+workspace = true
