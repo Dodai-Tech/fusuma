@@ -35,7 +35,6 @@ vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wg
 pollster = "1"
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "vulkan", "metal", "dx12", "gles"] }
 fusuma = { path = "crates/fusuma", version = "0.2.0" }
-fusuma-platform = { path = "crates/fusuma-platform", version = "0.2.0" }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
 vello_common = { version = "0.4", default-features = false }
