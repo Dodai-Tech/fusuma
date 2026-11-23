@@ -95,6 +95,34 @@ impl Rect {
         Self::new(x0, y0, w as u32, h as u32)
     }
 
+    /// The smallest rectangle that covers both. An empty rectangle covers nothing, so the union with
+    /// one is the other; the union of two empty rectangles is the empty rectangle at the origin.
+    #[must_use]
+    pub fn union(&self, other: &Self) -> Self {
+        if self.is_empty() && other.is_empty() {
+            return Self::default();
+        }
+        if self.is_empty() {
+            return *other;
+        }
+        if other.is_empty() {
+            return *self;
+        }
+        let (x0, y0) = (self.x.min(other.x), self.y.min(other.y));
+        let (x1, y1) = (
+            self.right().max(other.right()),
+            self.bottom().max(other.bottom()),
+        );
+        // i64: from i32::MIN to i32::MAX is wider than an i32 (as in `intersect`).
+        let (w, h) = (i64::from(x1) - i64::from(x0), i64::from(y1) - i64::from(y0));
+        Self::new(
+            x0,
+            y0,
+            w.min(i64::from(u32::MAX)) as u32,
+            h.min(i64::from(u32::MAX)) as u32,
+        )
+    }
+
     /// The rectangle moved by `(dx, dy)`, saturating at the `i32` range.
     #[must_use]
     pub const fn translate(&self, dx: i32, dy: i32) -> Self {
@@ -171,6 +199,47 @@ mod tests {
         assert_eq!(
             wide.intersect(&Rect::new(0, 0, 4, 4)),
             Rect::new(0, 0, 4, 4)
+        );
+    }
+
+    #[test]
+    fn union_covers_both_and_ignores_empty_rectangles() {
+        let (a, b) = (Rect::new(0, 0, 10, 10), Rect::new(20, 5, 10, 10));
+        let u = a.union(&b);
+        assert_eq!(u, Rect::new(0, 0, 30, 15));
+        assert_eq!(u, b.union(&a), "order does not matter");
+        assert_eq!(a.union(&a), a);
+        assert_eq!(
+            a.union(&Rect::new(99, 99, 0, 5)),
+            a,
+            "an empty rectangle adds nothing"
+        );
+        assert_eq!(Rect::new(99, 99, 5, 0).union(&b), b);
+        assert_eq!(
+            Rect::new(5, 6, 0, 3).union(&Rect::new(7, 8, 2, 0)),
+            Rect::default()
+        );
+        assert_eq!(
+            Rect::new(7, 8, 2, 0).union(&Rect::new(5, 6, 0, 3)),
+            Rect::default(),
+            "symmetric even for two empty ones"
+        );
+        let inner = Rect::new(2, 2, 3, 3);
+        assert_eq!(a.union(&inner), a);
+    }
+
+    #[test]
+    fn regression_union_across_the_whole_i32_range_does_not_overflow() {
+        let (lo, hi) = (
+            Rect::new(i32::MIN, i32::MIN, 1, 1),
+            Rect::new(i32::MAX - 1, i32::MAX - 1, 1, 1),
+        );
+        let u = lo.union(&hi);
+        assert_eq!((u.x, u.y), (i32::MIN, i32::MIN));
+        assert_eq!(
+            (u.w, u.h),
+            (u32::MAX, u32::MAX),
+            "saturates at the widest rectangle"
         );
     }
 

@@ -10,6 +10,10 @@ use libfuzzer_sys::fuzz_target;
 
 const N: usize = 12;
 
+fn screen_renderer() -> Embedded<Frame<Vec<u16>>> {
+    Embedded::new(Frame::new(48, 40, vec![0u16; 48 * 40]).unwrap())
+}
+
 fn length(a: u8, b: u8) -> Length {
     match a % 3 {
         0 => Length::Content,
@@ -98,7 +102,16 @@ fuzz_target!(|data: &[u8]| {
                 let _ = screen.clear(theme.colors.background);
                 let _ = tree.paint(&mut screen, &theme);
             }
-            13 => while tree.pop_action().is_some() {},
+            13 => {
+                while tree.pop_action().is_some() {}
+                // Damage: limited to the screen it always fits, and redrawing it never fails.
+                let screen = Rect::new(0, 0, 48, 40);
+                if let Some(d) = tree.take_damage_in(screen) {
+                    assert!(d.x >= 0 && d.y >= 0 && d.right() <= 48 && d.bottom() <= 40, "{d:?} leaves the screen");
+                    let _ = tree.paint_region(&mut screen_renderer(), &theme, d);
+                }
+                let _ = tree.take_damage();
+            }
             _ => {
                 if let Some(id) = pick(&ids, a) {
                     let _ = (tree.rect(id), tree.text(id), tree.is_hovered(id), tree.is_active(id), tree.is_disabled(id), tree.button_blend(id));

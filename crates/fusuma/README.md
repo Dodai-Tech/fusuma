@@ -20,7 +20,7 @@ can tell from the top whether anything below needs it.
 | events | `pointer(event)` | the press target keeps the release; clicks are queued as actions; an unhandled event goes up to the parent |
 | update | `update(renderer, theme, bounds)` | disabled state flows down, layout is redone if asked for, hover is refreshed against the new layout |
 | animation | `advance(theme, dt_ms)` | steps only the widgets that asked for frames; says whether to keep drawing |
-| paint | `paint(renderer, theme)` | draws through `fusuma_render::Renderer` on any backend |
+| paint | `paint(renderer, theme)` or `take_damage_in(screen)` then `paint_region(renderer, theme, area)` | draws through `fusuma_render::Renderer` on any backend; the second redraws only what changed |
 
 **Layout** is flex-like, in whole pixels: sizes are `Content`, `Fixed` or `Fill(weight)`, containers
 have padding, a gap and a cross-axis alignment. Text is measured through the renderer, so the same

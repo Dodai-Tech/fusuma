@@ -79,9 +79,11 @@ works and is tested.
 
 ### Removing the integer renderer
 
-- [ ] Move the bitmap fonts (`font_for`, `text_size`) out of `fusuma-render-embedded` into `fusuma-render-vello-common`, so text no longer depends on it
-- [ ] Dirty-rectangle redraws in `fusuma` and the launcher, then switch the launcher, the host preview and the S3 firmware to `vello_cpu`
-- [ ] Move the tests that use `Embedded` as a test surface (`fusuma`, the launcher, the host) to `vello_cpu`
+- [x] The bitmap fonts (`font_for`, `text_size`) live in `fusuma-render-vello-common`; `fusuma-render-embedded` keeps its own copy until it is deleted
+- [x] Dirty-rectangle redraws in `fusuma`: every change records the area it touches (`take_damage`, `take_damage_in(screen)`), layout records the old and the new place of anything that moved, and `paint_region` draws only what overlaps. A random-change property test proves the damage covers every pixel that changed and that redrawing only the damage equals a full redraw; fuzzed (329k runs)
+- [ ] Use it for the launcher: needs a tile widget (an icon, a label, a press state), a pager with slide transitions and a `compose` pass for offsets, then rebuild the Hibari launcher on them; the launcher still has its own view and the integer renderer
+- [ ] A region renderer that reuses its surface between updates (today a region means a new `vello_cpu` surface), and a flush that sends just the region to the panel
+- [x] Move the `fusuma` toolkit tests from `Embedded` to `vello_cpu` (done); the launcher and host tests in `hibari-os` still use `Embedded`
 - [ ] Delete `fusuma-render-embedded` from the workspace, the publish list, the layer rule and the docs
 - [ ] A run-time choice in `fusuma` (`std` feature): `fusuma-render-vello` when `gpu_available()`, else `fusuma-render-vello-cpu`; on a microcontroller `vello_cpu` only
 
@@ -169,7 +171,7 @@ desktop-sized trees use the same code with a bigger `N`.
 
 - [x] `fusuma` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
 - [ ] Show it on the ESP32-S3 board with the integer renderer (a toolkit screen in `hibari-os`'s `boards/s3-amoled-206`), measure frame time and memory; the integer renderer itself needs speeding up (61 ms for a full-screen frame)
-- [ ] Layout and paint only the changed subtrees (the flags are there; today the whole tree is redone when anything asks)
+- [ ] Layout only the changed subtrees (paint is done by region; layout still redoes the whole tree when anything asks)
 - [ ] A compose pass: offsets for scrolling without a layout
 - [ ] Focus and keyboard, text input with an input method; accessibility with `AccessKit`
 - [ ] More widgets: toggle, slider, progress, list with scrolling and fling (using `fusuma-anim`), dialog, tabs, text field; overlays and z-order

@@ -318,6 +318,8 @@ pub struct Tree<const N: usize> {
     pub(crate) hovered: Option<NodeId>,
     pub(crate) bounds: Option<Rect>,
     pub(crate) disabled_dirty: bool,
+    /// The area that needs painting again: everything that changed, as one bounding rectangle.
+    pub(crate) damage: Option<Rect>,
     actions: [Option<Action>; ACTION_QUEUE],
     action_head: usize,
     action_len: usize,
@@ -343,6 +345,7 @@ impl<const N: usize> Tree<N> {
             hovered: None,
             bounds: None,
             disabled_dirty: false,
+            damage: None,
             actions: [None; ACTION_QUEUE],
             action_head: 0,
             action_len: 0,
@@ -390,11 +393,34 @@ impl<const N: usize> Tree<N> {
     /// Marks that a pass has work for node `i`, and for every ancestor, so a pass can tell from the
     /// root whether anything below needs it.
     pub(crate) fn request(&mut self, i: usize, flag: u8) {
+        if flag & Flags::PAINT != 0 {
+            let rect = self.nodes[i].rect;
+            self.add_damage(rect);
+        }
         self.nodes[i].own.insert(flag);
         let mut cur = Some(i);
         while let Some(c) = cur {
             self.nodes[c].sub.insert(flag);
             cur = self.nodes[c].parent.map(usize::from);
+        }
+    }
+
+    /// Adds `rect` to the area that needs painting.
+    pub(crate) fn add_damage(&mut self, rect: Rect) {
+        if rect.is_empty() {
+            return;
+        }
+        self.damage = Some(self.damage.map_or(rect, |d| d.union(&rect)));
+    }
+
+    /// Moves a node to `rect`; if that changes where it is, both the old and the new place need
+    /// painting again.
+    pub(crate) fn set_rect(&mut self, i: usize, rect: Rect) {
+        let old = self.nodes[i].rect;
+        if old != rect {
+            self.add_damage(old);
+            self.add_damage(rect);
+            self.nodes[i].rect = rect;
         }
     }
 
@@ -553,6 +579,8 @@ impl<const N: usize> Tree<N> {
             if self.hovered == Some(id) {
                 self.hovered = None;
             }
+            let gone = self.nodes[c].rect;
+            self.add_damage(gone);
             let n = &mut self.nodes[c];
             n.alive = false;
             n.generation = n.generation.wrapping_add(1);
@@ -716,6 +744,21 @@ impl<const N: usize> Tree<N> {
     #[must_use]
     pub const fn dropped_actions(&self) -> u32 {
         self.dropped_actions
+    }
+
+    /// The area that needs painting again, if any: the bounding rectangle of everything that changed
+    /// since the last paint, in tree coordinates. Taking it clears it; pair it with
+    /// [`paint_region`](Self::paint_region) to redraw only that part of the screen.
+    pub fn take_damage(&mut self) -> Option<Rect> {
+        self.damage.take()
+    }
+
+    /// Like [`take_damage`](Self::take_damage), limited to `limit` (the surface or the screen), so a
+    /// node bigger than the screen does not make the area bigger than the screen. Damage entirely
+    /// outside `limit` is no damage.
+    pub fn take_damage_in(&mut self, limit: Rect) -> Option<Rect> {
+        let clipped = self.damage.take()?.intersect(&limit);
+        (!clipped.is_empty()).then_some(clipped)
     }
 
     /// Whether anything needs a new frame: a redraw, a layout or a running animation.

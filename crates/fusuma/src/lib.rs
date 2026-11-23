@@ -2,6 +2,8 @@
 #![cfg_attr(not(test), no_std)]
 
 mod anim;
+#[cfg(test)]
+mod damage;
 mod event;
 mod layout;
 mod paint;

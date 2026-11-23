@@ -19,6 +19,15 @@ fuzz_target!(|data: &[u8]| {
             assert!(a.contains(corner) && b.contains(corner));
         }
         assert_eq!(a.intersect(&b).is_empty(), b.intersect(&a).is_empty());
+        // The union covers whatever either rectangle covers, whatever the order.
+        let u = a.union(&b);
+        assert_eq!(u, b.union(&a));
+        for r in [a, b] {
+            // A rectangle whose edge saturates at i32::MAX can have no pixel inside it.
+            if r.right() > r.x && r.bottom() > r.y {
+                assert!(u.contains(Point::new(r.x, r.y)), "{u:?} misses a corner of {r:?}");
+            }
+        }
         let _ = a.translate(c[0] as i32 * 1_000_000, -(c[1] as i32) * 1_000_000);
         let _ = a.inset(u32::from(c[2]) << 24);
         let _ = (a.right(), a.bottom(), a.contains(Point::new(b.x, b.y)));

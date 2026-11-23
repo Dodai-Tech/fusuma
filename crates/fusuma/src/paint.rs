@@ -59,6 +59,55 @@ impl<const N: usize> Tree<N> {
             cur = self.preorder_next(i, root);
         }
         self.clear_flag(Flags::PAINT);
+        self.damage = None;
+        Ok(())
+    }
+
+    /// Draws only the part of the tree that overlaps `region`, limited to it: the way to redraw what
+    /// [`take_damage`](Self::take_damage) reported without touching the rest of the screen.
+    ///
+    /// The caller prepares the surface: the renderer's coordinates are the tree's (translate it first
+    /// if the surface is just the region), and the region must be cleared to the background before,
+    /// because widgets draw over what is behind them (`Renderer::clear` inside a clip does that).
+    /// If `region` covers all the damage (the usual case: it is what `take_damage` returned) nothing
+    /// is waiting for a redraw afterwards. If it covers less, the damage and the redraw requests stay,
+    /// so nothing is lost.
+    ///
+    /// # Errors
+    /// The renderer's error.
+    pub fn paint_region<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        theme: &Theme,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        let Some(root) = self.root.map(usize::from) else {
+            return Ok(());
+        };
+        if region.is_empty() {
+            return Ok(());
+        }
+        renderer.save()?;
+        let mut result = renderer.clip(region);
+        let mut cur = Some(root);
+        while let Some(i) = cur {
+            if result.is_ok()
+                && self.nodes[i].rect.intersect(&region).w > 0
+                && self.nodes[i].rect.intersect(&region).h > 0
+            {
+                result = self.paint_node(i, renderer, theme);
+            }
+            cur = self.preorder_next(i, root);
+        }
+        let restored = renderer.restore();
+        result?;
+        restored?;
+        // Everything that changed lies inside the region: nothing is left to redraw.
+        let covered = self.damage.is_none_or(|d| region.intersect(&d) == d);
+        if covered {
+            self.clear_flag(Flags::PAINT);
+            self.damage = None;
+        }
         Ok(())
     }
 

@@ -110,7 +110,7 @@ impl<const N: usize> Tree<N> {
             cur = if i == root { None } else { self.post_next(i) };
         }
         // Place: every node before its children.
-        self.nodes[root].rect = bounds;
+        self.set_rect(root, bounds);
         let mut cur = Some(root);
         while let Some(i) = cur {
             self.place_children(i);
@@ -228,7 +228,7 @@ impl<const N: usize> Tree<N> {
                 CrossAlign::Center => (i64::from(cross_total) - i64::from(cross_px)) / 2,
                 CrossAlign::End => i64::from(cross_total) - i64::from(cross_px),
             };
-            self.nodes[ci].rect = match axis {
+            let rect = match axis {
                 Axis::Column => Rect::new(
                     offset(inner.x, cross_off),
                     offset(inner.y, pos),
@@ -242,6 +242,7 @@ impl<const N: usize> Tree<N> {
                     cross_px,
                 ),
             };
+            self.set_rect(ci, rect);
             pos += i64::from(main_px) + i64::from(st.gap);
             c = next;
         }
