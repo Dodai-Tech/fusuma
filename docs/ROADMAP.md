@@ -13,14 +13,15 @@ works and is tested.
 * **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
   one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
   `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
-* **Vello on the ESP chips that have PSRAM, the integer renderer elsewhere.** Measured on the ESP32-S3
-  (240 MHz, 8 MB PSRAM, `tools/bench-s3` in `hibari-os`): `vello_cpu` builds with `libm` and no `std`
-  and draws the same picture, but a full-screen launcher frame takes 261 ms against 61 ms for the integer
-  renderer, and 1.4 MB. Full frames are not how a good UI updates, though: a demo that repaints only the
-  touched card (about 41 ms to render, 11 ms to send) felt richer and more responsive on the real screen, with
-  smooth edges and a press animation. So the preference is `vello_cpu` on the S3 (and the P4, untested) with
-  partial redraws; the integer renderer stays for chips without PSRAM (the C6, the original ESP32) and as the
-  fallback. This depends on the work listed under Phase 1b.
+* **Vello always: the GPU backend when the hardware has a usable GPU, `vello_cpu` otherwise.** There is no
+  third renderer. Decided after the S3 measurements (`tools/bench-s3` in `hibari-os`): `vello_cpu` builds
+  `no_std` with `libm` and runs on the ESP32-S3, 2 to 3 percent slower through our trait than raw. A full-screen
+  launcher frame takes 267 ms there (the integer renderer took 61 ms), so a good UI on a microcontroller needs
+  partial redraws, and a demo that repaints only the touched card felt richer and more responsive on the real
+  screen. The integer renderer `fusuma-render-embedded` is removed once nothing depends on it (see Phase 1b);
+  0.2.0 stays on crates.io, unmaintained. Consequence: chips without PSRAM (ESP32-C6, the original ESP32) are
+  not supported for rendering, except a very small display, which is unmeasured. A headless C6 uses the planned
+  terminal front end instead.
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
@@ -36,7 +37,6 @@ works and is tested.
 | Crate | What | `no_std` |
 |---|---|---|
 | `fusuma-render` | `Renderer` trait, geometry, colors, paths, conformance suite; later the optional `Effects` and shader contract (feature-gated, unstable) | yes |
-| `fusuma-render-embedded` | integer drawing for small displays | yes |
 | `fusuma-render-vello-common` | the `Renderer` on a Vello scene, generic over CPU and GPU (internal) | no |
 | `fusuma-render-vello-cpu` | `vello_cpu` backend | no |
 | `fusuma-render-vello` | `vello_gpu` backend | no |
@@ -52,7 +52,7 @@ works and is tested.
 
 ## Phase 1: renderer
 - [x] `fusuma-render`: `Renderer` trait, conformance suite, fuzzed
-- [x] `fusuma-render-embedded`: integer backend, runs on the ESP32-S3
+- [x] `fusuma-render-embedded`: integer backend, runs on the ESP32-S3 (to be removed, see Phase 1b)
 - [x] `fusuma-render-vello-cpu` on `vello_cpu`, passing the conformance suite and matching the integer backend pixel for pixel; fuzzed
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
 - [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
@@ -76,6 +76,14 @@ works and is tested.
 - [ ] **Text:** `vello_cpu`'s glyph painter (`glifo`) builds for the S3; shaping is the open question, since Parley's ICU4X data is large
 - [ ] **P4:** run the benchmark on an ESP32-P4 (400 MHz, FPU, vector extension)
 - [ ] **A fair A/B on the board:** the same card demo with the integer renderer, and with anti-aliasing added to it, to compare look, speed and memory
+
+### Removing the integer renderer
+
+- [ ] Move the bitmap fonts (`font_for`, `text_size`) out of `fusuma-render-embedded` into `fusuma-render-vello-common`, so text no longer depends on it
+- [ ] Dirty-rectangle redraws in `fusuma` and the launcher, then switch the launcher, the host preview and the S3 firmware to `vello_cpu`
+- [ ] Move the tests that use `Embedded` as a test surface (`fusuma`, the launcher, the host) to `vello_cpu`
+- [ ] Delete `fusuma-render-embedded` from the workspace, the publish list, the layer rule and the docs
+- [ ] A run-time choice in `fusuma` (`std` feature): `fusuma-render-vello` when `gpu_available()`, else `fusuma-render-vello-cpu`; on a microcontroller `vello_cpu` only
 
 ## Phase 2: animation (out of the box)
 - [x] `fusuma-anim`: `Fx` (Q16.16), easing (quad, cubic, quart, smooth, back, bounce, CSS Bezier), `Tween` with delay, stagger and retarget, `Keyframes`
