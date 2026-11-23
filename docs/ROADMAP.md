@@ -13,17 +13,14 @@ works and is tested.
 * **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
   one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
   `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
-* **Vello always: the GPU backend when the hardware has a usable GPU, `vello_cpu` otherwise.** There is no
-  third renderer. Decided after the S3 measurements (`tools/bench-s3` in `hibari-os`): `vello_cpu` builds
-  `no_std` with `libm` and runs on the ESP32-S3, 2 to 3 percent slower through our trait than raw. A full-screen
-  launcher frame takes 267 ms there (the integer renderer took 61 ms), so a good UI on a microcontroller needs
-  partial redraws, and a demo that repaints only the touched card felt richer and more responsive on the real
-  screen. The integer renderer `fusuma-render-embedded` is removed once nothing depends on it (see Phase 1b);
-  0.2.0 stays on crates.io, unmaintained. Consequence: on the ESP32-C6 (no PSRAM, no FPU) `vello_cpu` was measured: it runs up to about
-  240x240 on a 320 KB heap, but 10 to 20 times slower than the integer renderer, and it leaves only 54 to 63 KB
-  of RAM, so a C6 with a screen would have to give up the radio. This is the case where dropping the integer
-  renderer costs most; the decision stands, but the C6 is where it should be revisited. A headless C6 uses the
-  planned terminal front end.
+* **Several renderers, one trait, a default by hardware.** The integer renderer (`fusuma-render-embedded`),
+  `tiny-skia` (`fusuma-render-skia`), `vello_cpu` and the Vello GPU backend all pass the same conformance suite.
+  A device uses the default that fits it and the others stay available: the GPU backend when there is a usable
+  GPU, `vello_cpu` on a chip with PSRAM, `tiny-skia` or the integer renderer on a chip without. This replaces an
+  earlier decision to use Vello only and to delete the integer renderer: the ESP32-C6 measurements
+  (`tools/bench-c6` in `hibari-os`) showed `tiny-skia` 3 to 4 times faster and lighter than `vello_cpu` there, and
+  the integer renderer another 3 to 4 times faster, with half the memory per pixel. On the ESP32-S3 `vello_cpu` is
+  about 4 times slower than the integer renderer for a full frame but felt richer with partial redraws.
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
@@ -39,6 +36,7 @@ works and is tested.
 | Crate | What | `no_std` |
 |---|---|---|
 | `fusuma-render` | `Renderer` trait, geometry, colors, paths, conformance suite; later the optional `Effects` and shader contract (feature-gated, unstable) | yes |
+| `fusuma-render-skia` | `tiny-skia` backend, `no_std` with `alloc`, restored | partly |
 | `fusuma-render-vello-common` | the `Renderer` on a Vello scene, generic over CPU and GPU (internal) | no |
 | `fusuma-render-vello-cpu` | `vello_cpu` backend | no |
 | `fusuma-render-vello` | `vello_gpu` backend | no |
@@ -79,15 +77,17 @@ works and is tested.
 - [ ] **P4:** run the benchmark on an ESP32-P4 (400 MHz, FPU, vector extension)
 - [ ] **A fair A/B on the board:** the same card demo with the integer renderer, and with anti-aliasing added to it, to compare look, speed and memory
 
-### Removing the integer renderer
+### The integer renderer is kept (the removal below is cancelled)
 
 - [x] The bitmap fonts (`font_for`, `text_size`) live in `fusuma-render-vello-common`; `fusuma-render-embedded` keeps its own copy until it is deleted
 - [x] Dirty-rectangle redraws in `fusuma`: every change records the area it touches (`take_damage`, `take_damage_in(screen)`), layout records the old and the new place of anything that moved, and `paint_region` draws only what overlaps. A random-change property test proves the damage covers every pixel that changed and that redrawing only the damage equals a full redraw; fuzzed (329k runs)
 - [ ] Use it for the launcher: needs a tile widget (an icon, a label, a press state), a pager with slide transitions and a `compose` pass for offsets, then rebuild the Hibari launcher on them; the launcher still has its own view and the integer renderer
 - [ ] A region renderer that reuses its surface between updates (today a region means a new `vello_cpu` surface), and a flush that sends just the region to the panel
 - [x] Move the `fusuma` toolkit tests from `Embedded` to `vello_cpu` (done); the launcher and host tests in `hibari-os` still use `Embedded`
-- [ ] Delete `fusuma-render-embedded` from the workspace, the publish list, the layer rule and the docs
-- [ ] A run-time choice in `fusuma` (`std` feature): `fusuma-render-vello` when `gpu_available()`, else `fusuma-render-vello-cpu`; on a microcontroller `vello_cpu` only
+- [x] ~~Delete `fusuma-render-embedded`~~ cancelled: it stays, see Decisions
+- [ ] A choice of default backend by hardware: a `std` feature with `fusuma-render-vello` when `gpu_available()` else `vello_cpu` on a desktop; on a chip, a `[render]` setting in `board.toml` (integer, `tiny-skia` or `vello_cpu`)
+- [ ] Measure `tiny-skia` on the ESP32-S3 and a conformance run on the C6
+- [ ] Publish `fusuma-render-skia` 0.3.0 (the 0.1.0 on crates.io is the old `std` version)
 
 ## Phase 2: animation (out of the box)
 - [x] `fusuma-anim`: `Fx` (Q16.16), easing (quad, cubic, quart, smooth, back, bounce, CSS Bezier), `Tween` with delay, stagger and retarget, `Keyframes`
