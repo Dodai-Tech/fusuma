@@ -14,7 +14,7 @@ works and is tested.
   one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
   `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
 * **Vello on the ESP chips that have PSRAM, the integer renderer elsewhere.** Measured on the ESP32-S3
-  (240 MHz, 8 MB PSRAM, `crates/hibari-os-s3-bench` in `hibari-os`): `vello_cpu` builds with `libm` and no `std`
+  (240 MHz, 8 MB PSRAM, `tools/bench-s3` in `hibari-os`): `vello_cpu` builds with `libm` and no `std`
   and draws the same picture, but a full-screen launcher frame takes 261 ms against 61 ms for the integer
   renderer, and 1.4 MB. Full frames are not how a good UI updates, though: a demo that repaints only the
   touched card (about 41 ms to render, 11 ms to send) felt richer and more responsive on the real screen, with
@@ -56,7 +56,7 @@ works and is tested.
 - [x] `fusuma-render-vello-cpu` on `vello_cpu`, passing the conformance suite and matching the integer backend pixel for pixel; fuzzed
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
 - [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
-- [ ] Publish `fusuma-render-vello-common` and `-vello-cpu`, move `hibari-os` to them
+- [x] `fusuma-render-vello-common` and `-vello-cpu` published (0.2.0); `hibari-os` uses them
 - [x] `fusuma-render-vello` on `vello_gpu` and `wgpu` 30: headless device, renders into an `Rgba8Unorm` texture and reads it back; passes the conformance suite on a real GPU (AMD RX 7800 XT, Vulkan) and matches the CPU backend; tests skip on machines without a GPU. Images go to the GPU as external textures through a `Scene::image_source` hook
 - [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the toolkit's GPU-first choice
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
@@ -67,8 +67,8 @@ works and is tested.
 ## Phase 1b: Vello on the ESP
 
 - [x] `vello_cpu` builds for the S3 (Xtensa) and the C6 (RISC-V) with `libm`, no `std`
-- [x] Benchmark and a touch demo on the S3 (`hibari-os-s3-bench`, `hibari-os-s3-vello-demo`)
-- [ ] **Tearing:** updates are written while the panel scans, so cards tear. Enable the tearing-effect output (GPIO 13) the way Waveshare's driver does and wait for the pulse before each update; check whether narrow windows need the 22-column offset
+- [x] Benchmark and a touch demo on the S3 (`tools/bench-s3`, `tools/vello-demo-s3` in `hibari-os`)
+- [x] **Tearing** was not a missing tearing-effect sync: the CO5300 needs an explicit memory-write command (0x2C) after each address window, and without it a partial update lands in the wrong place. Fixed in `hibari-drivers` with a regression test; update windows are also kept even-aligned
 - [ ] **`no_std` backend:** `fusuma-render-vello-common` and `fusuma-render-vello-cpu` use `std` only for `RefCell`, `Arc`, `Vec` and PNG output; move them to `core` and `alloc` behind a default `std` feature, so the shared `Renderer` implementation runs on the ESP and the toolkit and the shell can use it unchanged
 - [ ] **Partial redraws in the API:** a dirty-rectangle pass in `fusuma` (the flags exist; today the whole tree is redone) that gives the backend the regions to render, with even-aligned windows for the panel; reuse one pixmap and context per region size instead of allocating each time
 - [ ] **Memory budget:** a full frame needs 1.4 MB, a card region far less; decide the region size and keep the frame buffer out of the path where possible
@@ -87,7 +87,7 @@ works and is tested.
 - [ ] Shared and layout animations: a card that grows into a page, list reorder and insert, stagger helpers
 - [ ] More physics: gravity and bounce, a spring chain for trailing motion, velocity from touch history
 - [ ] Vector animation like Rive or Lottie: a state machine over timelines, playing `velato` (Lottie) and `vello_svg` content; a design-tool file format is out of scope
-- [ ] Move `hibari-os-core::anim` onto `fusuma-anim` (one animation crate for the OS and the toolkit)
+- [x] Hibari OS uses `fusuma-anim` directly (its own animation module is gone)
 
 ## Phase 3: effects and shaders
 - [ ] `Capabilities`: `effects` and `shaders` flags next to `alpha` and `antialiasing`
@@ -160,7 +160,7 @@ ESP the tree is a fixed arena with the widgets as a closed enum, text stored inl
 desktop-sized trees use the same code with a bigger `N`.
 
 - [x] `fusuma` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
-- [ ] Show it on the ESP32-S3 board with the integer renderer (a toolkit screen in `hibari-os`), measure frame time and memory; the integer renderer itself needs speeding up (61 ms for a full-screen frame)
+- [ ] Show it on the ESP32-S3 board with the integer renderer (a toolkit screen in `hibari-os`'s `boards/s3-amoled-206`), measure frame time and memory; the integer renderer itself needs speeding up (61 ms for a full-screen frame)
 - [ ] Layout and paint only the changed subtrees (the flags are there; today the whole tree is redone when anything asks)
 - [ ] A compose pass: offsets for scrolling without a layout
 - [ ] Focus and keyboard, text input with an input method; accessibility with `AccessKit`
@@ -168,11 +168,11 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature (the built-in set stays a closed enum for the no-allocator case)
 - [ ] A view layer: a lightweight description built from application state and diffed into the retained tree, with messages routed back
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
-- [ ] `fusuma`: retained widget tree, layout on `taffy`, events, focus, theming from design tokens; a semantic tree so that other front ends (terminal, accessibility) can read it
+- [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree; layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
 - [ ] Widgets as modules of `fusuma`: toggle, slider, progress, list with scrolling, dialog, tabs, text field (split into a crate only if it grows large)
-- [ ] Text input with an input method, and accessibility with `AccessKit`
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [ ] A `std` feature on `fusuma` with the run-time backend choice (GPU first, CPU fallback)
+- [ ] A gesture recogniser (tap, long press, swipe, drag with `fusuma-anim`): Hibari OS has one in `hibari-hal` that moves here, since a desktop and a phone need it too
 - [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
 
 ## Phase 5: more platforms

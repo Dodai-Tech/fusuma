@@ -24,8 +24,8 @@ renderer crates stay separate, because each is useful alone.
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
 | [`fusuma-render-vello`](crates/fusuma-render-vello) | anti-aliased GPU drawing on `vello_gpu` and `wgpu` | no | working |
 | [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
-| [`fusuma`](crates/fusuma) | **the toolkit:** retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer. Apps depend on this one crate | yes | working, first slice |
-| [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, in fixed point | yes | working |
+| [`fusuma`](crates/fusuma) | **the toolkit:** retained widget tree, layout, theme tokens, pointer events, animation and paint passes; Label, Button, Row, Column, Spacer. Apps depend on this one crate | yes | first slice, not published |
+| [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, an animator and drag helpers, in fixed point | yes | working (the animator and drag helpers are not in the published 0.2.0) |
 | `fusuma-shaders` | shader contract and engine | no | planned |
 | `fusuma-text` | real text: fonts, shaping, line breaking (on Parley) for desktop and phone; the bitmap fonts stay for microcontrollers | no | planned |
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
@@ -61,7 +61,7 @@ crates/fusuma-render-embedded      integer drawing for embedded-graphics targets
 crates/fusuma-render-vello-common  the Renderer on a Vello scene, shared by the CPU and GPU backends
 crates/fusuma-render-vello-cpu     anti-aliased drawing on vello_cpu
 crates/fusuma-render-vello         anti-aliased drawing on vello_gpu (run the bench: cargo run --release -p fusuma-render-vello --example bench)
-crates/fusuma                 retained widget tree, layout, theme, events, animation and paint passes
+crates/fusuma                      the toolkit: retained widget tree, layout, theme, events, paint
 crates/fusuma-anim                 easing, tweens, keyframes, springs, fling decay
 docs/ROADMAP.md                    what is done and what comes next
 fuzz/                              cargo-fuzz targets (geometry, draw, anim, ui)
