@@ -30,6 +30,12 @@ works and is tested.
 * **Licence: MIT.** Credit is kept by the licence notice; a trademark, not the licence, protects
   the names.
 * **A renderer crate never depends on a toolkit crate**; CI enforces it (`scripts/ci/layers.nu`).
+* **A text UI is a separate platform, not a renderer.** `fusuma-platform-tui` is our own (not ratatui) but it is
+  not a `fusuma-render-cells` backend plugged into the `Renderer` trait. A terminal draws widgets in a completely
+  different way: through pixel primitives a checkbox is a rounded box plus a tick path, a radio button two circles, a
+  switch a pill and a circle, and a cell grid would have to guess that these are `[x]`, `(•)` and `[ ●]`. So the
+  components, their state, events, focus, scrolling, dialogs and the frame loop stay shared, and only how each kind of
+  widget looks (and how it is laid out, in cells) is the TUI's own. Nothing is built; see Phase 4 and Phase 5.
 
 ## Crate structure
 
@@ -42,12 +48,12 @@ works and is tested.
 | `fusuma-render-vello` | `vello_gpu` backend | no |
 | `fusuma-anim` | easing, tweens, keyframes, springs, fling decay | yes |
 | `fusuma-shaders` | shader contract implementation and engine (WGSL, prebuilt rust-gpu kernels, CPU path) | no |
-| `fusuma-text` | text on Parley: fonts, shaping, line breaking, bidi, selection; optional, desktop and phone only | no |
+| `fusuma-text`, `fusuma-fonts` | Parley layout over bundled fonts (Inter, Inter Bold, JetBrains Mono); `no_std` with alloc, runs on a chip with PSRAM | partly |
 | `fusuma` | **the toolkit**: widget tree, layout, theme, events, animation, paint, and the widgets as modules; `no_std`, no allocator by default; a `std` feature adds the desktop extras (run-time GPU or CPU choice). Apps depend on this one crate | yes |
-| `fusuma-platform-mcu` | microcontroller displays and touch | yes |
+| `fusuma-platform-embedded`, `fusuma-platform-esp` | shared board code (`Board`, `Driver`, the renderer surface) and the ESP-IDF P4 board; the S3 watch's board is in the Hibari repository for now | yes / no |
 | `fusuma-platform-desktop` | `winit` window, pixel buffer or GPU surface | no |
 | `fusuma-platform-android`, `-ios` | native windows and touch | no |
-| `fusuma-platform-tui` | semantic rendering of the widget tree as text cells (ratatui) | no |
+| `fusuma-platform-tui` | **planned, our own, a separate platform** (not a renderer): a terminal, an SSH session, a serial console or a character display, drawing each widget in its own text-cell form from a read-only view of the widget tree; input through `crossterm` | no |
 | `fusuma-platform-web` | later, optional: WebAssembly into a canvas | no |
 
 ## Phase 1: renderer
@@ -194,7 +200,7 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature (the built-in set stays a closed enum for the no-allocator case)
 - [ ] A view layer: a lightweight description built from application state and diffed into the retained tree, with messages routed back
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
-- [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree; layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
+- [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree: a read-only view of each node's kind, text, state, rectangle, focus and children. **The text-UI platform needs it** (and AccessKit would use it); layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
 - [x] Widgets in `fusuma-ui`: checkbox, radio, switch, slider, selectable list item, progress bar, with keyboard focus (Tab, arrows, Enter)
 - [x] Scroll container (`Tree::scroll`): clips its children, scrolls by touch drag (with a slop so a tap still clicks), mouse wheel (`Pointer::Wheel`) and by moving the focus to a hidden widget; hidden widgets cannot be hit; a scrollbar shows the position. Not yet: inertia after a drag, rubber-banding at the ends (`fusuma-anim` has both), horizontal scrolling
 - [x] Text input (`Tree::text_input`): a single line of up to 64 bytes with cursor, selection, typing, edit commands, input-method composition and clipboard hooks; the desktop platform wires keys, IME and the system clipboard. Not yet: mouse-drag and word selection, caret blink, undo, longer text, a multi-line field
@@ -215,7 +221,14 @@ desktop-sized trees use the same code with a bigger `N`.
 
 ## Phase 5: more platforms
 - [ ] `fusuma-platform-android` and `-ios`: native windows and touch, no web wrapper
-- [ ] `fusuma-platform-tui`: render the semantic tree as text cells. **Probably superseded:** the plan discussed was that a text UI is a separate toolkit (ratatui with `mousefood` on a board, `dodai-ratatui` for the look, crossterm on a desktop) and not a Fusuma renderer. I proposed it and you did not object, but you did not confirm it; `dodai-ratatui` does not build `no_std` yet, which is the open question
+- [ ] `fusuma-platform-tui`, our own, **a separate platform and not a renderer** (decided; nothing built). It draws each widget kind its own way (`[x] label`, `(•) label`, `[███░░]`, `[ OK ]`) in a grid of text cells, in a terminal, over SSH, on a serial console of a headless chip, or on a character display. Shared with the pixel platforms: the tree, state, events, focus, scrolling, dialogs, the animation clock, `Shell` and `Input`. Its own: layout in cells, the cell look of each widget, and the terminal input (mouse, keys, resize) and output (a diffed write of only the changed cells). What it needs first, none of it started:
+  - [ ] a read-only semantic view of the tree (the item above)
+  - [ ] layout that does not need a `Renderer`: `Tree::update` takes one only to measure text, so a small `Measure` trait that a renderer satisfies and a cell grid (one column per character) can too
+  - [ ] a cell theme: lengths in whole cells (a button one row high, a gap one column), a `Theme` preset
+  - [ ] the cell look of every widget kind, and a decision where it lives. **Open design question:** (A) in `fusuma-ui` as a second paint pass into a `CellSink` trait that the platform implements (no allocation in the toolkit, the platform crate stays thin, the layers rule holds as it is), or (B) in its own crate reading the semantic view (the layers rule's "a platform draws nothing" needs a carve-out). I lean towards A, unverified
+  - [ ] `crossterm` input and output, with colour depth detection (truecolor, else 256 colours)
+  
+  Where the effort should go on a board: `ratatui` with `mousefood` is the current answer for a text UI on a board (and `dodai-ratatui` styles it, but does not build `no_std` yet). From mousefood's source, not measured: without its `framebuffer` feature every cell is drawn straight to the display (one small window and transfer per cell, slow on a QSPI panel); with it, `flush` sends the whole screen, so a one-letter change sends every pixel; `ratatui` itself already diffs, so changed cells are all it draws. Our hypothesis is that one dirty-region transfer (our `Board::present`) beats both, by an unknown number of milliseconds on a 35x55 cell grid. **Measure a ratatui and mousefood screen on the watch first**; a terminal, SSH or serial console needs no such work
 - [ ] `fusuma-platform-web` (optional): WebAssembly into a canvas, no DOM widgets
 
 ## Out of scope
