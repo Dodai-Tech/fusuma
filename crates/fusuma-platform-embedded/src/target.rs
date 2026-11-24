@@ -80,7 +80,6 @@ pub const fn has_fpu() -> bool {
         target_arch = "aarch64",
         target_arch = "wasm32",
         target_feature = "f",
-        target_feature = "fp",
         target_feature = "vfp2",
         target_feature = "vfp3",
         target_feature = "vfp4",

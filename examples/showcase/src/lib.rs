@@ -909,21 +909,8 @@ impl Showcase {
     /// The renderer's error.
     pub fn frame<R: Renderer>(&mut self, renderer: &mut R) -> Result<Option<Rect>, R::Error> {
         self.tree.update(renderer, &self.theme, self.bounds);
-        let Some(region) = self.tree.take_damage_in(self.bounds) else {
-            return Ok(None);
-        };
-        renderer.save()?;
-        let mut result = renderer.clip(region);
-        if result.is_ok() {
-            result = renderer.clear(self.theme.colors.background);
-        }
-        if result.is_ok() {
-            result = self.tree.paint_region(renderer, &self.theme, region);
-        }
-        let restored = renderer.restore();
-        result?;
-        restored?;
-        Ok(Some(region))
+        // Draws only what changed; a list that only scrolled has its pixels moved instead of redrawn.
+        self.tree.paint_frame(renderer, &self.theme, self.bounds)
     }
 }
 

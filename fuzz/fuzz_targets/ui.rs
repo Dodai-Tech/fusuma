@@ -44,6 +44,8 @@ fuzz_target!(|data: &[u8]| {
     let mut tree = Tree::<N>::new();
     let mut ids: Vec<NodeId> = Vec::new();
     let mut screen = Embedded::new(Frame::new(48, 40, vec![0u16; 48 * 40]).unwrap());
+    // The renderer that can move pixels, which a platform frame uses.
+    let mut frame_screen = fusuma_render_vello_cpu::new(48, 40).unwrap();
     let theme = if data.first().is_some_and(|b| b & 1 == 1) { Theme::LIGHT } else { Theme::DARK };
     let mut it = data.iter().copied();
     while let (Some(op), Some(a), Some(b)) = (it.next(), it.next(), it.next()) {
@@ -97,6 +99,14 @@ fuzz_target!(|data: &[u8]| {
             }
             11 => {
                 let _ = tree.advance(&theme, u32::from(a) << (b % 25));
+                // A frame as a platform runs it: a fresh scene, then only what changed, shifting a scroll's pixels.
+                frame_screen.with_scene(fusuma_render_vello_cpu::Scene::reset);
+                let bounds = Rect::new(0, 0, 48, 40);
+                tree.update(&frame_screen, &theme, bounds);
+                if let Ok(Some(shown)) = tree.paint_frame(&mut frame_screen, &theme, bounds) {
+                    assert!(shown.x >= 0 && shown.y >= 0 && shown.right() <= 48 && shown.bottom() <= 40, "{shown:?}");
+                    let _ = fusuma_render::Probe::pixel(&frame_screen, 0, 0);
+                }
             }
             12 => {
                 let _ = screen.clear(theme.colors.background);
