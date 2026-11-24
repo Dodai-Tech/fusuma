@@ -58,6 +58,20 @@ const fn scaled(v: u32, percent: u32) -> u32 {
     }
 }
 
+/// Screens narrower than this (in logical pixels) get the compact layout: no sidebar, a Previous and Next row
+/// instead, and pages in one column. The 7-inch board and a desktop window are wider; a watch is not.
+pub const COMPACT_BELOW: u32 = 640;
+
+/// The text of the theme button: short in the compact layout.
+const fn theme_button_text(dark: bool, compact: bool) -> &'static str {
+    match (dark, compact) {
+        (true, false) => "Light theme",
+        (false, false) => "Dark theme",
+        (true, true) => "Light",
+        (false, true) => "Dark",
+    }
+}
+
 /// The pages in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -174,6 +188,10 @@ pub struct Showcase {
     bounds: Rect,
     page: Page,
     sidebar: [Option<NodeId>; 7],
+    /// Compact layout only: the Previous button, the page name and the Next button.
+    nav: [Option<NodeId>; 3],
+    /// Whether the tree was built in the compact layout.
+    compact: bool,
     body: Option<NodeId>,
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
@@ -199,6 +217,8 @@ impl Showcase {
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
             sidebar: [None; 7],
+            nav: [None; 3],
+            compact: width < COMPACT_BELOW,
             body: None,
             content: None,
             theme_button: None,
@@ -249,6 +269,21 @@ impl Showcase {
     #[must_use]
     pub fn sidebar_item(&self, page: Page) -> Option<NodeId> {
         self.sidebar[Page::ALL.iter().position(|&p| p == page)?]
+    }
+
+    /// The Previous and Next buttons of the compact layout; `None` in the wide one.
+    #[must_use]
+    pub const fn nav_buttons(&self) -> Option<(NodeId, NodeId)> {
+        match (self.nav[0], self.nav[2]) {
+            (Some(p), Some(n)) => Some((p, n)),
+            _ => None,
+        }
+    }
+
+    /// Whether the compact layout (a small screen) is on.
+    #[must_use]
+    pub const fn is_compact(&self) -> bool {
+        self.compact
     }
 
     /// The button that switches the theme.
@@ -303,17 +338,43 @@ impl Showcase {
                 .gap(self.theme.spacing.md)
                 .align(CrossAlign::Center),
         )?;
-        t.label(Some(header), "Fusuma components", TextRole::Title)?;
-        t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
-        self.theme_button =
-            Some(t.button(Some(header), "Light theme", ButtonVariant::Secondary)?);
-        let body = t.row(
-            Some(root),
-            Style::new()
-                .height(Length::Fill(1))
-                .gap(self.theme.spacing.md)
-                .align(CrossAlign::Stretch),
+        let compact = self.compact;
+        t.label(
+            Some(header),
+            if compact {
+                "Fusuma"
+            } else {
+                "Fusuma components"
+            },
+            TextRole::Title,
         )?;
+        t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
+        self.theme_button = Some(t.button(
+            Some(header),
+            theme_button_text(self.dark, compact),
+            ButtonVariant::Secondary,
+        )?);
+        let body_style = Style::new()
+            .height(Length::Fill(1))
+            .gap(self.theme.spacing.md)
+            .align(CrossAlign::Stretch);
+        if compact {
+            let body = t.column(Some(root), body_style)?;
+            self.body = Some(body);
+            let nav = t.row(
+                Some(body),
+                Style::new()
+                    .gap(self.theme.spacing.sm)
+                    .align(CrossAlign::Center),
+            )?;
+            self.nav[0] = Some(t.button(Some(nav), "<", ButtonVariant::Secondary)?);
+            self.nav[1] = Some(t.label(Some(nav), self.page.name(), TextRole::Body)?);
+            t.spacer(Some(nav), Style::new().width(Length::Fill(1)))?;
+            self.nav[2] = Some(t.button(Some(nav), ">", ButtonVariant::Secondary)?);
+            self.status = Some(t.label(Some(root), "Tap something", TextRole::Caption)?);
+            return self.build_page();
+        }
+        let body = t.row(Some(root), body_style)?;
         self.body = Some(body);
         let side = t.column(
             Some(body),
@@ -342,17 +403,22 @@ impl Showcase {
         let body = self.body;
         let permille = self.permille();
         let scale = self.scale;
+        let compact = self.compact;
         let t = &mut self.tree;
-        let c = t.column(
-            body,
-            Style::new()
-                .width(Length::Fill(1))
-                .padding(sp.md)
-                .gap(sp.md)
-                .align(CrossAlign::Stretch)
-                .background(Surface::Surface)
-                .round(Round::Medium),
-        )?;
+        let style = Style::new()
+            .width(Length::Fill(1))
+            .height(Length::Fill(1))
+            .padding(sp.md)
+            .gap(sp.md)
+            .align(CrossAlign::Stretch)
+            .background(Surface::Surface)
+            .round(Round::Medium);
+        // A small screen shows a window onto the page, which scrolls: the pages are taller than a watch.
+        let c = if compact {
+            t.scroll(body, style)?
+        } else {
+            t.column(body, style)?
+        };
         self.content = Some(c);
         let live = &mut self.live;
         match self.page {
@@ -374,7 +440,11 @@ impl Showcase {
             }
             Page::Selection => {
                 t.label(Some(c), "Selection", TextRole::Title)?;
-                let cols = t.row(Some(c), Style::new().gap(sp.lg))?;
+                let cols = if compact {
+                    t.column(Some(c), Style::new().gap(sp.md))?
+                } else {
+                    t.row(Some(c), Style::new().gap(sp.lg))?
+                };
                 let checks = t.column(Some(cols), Style::new().gap(sp.xs))?;
                 for (slot, (name, on)) in live.checks.iter_mut().zip([
                     ("Notifications", true),
@@ -398,7 +468,11 @@ impl Showcase {
                 let list = t.scroll(
                     Some(c),
                     Style::new()
-                        .width(Length::Fixed(scaled(360, scale)))
+                        .width(if compact {
+                            Length::Fill(1)
+                        } else {
+                            Length::Fixed(scaled(360, scale))
+                        })
                         .height(Length::Fixed(scaled(260, scale)))
                         .gap(sp.xs)
                         .align(CrossAlign::Stretch),
@@ -495,6 +569,9 @@ impl Showcase {
     fn set_page(&mut self, page: Page) {
         if page != self.page {
             self.page = page;
+            if let Some(l) = self.nav[1] {
+                self.tree.set_text(l, page.name());
+            }
             let _ = self.build_page();
         }
     }
@@ -503,8 +580,7 @@ impl Showcase {
         self.dark = dark;
         self.theme = theme(dark).scaled(self.scale);
         if let Some(b) = self.theme_button {
-            self.tree
-                .set_text(b, if dark { "Light theme" } else { "Dark theme" });
+            self.tree.set_text(b, theme_button_text(dark, self.compact));
         }
         self.tree.invalidate();
     }
@@ -516,7 +592,17 @@ impl Showcase {
             let mut b = Buf::new();
             match a.kind {
                 ActionKind::Clicked => {
-                    if id == self.live.field {
+                    if id.is_some() && (id == self.nav[0] || id == self.nav[2]) {
+                        let n = Page::ALL.len();
+                        let at = Page::ALL.iter().position(|&p| p == self.page).unwrap_or(0);
+                        let to = if id == self.nav[2] {
+                            (at + 1) % n
+                        } else {
+                            (at + n - 1) % n
+                        };
+                        self.set_page(Page::ALL[to]);
+                        let _ = write!(b, "Page: {}", Page::ALL[to].name());
+                    } else if id == self.live.field {
                         let _ = write!(b, "Submitted: {}", self.typed.as_str());
                     } else if id == self.theme_button {
                         self.set_dark(!self.dark);
@@ -719,13 +805,16 @@ impl App for Showcase {
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
-        if scale != self.scale {
+        let compact = width.saturating_mul(100) / scale < COMPACT_BELOW;
+        if scale != self.scale || compact != self.compact {
             // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
             self.scale = scale;
+            self.compact = compact;
             self.theme = theme(self.dark).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();
             self.sidebar = [None; 7];
+            self.nav = [None; 3];
             self.content = None;
             let _ = self.build();
         } else if bounds != self.bounds {
@@ -1140,5 +1229,122 @@ mod tests {
             Some("Hello, worl"),
             "kept"
         );
+    }
+
+    fn watch() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
+        let mut s = Showcase::new(410, 502);
+        let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+        s.frame(&mut r).unwrap();
+        (s, r)
+    }
+
+    #[test]
+    fn a_small_screen_gets_no_sidebar_and_a_previous_and_next_row() {
+        let (s, _) = watch();
+        assert!(s.is_compact() && s.sidebar_item(Page::Buttons).is_none());
+        let (prev, next) = s.nav_buttons().unwrap();
+        assert_ne!(prev, next);
+        let (wide, _) = app();
+        assert!(!wide.is_compact() && wide.nav_buttons().is_none());
+    }
+
+    #[test]
+    fn next_and_previous_walk_the_pages_and_wrap_round() {
+        let (mut s, mut r) = watch();
+        let (prev, next) = s.nav_buttons().unwrap();
+        for want in &Page::ALL[1..] {
+            tap(&mut s, next);
+            assert_eq!(s.page(), *want);
+            s.frame(&mut r).unwrap();
+        }
+        tap(&mut s, next);
+        assert_eq!(s.page(), Page::Buttons, "after the last comes the first");
+        tap(&mut s, prev);
+        assert_eq!(
+            s.page(),
+            *Page::ALL.last().unwrap(),
+            "and before the first the last"
+        );
+        assert_eq!(s.tree().text(s.status.unwrap()), Some("Page: Typography"));
+    }
+
+    #[test]
+    fn every_page_fits_the_watch_screen_in_both_themes() {
+        for dark in [true, false] {
+            let (mut s, mut r) = watch();
+            if !dark {
+                let b = s.theme_button().unwrap();
+                tap(&mut s, b);
+            }
+            let (_, next) = s.nav_buttons().unwrap();
+            for _ in Page::ALL {
+                s.frame(&mut r).unwrap();
+                let tree = s.tree();
+                let root = tree.rect(tree.root().unwrap()).unwrap();
+                assert_eq!(root, Rect::new(0, 0, 410, 502));
+                for id in s
+                    .widgets()
+                    .checks
+                    .iter()
+                    .chain(&s.widgets().radios)
+                    .flatten()
+                {
+                    let rc = s.rect_of(*id).unwrap();
+                    // Taller than the screen is fine (the page scrolls); wider is not.
+                    assert!(rc.right() <= 410, "{:?}: {rc:?}", s.page());
+                }
+                if let Some(rc) = s.widgets().slider.and_then(|i| s.rect_of(i)) {
+                    assert!(rc.right() <= 410, "{rc:?}");
+                }
+                if let Some(rc) = s.widgets().field.and_then(|i| s.rect_of(i)) {
+                    assert!(rc.right() <= 410, "the text field fits: {rc:?}");
+                }
+                if let Some(rc) = s.widgets().list.and_then(|i| s.rect_of(i)) {
+                    assert!(rc.right() <= 410 && rc.bottom() <= 502, "{rc:?}");
+                }
+                tap(&mut s, next);
+            }
+        }
+    }
+
+    #[test]
+    fn the_layout_follows_the_width_in_both_directions_and_keeps_the_page_and_the_theme() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Controls);
+        let b = s.theme_button().unwrap();
+        tap(&mut s, b);
+        App::resized(&mut s, 410, 502, 100);
+        assert!(s.is_compact());
+        assert_eq!((s.page(), s.is_dark()), (Page::Controls, false));
+        let mut small = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+        s.frame(&mut small).unwrap();
+        assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Dark"));
+        App::resized(&mut s, 1024, 600, 100);
+        assert!(!s.is_compact() && s.sidebar_item(Page::Controls).is_some());
+        assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Dark theme"));
+        // A 2x screen of 1280 physical pixels is 640 logical: not compact; 1200 is.
+        App::resized(&mut s, 1200, 800, 200);
+        assert!(s.is_compact());
+        App::resized(&mut s, 1280, 800, 200);
+        assert!(!s.is_compact());
+        let _ = &mut r;
+    }
+
+    #[test]
+    fn the_watch_pictures_are_written_when_asked() {
+        let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") else {
+            return;
+        };
+        let (mut s, mut r) = watch();
+        let (_, next) = s.nav_buttons().unwrap();
+        for p in Page::ALL {
+            s.frame(&mut r).unwrap();
+            std::fs::write(
+                std::format!("{dir}/watch-{}.png", p.name()),
+                fusuma::renderers::vello_cpu::png(&r).unwrap(),
+            )
+            .unwrap();
+            tap(&mut s, next);
+        }
     }
 }

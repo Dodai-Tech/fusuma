@@ -22,3 +22,10 @@ fallback (the Typography page shows all three).
 
 **`showcase-desktop/`** is the same app in a window on a computer: `just showcase-desktop` (or `just showcase-desktop
 --renderer vello-cpu` to force the CPU). It uses `fusuma-platform-desktop`, which picks Vello on the GPU when there is one.
+
+**`tools/fusuma-showcase-s3`** (in the Hibari repository, next to the drivers it reuses) is the same app on the
+Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502 AMOLED, FT3168 touch), on `esp-hal` with no ESP-IDF. On a screen under
+640 logical pixels wide the app switches to a compact layout (a Previous and Next row instead of the sidebar, pages that
+scroll). From the Hibari repository: `just native-install board=s3-fusuma-showcase`. Measured on the watch, the first
+full frame takes 196 ms with the integer renderer and bitmap text, 523 ms with Vello and bitmap text, 948 ms with Vello and
+the Inter fonts, and 1883 ms with `tiny-skia`; the shared rule picks Vello when it is linked.

@@ -9,8 +9,14 @@ authors.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+default = ["fonts"]
+# Vector fonts (Inter, Inter Bold, JetBrains Mono). Without them text is the built-in bitmap font: for a chip that
+# draws with the integer renderer.
+fonts = ["fusuma/font-inter", "fusuma/font-inter-bold", "fusuma/font-jetbrains-mono"]
+
 [dependencies]
-fusuma = { workspace = true, features = ["font-inter", "font-inter-bold", "font-jetbrains-mono"] }
+fusuma.workspace = true
 
 [dev-dependencies]
 fusuma = { workspace = true, features = ["std", "png"] }
