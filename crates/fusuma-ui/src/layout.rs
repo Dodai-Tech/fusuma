@@ -275,6 +275,7 @@ impl<const N: usize> Tree<N> {
                 offset,
                 content: c,
                 over,
+                ..
             } = &mut self.nodes[i].kind
             {
                 *offset = (*offset).clamp(0, i32::try_from(max).unwrap_or(i32::MAX));

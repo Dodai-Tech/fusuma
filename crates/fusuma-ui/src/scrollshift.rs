@@ -64,6 +64,7 @@ impl<const N: usize> Tree<N> {
     /// A container scrolled from `old_pos`: marks it for layout and paint the cheap way if the pixels can be moved,
     /// else the usual way.
     pub(crate) fn note_scroll(&mut self, i: usize, old_pos: i32) {
+        self.wake_bar(i);
         if self.try_shift(i, old_pos) {
             // Marked without damage: the moved rows are not a change, only the strip is.
             self.request_quiet(i, Flags::LAYOUT | Flags::PAINT);
@@ -152,8 +153,7 @@ impl<const N: usize> Tree<N> {
             ));
         }
         // The scrollbar is drawn over the rows, so its old position has to be cleaned up and the new one drawn.
-        let bar = theme.track_height.clamp(2, 6) + 2;
-        parts[1] = Some(Rect::new(r.right() - bar as i32, r.y, bar, r.h));
+        parts[1] = Some(crate::scrollbar::bar_column(r, theme));
         if guard > 0 {
             parts[2] = Some(Rect::new(r.x, r.y, r.w, guard));
             parts[3] = Some(Rect::new(r.x, r.bottom() - g, r.w, guard));

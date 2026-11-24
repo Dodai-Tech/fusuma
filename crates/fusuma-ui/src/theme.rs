@@ -78,6 +78,10 @@ pub struct MotionTimes {
     pub normal_ms: u32,
     /// Large moves and page changes.
     pub slow_ms: u32,
+    /// How long a scrollbar stays after the content stopped moving, before it fades.
+    pub bar_hold_ms: u32,
+    /// How long a scrollbar takes to fade out. 0 hides it at once.
+    pub bar_fade_ms: u32,
 }
 
 /// A complete theme.
@@ -312,6 +316,9 @@ impl Theme {
             fast_ms: 100,
             normal_ms: 220,
             slow_ms: 400,
+            // Android's scrollbar delay and fade (ViewConfiguration), the behaviour Material shows.
+            bar_hold_ms: 300,
+            bar_fade_ms: 250,
         },
     };
 

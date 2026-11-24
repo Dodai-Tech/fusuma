@@ -130,11 +130,16 @@ impl<const N: usize> Tree<N> {
         let n = &self.nodes[i];
         let mut result = Ok(());
         if let Kind::Scroll {
-            offset, content, ..
+            offset,
+            content,
+            bar: shown,
+            ..
         } = n.kind
         {
             let view = n.rect.inset(n.style.padding).h;
-            if content > view && view > 0 {
+            let alpha = crate::scrollbar::bar_alpha(shown, theme);
+            let color = crate::scrollbar::bar_color(theme, alpha, r.capabilities().alpha);
+            if let Some(color) = color.filter(|_| content > view && view > 0) {
                 let track = n.rect;
                 let thumb = (u64::from(view) * u64::from(view) / u64::from(content)) as u32;
                 let thumb = thumb.max(theme.track_height * 2).min(view);
@@ -148,11 +153,7 @@ impl<const N: usize> Tree<N> {
                 let y = track.y.saturating_add(
                     i32::try_from(n.style.padding.saturating_add(at)).unwrap_or(i32::MAX),
                 );
-                result = r.fill_rect(
-                    Rect::new(x, y, bar, thumb),
-                    bar / 2,
-                    theme.colors.border_strong,
-                );
+                result = r.fill_rect(Rect::new(x, y, bar, thumb), bar / 2, color);
             }
         }
         let restored = r.restore();

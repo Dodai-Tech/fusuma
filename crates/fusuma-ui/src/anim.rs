@@ -15,8 +15,10 @@ impl<const N: usize> Tree<N> {
     pub fn advance(&mut self, theme: &Theme, dt_ms: u32) -> bool {
         // Scroll containers fling and bounce; a finger dragging one needs frames too.
         let scrolling = self.advance_scroll(dt_ms);
+        // After the scroll step, so a bar that a fling moved this frame is shown, not faded.
+        let bars = self.advance_bars(theme, dt_ms);
         let fading = self.advance_buttons(theme, dt_ms);
-        scrolling || fading
+        scrolling || bars || fading
     }
 
     fn advance_buttons(&mut self, theme: &Theme, dt_ms: u32) -> bool {

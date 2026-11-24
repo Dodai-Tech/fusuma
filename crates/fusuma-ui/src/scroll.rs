@@ -281,8 +281,15 @@ fn nothing_is_drawn_outside_the_window_and_the_scrollbar_shows_the_position() {
         THEME.colors.background,
         "clipped"
     );
-    // The scrollbar is at the right edge, at the top while not scrolled.
+    // The scrollbar is at the right edge: hidden at rest, as Material shows it.
     let bar_x = view.right() - 5;
+    let column = |s: &VelloCpu| {
+        (view.y..view.bottom()).any(|y| s.pixel(bar_x, y).unwrap() == THEME.colors.border_strong)
+    };
+    assert!(!column(&s), "no bar before anything moved");
+    // A move shows it, near the top for a small offset.
+    u.t.scroll_to(u.scroll, 1);
+    paint(&mut u, &mut s);
     assert_eq!(
         s.pixel(bar_x, view.y + 6).unwrap(),
         THEME.colors.border_strong,
@@ -303,6 +310,27 @@ fn nothing_is_drawn_outside_the_window_and_the_scrollbar_shows_the_position() {
         s.pixel(bar_x, view.y + 6).unwrap(),
         THEME.colors.border_strong
     );
+    // Still while held, gone after the fade.
+    let (hold, fade) = (THEME.motion.bar_hold_ms, THEME.motion.bar_fade_ms);
+    assert!(
+        u.t.advance(&THEME, hold - 10),
+        "the bar holds: frames go on"
+    );
+    paint(&mut u, &mut s);
+    assert!(column(&s), "still there just before the fade");
+    let mut frames = 0;
+    while u.t.advance(&THEME, 16) {
+        paint(&mut u, &mut s);
+        frames += 1;
+        assert!(frames < 100, "the fade ends");
+    }
+    paint(&mut u, &mut s);
+    assert!(
+        frames * 16 >= fade,
+        "it faded over frames, not at once: {frames}"
+    );
+    assert!(!column(&s), "gone after the fade");
+    assert_eq!(u.t.scrollbar_alpha(u.scroll, &THEME), Some(0));
 }
 
 #[test]
@@ -540,4 +568,63 @@ fn a_slider_in_a_scroll_container_keeps_the_drag_when_the_finger_drifts_up_or_do
     );
     assert_eq!(t.scroll_offset(sc), Some(0), "and the page did not scroll");
     t.pointer(Pointer::Up(Point::new(r.x + (r.w / 2) as i32 + 72, y + 24)));
+}
+
+#[test]
+fn a_fading_scrollbar_redraws_only_its_column() {
+    let mut u = ui();
+    let mut s = screen();
+    u.t.scroll_to(u.scroll, 40);
+    paint(&mut u, &mut s);
+    let view = u.t.rect(u.scroll).unwrap();
+    assert!(u.t.advance(
+        &THEME,
+        THEME.motion.bar_hold_ms + THEME.motion.bar_fade_ms / 2
+    ));
+    let d = u.t.take_damage_in(Rect::new(0, 0, W, H)).unwrap();
+    assert!(
+        d.w <= 8 && d.right() == view.right(),
+        "the bar's column only: {d:?} in {view:?}"
+    );
+    assert!(d.y >= view.y && d.bottom() <= view.bottom(), "{d:?}");
+    // Its last step, to hidden, is drawn too, then nothing more happens.
+    assert!(u.t.advance(&THEME, THEME.motion.bar_fade_ms));
+    assert!(
+        u.t.take_damage_in(Rect::new(0, 0, W, H)).is_some(),
+        "the bar is wiped"
+    );
+    assert!(!u.t.advance(&THEME, 16), "at rest again");
+    assert_eq!(u.t.take_damage_in(Rect::new(0, 0, W, H)), None);
+}
+
+#[test]
+fn a_finger_holding_a_drag_keeps_the_scrollbar_and_a_stale_handle_has_none() {
+    let mut u = ui();
+    let view = u.t.rect(u.scroll).unwrap();
+    let x = view.x + 20;
+    u.t.pointer(Pointer::Down(Point::new(x, view.y + 80)));
+    u.t.pointer(Pointer::Move(Point::new(x, view.y + 40)));
+    u.t.advance(&THEME, 16);
+    // Held still for twice the hold and fade: the bar stays while the finger is down.
+    for _ in 0..(2 * (THEME.motion.bar_hold_ms + THEME.motion.bar_fade_ms) / 16) {
+        u.t.advance(&THEME, 16);
+    }
+    assert_eq!(u.t.scrollbar_alpha(u.scroll, &THEME), Some(255));
+    u.t.pointer(Pointer::Up(Point::new(x, view.y + 40)));
+    u.t.pointer(Pointer::Leave);
+    for _ in 0..100 {
+        u.t.advance(&THEME, 16);
+    }
+    assert_eq!(
+        u.t.scrollbar_alpha(u.scroll, &THEME),
+        Some(0),
+        "lifted: it fades"
+    );
+    assert_eq!(
+        u.t.scrollbar_alpha(u.items[0], &THEME),
+        None,
+        "not a scroll container"
+    );
+    u.t.remove(u.scroll);
+    assert_eq!(u.t.scrollbar_alpha(u.scroll, &THEME), None, "stale handle");
 }

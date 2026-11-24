@@ -12,6 +12,7 @@ mod layout;
 mod paint;
 #[cfg(test)]
 mod scroll;
+mod scrollbar;
 mod scrollphys;
 mod scrollshift;
 mod shape;

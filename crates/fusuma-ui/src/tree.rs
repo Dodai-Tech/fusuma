@@ -253,8 +253,14 @@ pub(crate) enum Kind {
         content: u32,
         /// How far the content is pulled past an end (negative above the top), by a drag or a bounce. 0 at rest.
         over: i32,
+        /// Milliseconds since the content last moved, for the scrollbar that shows while it moves and then fades;
+        /// [`BAR_HIDDEN`] once it has faded (and before the first move).
+        bar: u16,
     },
 }
+
+/// [`Kind::Scroll`]'s `bar` when the scrollbar is not shown.
+pub(crate) const BAR_HIDDEN: u16 = u16::MAX;
 
 /// A press that may turn into a scroll: where it began and how far it has been dragged.
 #[derive(Clone, Copy, Debug)]
@@ -470,6 +476,8 @@ pub struct Tree<const N: usize> {
     pub(crate) shift: Option<crate::scrollshift::ShiftState>,
     /// Whether the layout has run since the shift began: damage after that is in the positions the rows will be drawn.
     pub(crate) shift_laid: bool,
+    /// Whether some scrollbar is showing or fading, so the animation pass looks for them.
+    pub(crate) bars_awake: bool,
     actions: [Option<Action>; ACTION_QUEUE],
     action_head: usize,
     action_len: usize,
@@ -508,6 +516,7 @@ impl<const N: usize> Tree<N> {
             rest: None,
             shift: None,
             shift_laid: false,
+            bars_awake: false,
             actions: [None; ACTION_QUEUE],
             action_head: 0,
             action_len: 0,
@@ -847,6 +856,7 @@ impl<const N: usize> Tree<N> {
                 offset: 0,
                 content: 0,
                 over: 0,
+                bar: BAR_HIDDEN,
             },
             style,
         )

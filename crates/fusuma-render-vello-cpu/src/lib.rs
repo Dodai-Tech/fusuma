@@ -37,6 +37,9 @@ pub struct CpuScene {
     shifts: alloc::vec::Vec<((i32, i32, u32, u32), i32)>,
     /// The reused buffer a damaged region is rasterised through, in bands.
     scratch: alloc::vec::Vec<u8>,
+    /// Draw commands in the scene not yet in the picture; for the tests, which check the scene does not grow.
+    #[cfg(test)]
+    queued: u32,
 }
 
 impl CpuScene {
@@ -57,11 +60,20 @@ impl CpuScene {
             damage: alloc::vec::Vec::new(),
             shifts: alloc::vec::Vec::new(),
             scratch: alloc::vec::Vec::new(),
+            #[cfg(test)]
+            queued: 0,
         })
     }
 
     /// Brings the picture up to date: the moves of what was drawn before, then the parts that changed. With no part
     /// named the whole scene is rendered; with some named, only those.
+    ///
+    /// The scene holds only what was drawn since the last render, drawn **over** the picture (`SrcOver`), and is
+    /// emptied afterwards. Before, a frame that did not clear the whole surface (every partial redraw: a hover, a
+    /// press, each scroll step) left its commands in the scene, so each frame rendered all of them again: on the S3
+    /// watch a scroll step grew from 135 to 290 us of host time for the same 2800 pixels within eight frames, and
+    /// the memory grew with it. Painting over the picture gives the same pixels, because it holds exactly what those
+    /// old commands drew.
     fn render_frame(&mut self) {
         let damage = core::mem::take(&mut self.damage);
         let shifts = core::mem::take(&mut self.shifts);
@@ -81,17 +93,43 @@ impl CpuScene {
             }
         }
         if full {
-            // The scene is drawn from nothing every time, so what was there is cleared first.
-            self.target.data_as_u8_slice_mut().fill(0);
-            self.ctx.render(&mut self.target, &mut self.resources);
-            return;
+            let settings = vello_cpu::RasterizerSettings {
+                target_init: vello_cpu::TargetInit::SrcOver,
+                ..vello_cpu::RasterizerSettings::default()
+            };
+            self.ctx
+                .render_with(&mut self.target, &mut self.resources, settings);
+        } else {
+            for (region, dy) in shifts {
+                self.shift_picture(region, dy);
+            }
+            for p in parts {
+                self.render_region(p);
+            }
         }
-        for (region, dy) in shifts {
-            self.shift_picture(region, dy);
+        self.forget_drawn();
+    }
+
+    /// Empties the scene once its commands are in the picture, keeping the drawing state (transform, paint, stroke,
+    /// fill rule, blend mode) that the next commands are drawn with.
+    fn forget_drawn(&mut self) {
+        let transform = *self.ctx.transform();
+        let paint_transform = *self.ctx.paint_transform();
+        let paint = self.ctx.paint().clone();
+        let stroke = self.ctx.stroke().clone();
+        let fill_rule = *self.ctx.fill_rule();
+        let blend = self.ctx.blend_mode();
+        self.ctx.reset();
+        #[cfg(test)]
+        {
+            self.queued = 0;
         }
-        for p in parts {
-            self.render_region(p);
-        }
+        self.ctx.set_transform(transform);
+        self.ctx.set_paint_transform(paint_transform);
+        self.ctx.set_paint(paint);
+        self.ctx.set_stroke(stroke);
+        self.ctx.set_fill_rule(fill_rule);
+        self.ctx.set_blend_mode(blend);
     }
 
     /// Whether `region` covers the whole surface.
@@ -175,12 +213,19 @@ impl CpuScene {
                 self.scratch.resize(bytes, 0);
             }
             // `rows` is at most `h`, so it fits a u16.
+            // The band starts as the picture has it, and the scene is drawn over it.
+            let src = self.target.data_as_u8_slice();
+            for r in 0..rows {
+                let at = (usize::from(y) + top + r) * stride + usize::from(x) * 4;
+                self.scratch[r * row..(r + 1) * row].copy_from_slice(&src[at..at + row]);
+            }
             let Some(part) = vello_cpu::PixmapMut::new(w, rows as u16, &mut self.scratch[..bytes])
             else {
                 return;
             };
             let settings = vello_cpu::RasterizerSettings {
                 offset: (-i32::from(x), -(i32::from(y) + top as i32)),
+                target_init: vello_cpu::TargetInit::SrcOver,
                 ..vello_cpu::RasterizerSettings::default()
             };
             self.ctx.render_with(part, &mut self.resources, settings);
@@ -208,6 +253,10 @@ impl Scene for CpuScene {
 
     fn reset(&mut self) {
         self.ctx.reset();
+        #[cfg(test)]
+        {
+            self.queued = 0;
+        }
         self.dirty = true;
         self.damage.clear();
         self.shifts.clear();
@@ -248,6 +297,10 @@ impl Scene for CpuScene {
     fn fill_rect(&mut self, rect: &KRect) {
         self.ctx.fill_rect(rect);
         self.dirty = true;
+        #[cfg(test)]
+        {
+            self.queued += 1;
+        }
     }
 
     fn fill_path(&mut self, path: &BezPath) {
@@ -255,12 +308,20 @@ impl Scene for CpuScene {
         self.ctx.fill_path(path);
         self.ctx.set_fill_rule(Fill::NonZero);
         self.dirty = true;
+        #[cfg(test)]
+        {
+            self.queued += 1;
+        }
     }
 
     fn stroke_path(&mut self, path: &BezPath, width: f64) {
         self.ctx.set_stroke(stroke(width));
         self.ctx.stroke_path(path);
         self.dirty = true;
+        #[cfg(test)]
+        {
+            self.queued += 1;
+        }
     }
 
     fn push_clip(&mut self, rect: &KRect) {
@@ -301,6 +362,10 @@ impl Scene for CpuScene {
             .fill_glyphs(placed.into_iter())
             .is_ok();
         self.dirty = true;
+        #[cfg(test)]
+        {
+            self.queued += 1;
+        }
         drawn
     }
 
@@ -938,6 +1003,68 @@ mod tests {
                 assert_eq!(r.pixel(50, y), Some(want), "dy {dy}, row {y}");
             }
         }
+    }
+
+    /// Regression: a frame that does not clear the whole surface (every partial redraw) left its commands in the
+    /// scene, so each later frame rendered all of them again and the S3 watch's home screen got slower with every
+    /// hover, press and scroll step.
+    #[test]
+    fn partial_frames_do_not_pile_up_in_the_scene_and_keep_what_was_drawn() {
+        use fusuma_render::Probe;
+        let mut r = new(60, 40).unwrap();
+        r.clear(Color::BLACK).unwrap();
+        r.fill_rect(Rect::new(0, 0, 30, 40), 0, Color::rgb(0, 0, 255))
+            .unwrap();
+        assert_eq!(r.pixel(5, 5), Some(Color::rgb(0, 0, 255)));
+        for i in 0..50u8 {
+            // A redraw of one small part, as the toolkit does it: say what is drawn, clip to it, paint it.
+            let part = Rect::new(40, 10, 10, 10);
+            r.will_draw(part);
+            r.save().unwrap();
+            r.clip(part).unwrap();
+            r.clear(Color::BLACK).unwrap();
+            r.fill_rect(part, 2, Color::rgb(i, 200, 0)).unwrap();
+            r.restore().unwrap();
+            let queued = r.with_scene(|s| s.queued);
+            assert!(
+                queued <= 2,
+                "frame {i}: {queued} commands waiting, the scene grows"
+            );
+            assert_eq!(r.pixel(45, 15), Some(Color::rgb(i, 200, 0)), "frame {i}");
+        }
+        assert_eq!(
+            r.pixel(5, 5),
+            Some(Color::rgb(0, 0, 255)),
+            "what an old frame drew stays"
+        );
+        assert_eq!(r.pixel(55, 35), Some(Color::BLACK));
+    }
+
+    #[test]
+    fn a_translation_outlives_the_render_that_empties_the_scene() {
+        use fusuma_render::Probe;
+        let mut r = new(40, 40).unwrap();
+        r.clear(Color::BLACK).unwrap();
+        r.translate(10, 20).unwrap();
+        r.fill_rect(Rect::new(0, 0, 4, 4), 0, Color::WHITE).unwrap();
+        assert_eq!(
+            r.pixel(11, 21),
+            Some(Color::WHITE),
+            "rendered, scene emptied"
+        );
+        r.fill_rect(Rect::new(5, 0, 4, 4), 0, Color::rgb(255, 0, 0))
+            .unwrap();
+        assert_eq!(
+            r.pixel(16, 21),
+            Some(Color::rgb(255, 0, 0)),
+            "still translated"
+        );
+        assert_eq!(r.pixel(6, 1), Some(Color::BLACK));
+        assert_eq!(
+            r.pixel(11, 21),
+            Some(Color::WHITE),
+            "the first square stays"
+        );
     }
 
     #[test]

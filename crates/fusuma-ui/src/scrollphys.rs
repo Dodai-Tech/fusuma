@@ -396,7 +396,8 @@ mod tests {
         }
         u.t.pointer(Pointer::Up(Point::new(x, y - 60)));
         let at = offset(&u);
-        assert!(!u.t.advance(&THEME, 16), "nothing is moving");
+        // The scroll has stopped (the scrollbar still fades, so `advance` alone would say true).
+        assert!(!u.t.advance_scroll(16), "nothing is moving");
         assert_eq!(offset(&u), at);
     }
 
@@ -473,7 +474,7 @@ mod tests {
             }
             let at = offset(&u);
             u.t.relayout(&screen(), &THEME);
-            assert!(!u.t.advance(&THEME, 100), "no fling goes on");
+            assert!(!u.t.advance_scroll(100), "no fling goes on");
             assert_eq!(offset(&u), at, "case {how}");
         }
     }
