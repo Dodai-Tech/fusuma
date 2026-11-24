@@ -25,7 +25,7 @@ pub enum Backend {
     /// `fusuma-render-embedded`: integer drawing on `embedded-graphics`; the lightest and fastest, no
     /// anti-aliasing and no alpha.
     Integer,
-    /// `fusuma-render-skia`: `tiny-skia`; anti-aliased, 4 bytes per pixel.
+    /// `fusuma-render-skia`: `tiny-skia`; anti-aliased, 5 bytes per pixel (pixmap and one clip mask).
     Skia,
     /// `fusuma-render-vello-cpu`: the richest CPU backend, and the heaviest.
     VelloCpu,
@@ -89,15 +89,16 @@ impl Backend {
 
     /// RAM the backend needs for a surface of `width` x `height`, in bytes. Measured on an ESP32-C6
     /// and an ESP32-S3 (`tools/bench-c6/RESULT.md`, `tools/bench-s3/RESULT.md`): the integer
-    /// renderer's frame is 2 bytes per pixel, `tiny-skia`'s pixmap 4, `vello_cpu` about 4.8 with its
-    /// working buffers. The GPU backend keeps its pixels in video memory, so it needs none here.
+    /// renderer's frame is 2 bytes per pixel, `tiny-skia` 5 (its pixmap of 4, measured, plus the one clip mask of
+    /// 1 that `fusuma-render-skia` makes when a shape crosses a clip, which a UI always does), `vello_cpu` about
+    /// 4.8 with its working buffers. The GPU backend keeps its pixels in video memory, so it needs none here.
     #[must_use]
     pub const fn memory(self, width: u32, height: u32) -> u64 {
         // u32 x u32 fits in a u64, but the bytes per pixel may not: saturate.
         let pixels = width as u64 * height as u64;
         match self {
             Self::Integer => pixels.saturating_mul(2),
-            Self::Skia => pixels.saturating_mul(4),
+            Self::Skia => pixels.saturating_mul(5),
             Self::VelloCpu => pixels.saturating_mul(48) / 10,
             Self::VelloGpu => 0,
         }
@@ -524,8 +525,8 @@ mod tests {
         );
         assert_eq!(
             Backend::Skia.memory(240, 320),
-            307_200,
-            "measured: 307200 bytes used"
+            307_200 + 76_800,
+            "measured: a 307200-byte pixmap, plus the clip mask of 1 byte a pixel"
         );
         // Vello measured 264764 bytes at 172x320; the rule says 264192: within 0.3 percent.
         let v = Backend::VelloCpu.memory(172, 320);
@@ -548,17 +549,17 @@ mod tests {
         assert_eq!(
             pick(160, 160, C6),
             Backend::Skia,
-            "a small C6 display: 102 KB leaves 218 KB free"
+            "a small C6 display: 125 KB (pixmap and clip mask) leaves 195 KB free"
         );
         assert_eq!(
             pick(172, 320, C6),
-            Backend::Skia,
-            "the C6's own LCD: 215 KB leaves 105 KB of the 320 KB free, above the 100 KB minimum"
+            Backend::Integer,
+            "the C6's own LCD: skia's 269 KB would leave 51 KB of the 320 KB, under the 100 KB minimum"
         );
         assert_eq!(pick(240, 320, C6), Backend::Integer);
         assert_eq!(pick(1920, 1080, PC), Backend::VelloGpu);
         // A PSRAM too small for a Vello frame falls to the next backend.
-        // 410x502: integer 412 KB, skia 823 KB, vello 988 KB. Budget = the PSRAM (1 MB).
+        // 410x502: integer 402 KB, skia 1005 KB, vello 988 KB. Budget = the PSRAM (1 MB).
         let one_mb = Hardware {
             psram_kb: 1024,
             ..S3
@@ -566,7 +567,7 @@ mod tests {
         assert_eq!(
             pick(410, 502, one_mb),
             Backend::Skia,
-            "1 MB holds skia's 823 KB, but not twice Vello's 988 KB"
+            "1 MB holds skia's 1005 KB, but not twice Vello's 988 KB"
         );
         let half_mb = Hardware {
             psram_kb: 512,
@@ -575,7 +576,7 @@ mod tests {
         assert_eq!(
             pick(410, 502, half_mb),
             Backend::Integer,
-            "717 KB holds the integer frame, not skia's 823 KB"
+            "512 KB holds the integer frame, not skia's 1005 KB"
         );
         let none = Hardware { psram_kb: 0, ..S3 };
         assert_eq!(
@@ -704,7 +705,7 @@ mod tests {
                 from: Backend::VelloCpu,
                 to: Backend::Integer
             },
-            "300 KB skia does not fit 220 KB either"
+            "skia's 375 KB does not fit 220 KB either"
         );
         assert_eq!(
             (c.backend, c.reason),
@@ -906,9 +907,9 @@ mod tests {
             (c.backend, fit)
         };
         assert_eq!(with(0).0, Backend::Skia, "everything fits");
-        assert_eq!(with(100).0, Backend::Skia, "215 KB of 220 KB");
+        assert_eq!(with(50).0, Backend::Skia, "skia's 269 KB of 270 KB");
         assert_eq!(
-            with(120).0,
+            with(100).0,
             Backend::Integer,
             "a bigger reserve leaves room for the lighter one only"
         );

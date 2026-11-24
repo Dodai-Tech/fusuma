@@ -23,10 +23,10 @@ renderer crates stay separate, because each is useful alone.
 |---|---|---|---|
 | [`fusuma-render`](crates/fusuma-render) | the `Renderer` trait, geometry, colors, paths, the conformance suite | yes | working |
 | [`fusuma-render-embedded`](crates/fusuma-render-embedded) | integer drawing for small displays; kept: the lightest renderer and the default for chips that must keep RAM free | yes | working |
-| [`fusuma-render-skia`](crates/fusuma-render-skia) | anti-aliased CPU drawing on `tiny-skia`; lighter and about 3-4x faster than `vello_cpu` on a chip without an FPU; `no_std` with `alloc` | partly | working, measured on the ESP32-C6 |
-| [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | no | working |
+| [`fusuma-render-skia`](crates/fusuma-render-skia) | anti-aliased CPU drawing on `tiny-skia`; lighter and about 3-4x faster than `vello_cpu` on a chip without an FPU (5 bytes a pixel), bitmap text only; picked automatically when a Vello frame does not fit; `no_std` with `alloc` | partly | working, measured on the ESP32-C6 |
+| [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu) | anti-aliased CPU drawing on `vello_cpu` | with `libm` | working |
 | [`fusuma-render-vello`](crates/fusuma-render-vello) | anti-aliased GPU drawing on `vello_gpu` and `wgpu` | no | working |
-| [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | no | working |
+| [`fusuma-render-vello-common`](crates/fusuma-render-vello-common) | shared code of the two Vello backends (internal) | with `libm` | working |
 | [`fusuma`](crates/fusuma) | **the crate to add:** a facade over the toolkit, `render`, `anim`, `platform` and the backends, each backend one feature (`renderer-integer`, `renderer-skia`, `renderer-vello-cpu`, `renderer-vello-gpu`) | yes | working |
 | [`fusuma-ui`](crates/fusuma-ui) | **the toolkit:** retained widget tree, layout, theme tokens, pointer and key events, focus, animation and paint passes; Label, Button, Checkbox, Radio, Switch, Slider, List item, Progress, a scrolling container, Row, Column, Spacer | yes | working |
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, an animator and drag helpers, in fixed point | yes | working (the animator and drag helpers are not in the published 0.2.0) |

@@ -46,12 +46,23 @@ const KAPPA: f32 = 0.552_284_8;
 #[cfg(feature = "png")]
 pub struct EncodeError(pub String);
 
-#[derive(Clone, Debug)]
+/// What `save` keeps: the clip is always a rectangle (an intersection of rectangles), so it is kept as one and costs
+/// no memory; the mask that tiny-skia needs is made from it only when a shape crosses it.
+#[derive(Clone, Copy, Debug)]
 struct State {
+    /// The visible area in device space, always inside the surface.
     clip: Rect,
-    mask: Option<Mask>,
     tx: i32,
     ty: i32,
+}
+
+/// The pixels a draw may touch, in device space: 64-bit, because a shape can lie anywhere in the coordinate range.
+#[derive(Clone, Copy, Debug)]
+struct Span {
+    x0: i64,
+    y0: i64,
+    x1: i64,
+    y1: i64,
 }
 
 /// The Fusuma renderer on a `tiny-skia` pixmap.
@@ -60,6 +71,11 @@ pub struct Skia {
     pixmap: Pixmap,
     state: State,
     stack: Vec<State>,
+    /// One mask for the whole surface (1 byte a pixel), made the first time a shape crosses the clip and reused:
+    /// it selects `mask_clip`, and is rewritten only when a crossing shape needs another clip. Shapes inside the
+    /// clip, plain rectangles and text need no mask at all.
+    mask: Option<Mask>,
+    mask_clip: Rect,
 }
 
 fn paint(c: Color, anti_alias: bool) -> Paint<'static> {
@@ -128,7 +144,6 @@ impl Skia {
         let pixmap = Pixmap::new(width, height)?;
         let state = State {
             clip: Rect::new(0, 0, width, height),
-            mask: None,
             tx: 0,
             ty: 0,
         };
@@ -136,6 +151,8 @@ impl Skia {
             pixmap,
             state,
             stack: Vec::new(),
+            mask: None,
+            mask_clip: Rect::default(),
         })
     }
 
@@ -194,6 +211,113 @@ impl Skia {
     fn transform(&self) -> Transform {
         Transform::from_translate(self.state.tx as f32, self.state.ty as f32)
     }
+
+    /// The device pixels of the local box `(x0, y0)..(x1, y1)`, grown by `pad` on every side (anti-aliasing and
+    /// stroke width).
+    fn span(&self, (x0, y0): (i64, i64), (x1, y1): (i64, i64), pad: i64) -> Span {
+        let (tx, ty) = (i64::from(self.state.tx), i64::from(self.state.ty));
+        Span {
+            x0: x0 + tx - pad,
+            y0: y0 + ty - pad,
+            x1: x1 + tx + pad,
+            y1: y1 + ty + pad,
+        }
+    }
+
+    /// The device pixels a rectangle covers, grown by `pad`.
+    fn rect_span(&self, r: Rect, pad: i64) -> Span {
+        self.span(
+            (i64::from(r.x), i64::from(r.y)),
+            (
+                i64::from(r.x) + i64::from(r.w),
+                i64::from(r.y) + i64::from(r.h),
+            ),
+            pad,
+        )
+    }
+
+    /// The device pixels a path can touch: a curve stays inside the hull of its points. An empty path touches none.
+    fn path_span(&self, path: &[PathCmd], pad: i64) -> Span {
+        let (mut lo, mut hi) = ((i64::MAX, i64::MAX), (i64::MIN, i64::MIN));
+        let mut add = |p: &Point| {
+            let (x, y) = (i64::from(p.x), i64::from(p.y));
+            lo = (lo.0.min(x), lo.1.min(y));
+            hi = (hi.0.max(x), hi.1.max(y));
+        };
+        for cmd in path {
+            match cmd {
+                PathCmd::MoveTo(a) | PathCmd::LineTo(a) => add(a),
+                PathCmd::QuadTo(a, b) => [a, b].into_iter().for_each(&mut add),
+                PathCmd::CubicTo(a, b, c) => [a, b, c].into_iter().for_each(&mut add),
+                PathCmd::Close => {}
+            }
+        }
+        if lo.0 > hi.0 {
+            return Span {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            };
+        }
+        self.span(lo, (hi.0 + 1, hi.1 + 1), pad)
+    }
+
+    /// What a draw that touches `span` needs: `None` when nothing of it can be seen (skip it), `Some(false)` when it
+    /// lies inside the clip (no mask), `Some(true)` when it crosses the clip's edge, and then the mask selects the
+    /// clip.
+    fn prepare(&mut self, s: Span) -> Option<bool> {
+        let c = self.state.clip;
+        let (cx0, cy0) = (i64::from(c.x), i64::from(c.y));
+        let (cx1, cy1) = (cx0 + i64::from(c.w), cy0 + i64::from(c.h));
+        if c.is_empty() || s.x1 <= cx0 || s.y1 <= cy0 || s.x0 >= cx1 || s.y0 >= cy1 {
+            return None;
+        }
+        if s.x0 >= cx0 && s.y0 >= cy0 && s.x1 <= cx1 && s.y1 <= cy1 {
+            return Some(false);
+        }
+        self.select(c);
+        Some(true)
+    }
+
+    /// Makes the mask select `clip` (inside the surface), making the mask the first time. Only the rows of the old
+    /// and the new rectangle are written, not the whole surface.
+    fn select(&mut self, clip: Rect) {
+        let w = self.pixmap.width();
+        if self.mask.is_none() {
+            self.mask = Mask::new(w, self.pixmap.height());
+            self.mask_clip = Rect::default();
+        }
+        if self.mask_clip == clip {
+            return;
+        }
+        let Some(mask) = self.mask.as_mut() else {
+            return;
+        };
+        let stride = w as usize;
+        let data = mask.data_mut();
+        let mut paint = |r: Rect, v: u8| {
+            if r.is_empty() {
+                return;
+            }
+            let (x, y) = (r.x.max(0) as usize, r.y.max(0) as usize);
+            for row in y..y + r.h as usize {
+                let at = row * stride + x;
+                if let Some(px) = data.get_mut(at..at + r.w as usize) {
+                    px.fill(v);
+                }
+            }
+        };
+        paint(self.mask_clip, 0);
+        paint(clip, 255);
+        self.mask_clip = clip;
+    }
+
+    /// The number of masks made so far (0 or 1), for the tests.
+    #[cfg(test)]
+    fn masks(&self) -> usize {
+        usize::from(self.mask.is_some())
+    }
 }
 
 type Result<T = ()> = core::result::Result<T, Error<Infallible>>;
@@ -216,7 +340,7 @@ impl Renderer for Skia {
         if self.stack.len() >= STATE_DEPTH {
             return Err(Error::StackFull);
         }
-        self.stack.push(self.state.clone());
+        self.stack.push(self.state);
         Ok(())
     }
 
@@ -226,24 +350,10 @@ impl Renderer for Skia {
     }
 
     fn clip(&mut self, rect: Rect) -> Result {
+        // Only the rectangle: a mask is made from it when a shape crosses it (see `prepare`). An empty clip hides
+        // everything.
         let device = rect.translate(self.state.tx, self.state.ty);
         self.state.clip = self.state.clip.intersect(&device);
-        let (w, h) = (self.pixmap.width(), self.pixmap.height());
-        // A mask that selects the rectangle, intersected with the one that is there already.
-        let path = rect_f(device).map(PathBuilder::from_rect);
-        match (path, self.state.mask.as_mut()) {
-            (Some(path), Some(mask)) if !device.is_empty() => {
-                mask.intersect_path(&path, FillRule::Winding, false, Transform::identity())
-            }
-            (Some(path), None) if !device.is_empty() => {
-                if let Some(mut mask) = Mask::new(w, h) {
-                    mask.fill_path(&path, FillRule::Winding, false, Transform::identity());
-                    self.state.mask = Some(mask);
-                }
-            }
-            // An empty or unrepresentable clip hides everything.
-            _ => self.state.mask = Mask::new(w, h),
-        }
         Ok(())
     }
 
@@ -256,14 +366,10 @@ impl Renderer for Skia {
     fn clear(&mut self, color: Color) -> Result {
         let mut p = paint(color.with_alpha(255), false);
         p.blend_mode = BlendMode::Source;
-        if let Some(all) = skia_rect(
-            0.0,
-            0.0,
-            self.pixmap.width() as f32,
-            self.pixmap.height() as f32,
-        ) {
-            self.pixmap
-                .fill_rect(all, &p, Transform::identity(), self.state.mask.as_ref());
+        // The clip is a rectangle in whole pixels: filling exactly it is the clear, with no mask.
+        let c = self.state.clip;
+        if let Some(all) = rect_f(c).filter(|_| !c.is_empty()) {
+            self.pixmap.fill_rect(all, &p, Transform::identity(), None);
         }
         Ok(())
     }
@@ -278,15 +384,15 @@ impl Renderer for Skia {
             let visible = rect
                 .translate(self.state.tx, self.state.ty)
                 .intersect(&self.state.clip);
+            // Already cut to the clip, so no mask.
             if let Some(shape) = rect_f(visible).filter(|_| !visible.is_empty()) {
-                self.pixmap.fill_rect(
-                    shape,
-                    &paint(color, false),
-                    Transform::identity(),
-                    self.state.mask.as_ref(),
-                );
+                self.pixmap
+                    .fill_rect(shape, &paint(color, false), Transform::identity(), None);
             }
         } else if self.rect_ok(rect) {
+            let Some(masked) = self.prepare(self.rect_span(rect, 1)) else {
+                return Ok(());
+            };
             let t = self.transform();
             if let Some(path) = rounded_rect(
                 rect.x as f32,
@@ -295,13 +401,9 @@ impl Renderer for Skia {
                 rect.h as f32,
                 r as f32,
             ) {
-                self.pixmap.fill_path(
-                    &path,
-                    &paint(color, true),
-                    FillRule::Winding,
-                    t,
-                    self.state.mask.as_ref(),
-                );
+                let mask = if masked { self.mask.as_ref() } else { None };
+                self.pixmap
+                    .fill_path(&path, &paint(color, true), FillRule::Winding, t, mask);
             }
         }
         Ok(())
@@ -317,6 +419,10 @@ impl Renderer for Skia {
         if width.saturating_mul(2) >= rect.w.min(rect.h) {
             return self.fill_rect(rect, radius, color);
         }
+        // The stroke lies inside the rectangle.
+        let Some(masked) = self.prepare(self.rect_span(rect, 1)) else {
+            return Ok(());
+        };
         let half = width as f32 / 2.0;
         let r = (radius.min(rect.w / 2).min(rect.h / 2) as f32 - half).max(0.0);
         let (x, y, w, h) = (
@@ -335,13 +441,10 @@ impl Renderer for Skia {
                 width: width as f32,
                 ..Stroke::default()
             };
-            self.pixmap.stroke_path(
-                &path,
-                &paint(color, r > 0.0),
-                &stroke,
-                self.transform(),
-                self.state.mask.as_ref(),
-            );
+            let t = self.transform();
+            let mask = if masked { self.mask.as_ref() } else { None };
+            self.pixmap
+                .stroke_path(&path, &paint(color, r > 0.0), &stroke, t, mask);
         }
         Ok(())
     }
@@ -353,19 +456,21 @@ impl Renderer for Skia {
         {
             return Ok(());
         }
+        let (cx, cy, r) = (i64::from(center.x), i64::from(center.y), i64::from(radius));
+        let Some(masked) = self.prepare(self.span((cx - r, cy - r), (cx + r + 1, cy + r + 1), 1))
+        else {
+            return Ok(());
+        };
         // The pixel at `center` is the middle of the disc.
         if let Some(path) = PathBuilder::from_circle(
             center.x as f32 + 0.5,
             center.y as f32 + 0.5,
             radius as f32 + 0.5,
         ) {
-            self.pixmap.fill_path(
-                &path,
-                &paint(color, true),
-                FillRule::Winding,
-                self.transform(),
-                self.state.mask.as_ref(),
-            );
+            let t = self.transform();
+            let mask = if masked { self.mask.as_ref() } else { None };
+            self.pixmap
+                .fill_path(&path, &paint(color, true), FillRule::Winding, t, mask);
         }
         Ok(())
     }
@@ -374,14 +479,14 @@ impl Renderer for Skia {
         if color.a == 0 || !self.path_ok(path) {
             return Ok(());
         }
+        let Some(masked) = self.prepare(self.path_span(path, 1)) else {
+            return Ok(());
+        };
         if let Some(path) = to_path(path, 0.0) {
-            self.pixmap.fill_path(
-                &path,
-                &paint(color, true),
-                FillRule::EvenOdd,
-                self.transform(),
-                self.state.mask.as_ref(),
-            );
+            let t = self.transform();
+            let mask = if masked { self.mask.as_ref() } else { None };
+            self.pixmap
+                .fill_path(&path, &paint(color, true), FillRule::EvenOdd, t, mask);
         }
         Ok(())
     }
@@ -390,19 +495,21 @@ impl Renderer for Skia {
         if width == 0 || color.a == 0 || i64::from(width) > BAND || !self.path_ok(path) {
             return Ok(());
         }
+        // Half the width on each side, and a miter join can reach farther: a generous pad only costs a mask.
+        let pad = i64::from(width).saturating_mul(2) + 2;
+        let Some(masked) = self.prepare(self.path_span(path, pad)) else {
+            return Ok(());
+        };
         // Through pixel centers, so a line at an integer coordinate is crisp.
         if let Some(path) = to_path(path, 0.5) {
             let stroke = Stroke {
                 width: width as f32,
                 ..Stroke::default()
             };
-            self.pixmap.stroke_path(
-                &path,
-                &paint(color, true),
-                &stroke,
-                self.transform(),
-                self.state.mask.as_ref(),
-            );
+            let t = self.transform();
+            let mask = if masked { self.mask.as_ref() } else { None };
+            self.pixmap
+                .stroke_path(&path, &paint(color, true), &stroke, t, mask);
         }
         Ok(())
     }
@@ -438,6 +545,17 @@ impl Renderer for Skia {
         if !near || !self.point_ok(i64::from(at.x), i64::from(at.y)) {
             return Ok(());
         }
+        let span = self.span(
+            (i64::from(at.x), i64::from(at.y)),
+            (
+                i64::from(at.x) + i64::from(image.width()),
+                i64::from(at.y) + i64::from(image.height()),
+            ),
+            0,
+        );
+        let Some(masked) = self.prepare(span) else {
+            return Ok(());
+        };
         let Some(mut layer) = Pixmap::new(image.width(), image.height()) else {
             return Ok(());
         };
@@ -448,20 +566,17 @@ impl Renderer for Skia {
             let mul = |c: u8| ((u16::from(c) * a + 127) / 255) as u8;
             *dst = [mul(src[0]), mul(src[1]), mul(src[2]), src[3]];
         }
-        self.pixmap.draw_pixmap(
-            at.x,
-            at.y,
-            layer.as_ref(),
-            &PixmapPaint::default(),
-            self.transform(),
-            self.state.mask.as_ref(),
-        );
+        let t = self.transform();
+        let mask = if masked { self.mask.as_ref() } else { None };
+        self.pixmap
+            .draw_pixmap(at.x, at.y, layer.as_ref(), &PixmapPaint::default(), t, mask);
         Ok(())
     }
 }
 
 /// Lets `embedded-graphics` draw glyphs into the pixmap: every lit pixel becomes a 1x1 fill in the
-/// text color, which follows the clip and the translation.
+/// text color, moved by the translation. The clip is a rectangle of whole pixels, so a dot outside it is skipped
+/// here and text never needs the mask.
 struct Plot<'a> {
     skia: &'a mut Skia,
     paint: Paint<'static>,
@@ -481,12 +596,21 @@ impl DrawTarget for Plot<'_> {
         &mut self,
         pixels: I,
     ) -> core::result::Result<(), Infallible> {
-        let t = self.skia.transform();
+        let (tx, ty) = (self.skia.state.tx, self.skia.state.ty);
+        let clip = self.skia.state.clip;
         for Pixel(p, _) in pixels {
-            if let Some(dot) = skia_rect(p.x as f32, p.y as f32, 1.0, 1.0) {
+            let (x, y) = (
+                i64::from(p.x) + i64::from(tx),
+                i64::from(p.y) + i64::from(ty),
+            );
+            let inside = x >= i64::from(clip.x)
+                && y >= i64::from(clip.y)
+                && x < i64::from(clip.x) + i64::from(clip.w)
+                && y < i64::from(clip.y) + i64::from(clip.h);
+            if let Some(dot) = skia_rect(x as f32, y as f32, 1.0, 1.0).filter(|_| inside) {
                 self.skia
                     .pixmap
-                    .fill_rect(dot, &self.paint, t, self.skia.state.mask.as_ref());
+                    .fill_rect(dot, &self.paint, Transform::identity(), None);
             }
         }
         Ok(())
@@ -599,6 +723,145 @@ mod tests {
             r.restore().unwrap();
         }
         assert_eq!(r.restore(), Err(Error::StackEmpty));
+    }
+
+    /// The toolkit's pattern: a clip for the redrawn part, one for a scroll window, one for each label, with the
+    /// shapes inside them. None of it may cost a surface-sized mask: that is what kept tiny-skia over the memory the
+    /// chooser counts for it (a mask of 1 byte a pixel per clip, copied on every `save`).
+    #[test]
+    fn shapes_and_text_inside_their_clips_need_no_mask() {
+        let mut r = backend(120, 80);
+        r.save().unwrap();
+        r.clip(Rect::new(0, 0, 120, 80)).unwrap();
+        r.clear(Color::BLACK).unwrap();
+        for depth in 0..8 {
+            r.save().unwrap();
+            r.clip(Rect::new(depth, depth, 100, 60)).unwrap();
+        }
+        r.fill_rect(Rect::new(20, 20, 40, 20), 6, Color::WHITE)
+            .unwrap();
+        r.stroke_rect(Rect::new(20, 20, 40, 20), 6, 2, Color::WHITE)
+            .unwrap();
+        r.fill_circle(Point::new(50, 40), 8, Color::WHITE).unwrap();
+        r.stroke_path(
+            &triangle(Point::new(30, 30), Point::new(40, 30), Point::new(35, 36)),
+            1,
+            Color::WHITE,
+        )
+        .unwrap();
+        // Text crossing the clip is cut dot by dot, without a mask.
+        r.draw_text(
+            "clipped",
+            Point::new(90, 30),
+            &TextStyle::new(10, Color::WHITE),
+        )
+        .unwrap();
+        for _ in 0..9 {
+            r.restore().unwrap();
+        }
+        assert_eq!(r.masks(), 0);
+        assert!(r.pixel(50, 40).unwrap().r > 200, "the shapes were drawn");
+        let past = (107..120).any(|x| (0..80).any(|y| r.pixel(x, y).unwrap().r > 0));
+        assert!(!past, "no text dot right of the innermost clip at x = 107");
+    }
+
+    #[test]
+    fn a_shape_crossing_the_clip_makes_one_mask_which_follows_nested_clips_and_restores() {
+        let mut r = backend(60, 60);
+        r.clear(Color::BLACK).unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(10, 10, 40, 40)).unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(20, 20, 10, 10)).unwrap();
+        // Crosses the inner clip: the mask selects 20..30.
+        r.fill_circle(Point::new(25, 25), 20, Color::rgb(255, 0, 0))
+            .unwrap();
+        r.restore().unwrap();
+        // Crosses the outer clip: the same mask must now select 10..50, not stay at 20..30.
+        r.fill_circle(Point::new(30, 30), 28, Color::rgb(0, 0, 255))
+            .unwrap();
+        r.restore().unwrap();
+        // Back to no clip: inside the surface, so no mask is needed.
+        r.fill_circle(Point::new(55, 55), 3, Color::rgb(0, 255, 0))
+            .unwrap();
+        assert_eq!(r.masks(), 1, "one mask, reused");
+        let at = |x, y| r.pixel(x, y).unwrap();
+        assert_eq!(at(5, 30), Color::BLACK, "left of the outer clip");
+        assert_eq!(at(52, 30), Color::BLACK, "right of the outer clip");
+        assert!(
+            at(12, 30).b > 200,
+            "inside the outer clip, outside the inner"
+        );
+        assert!(at(25, 25).b > 200, "the blue disc covers the red one");
+        assert!(
+            at(55, 55).g > 200,
+            "after the last restore nothing is clipped"
+        );
+        // Only the inner clip let red through: draw it again on a fresh surface and look at its edge.
+        let mut red = backend(60, 60);
+        red.clear(Color::BLACK).unwrap();
+        red.save().unwrap();
+        red.clip(Rect::new(10, 10, 40, 40)).unwrap();
+        red.clip(Rect::new(20, 20, 10, 10)).unwrap();
+        red.fill_circle(Point::new(25, 25), 20, Color::rgb(255, 0, 0))
+            .unwrap();
+        for (x, y) in [(19, 25), (30, 25), (25, 19), (25, 30)] {
+            assert_eq!(red.pixel(x, y).unwrap(), Color::BLACK, "({x}, {y})");
+        }
+        assert_eq!(red.pixel(20, 20).unwrap().r, 255);
+        assert_eq!(red.pixel(29, 29).unwrap().r, 255);
+    }
+
+    /// The reverse order: the mask first selects a large clip, then a small one elsewhere. What the large one let
+    /// through must be closed again, not only the new one opened.
+    #[test]
+    fn a_mask_that_moves_to_a_smaller_clip_closes_the_old_one() {
+        let mut r = backend(40, 40);
+        r.clear(Color::BLACK).unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(2, 2, 36, 36)).unwrap();
+        r.fill_circle(Point::new(20, 20), 30, Color::rgb(0, 0, 255))
+            .unwrap();
+        r.restore().unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(30, 30, 5, 5)).unwrap();
+        r.fill_circle(Point::new(20, 20), 30, Color::rgb(255, 0, 0))
+            .unwrap();
+        r.restore().unwrap();
+        assert_eq!(r.masks(), 1);
+        assert_eq!(
+            r.pixel(10, 10).unwrap().r,
+            0,
+            "the old clip's area got no red"
+        );
+        assert_eq!(r.pixel(32, 32).unwrap().r, 255, "the new clip's area did");
+    }
+
+    #[test]
+    fn an_empty_clip_hides_everything_and_a_clear_fills_exactly_the_clip() {
+        let mut r = backend(20, 20);
+        r.clear(Color::BLACK).unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(4, 4, 6, 6)).unwrap();
+        r.clear(Color::WHITE).unwrap();
+        r.clip(Rect::new(100, 100, 5, 5)).unwrap();
+        r.fill_circle(Point::new(6, 6), 30, Color::rgb(255, 0, 0))
+            .unwrap();
+        r.draw_text(
+            "x",
+            Point::new(4, 4),
+            &TextStyle::new(10, Color::rgb(255, 0, 0)),
+        )
+        .unwrap();
+        r.restore().unwrap();
+        for y in 0..20 {
+            for x in 0..20 {
+                let inside = (4..10).contains(&x) && (4..10).contains(&y);
+                let want = if inside { Color::WHITE } else { Color::BLACK };
+                assert_eq!(r.pixel(x, y).unwrap(), want, "({x}, {y})");
+            }
+        }
+        assert_eq!(r.masks(), 0);
     }
 
     #[test]

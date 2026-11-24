@@ -9,7 +9,9 @@ The Fusuma renderer backend for desktops, phones, tablets and watches: anti-alia
 window system (`winit` and `softbuffer`, a Wayland buffer, a texture) or write out as a PNG.
 
 - Rectangles, rounded rectangles, circles and paths are anti-aliased. Colors blend with their alpha.
-- Clip and translate map to a mask and a transform.
+- Clip and translate map to a mask and a transform. A clip is kept as a rectangle; the one surface-sized mask
+  (1 byte a pixel) is made only when a shape crosses a clip, and plain rectangles and text never need it. So a
+  frame costs the pixmap (4 bytes a pixel) plus at most that mask: 5 bytes a pixel, which `fusuma-platform` counts.
 - Text uses the same mono fonts as `fusuma-render-embedded`, so glyphs are identical on every target
   (anti-aliased vector fonts are planned).
 - Strokes run through pixel centers, so a 3 px line at `y = 10` covers rows 9 to 11.

@@ -287,8 +287,13 @@ mod tests {
         );
         assert_eq!(
             pick(Chip::Esp32C6, 0, 172, 320),
+            (Backend::Integer, true),
+            "the C6's own LCD: tiny-skia's pixmap and clip mask (269 KB) leave less than 100 KB free"
+        );
+        assert_eq!(
+            pick(Chip::Esp32C6, 0, 160, 160),
             (Backend::Skia, true),
-            "the C6's own LCD"
+            "a smaller C6 display gets anti-aliasing"
         );
         assert_eq!(pick(Chip::Esp32C6, 0, 240, 320), (Backend::Integer, true));
         assert_eq!(pick(Chip::Esp32C3, 0, 240, 240), (Backend::Integer, true));
