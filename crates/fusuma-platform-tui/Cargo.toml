@@ -1,0 +1,23 @@
+[package]
+name = "fusuma-platform-tui"
+description = "Fusuma in a terminal or an SSH session: raw mode and the alternate screen, colour depth detection, a diffed write of only the changed cells, and keys, mouse and resizes as Fusuma input (on crossterm)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["tui", "terminal", "gui", "ssh"]
+categories = ["command-line-interface", "gui"]
+# A scaffold: published once an app can run in it (see the roadmap).
+publish = false
+
+[dependencies]
+fusuma.workspace = true
+fusuma-cells.workspace = true
+crossterm = "0.29"
+
+[lints]
+workspace = true

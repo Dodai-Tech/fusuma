@@ -1,0 +1,20 @@
+[package]
+name = "fusuma-cells"
+description = "Fusuma's text-cell output: a cell grid, a diff of two frames into changed runs, an ANSI encoder and key decoder; no_std with no allocator, for a terminal, a serial console or a panel"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-cells"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["tui", "terminal", "ansi", "no-std", "embedded"]
+categories = ["command-line-interface", "embedded", "no-std"]
+# A scaffold: published once the toolkit can paint into it (see the roadmap).
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

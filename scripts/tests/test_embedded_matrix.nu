@@ -8,6 +8,14 @@ use ../ci/embedded_matrix.nu [MATRIX build_args missing_targets]
 def "test embedded matrix: one cargo build per entry, for the right package target and features" [] {
     let a = build_args { target: "thumbv6m-none-eabi", features: "skia" }
     assert equal $a ["build" "-p" "fusuma-platform-embedded" "--features" "skia" "--target" "thumbv6m-none-eabi"]
+    let c = build_args { target: "thumbv6m-none-eabi", features: "", package: "fusuma-cells" }
+    assert equal $c ["build" "-p" "fusuma-cells" "--target" "thumbv6m-none-eabi"]
+}
+
+def "test embedded matrix: the text UI cells build for the smallest chips" [] {
+    let cells = $MATRIX | where { |e| ($e.package? | default "") == "fusuma-cells" } | get target
+    assert ("thumbv6m-none-eabi" in $cells)
+    assert ("riscv32imac-unknown-none-elf" in $cells)
 }
 
 def "test embedded matrix: Vello is never built for a Cortex-M0+" [] {
