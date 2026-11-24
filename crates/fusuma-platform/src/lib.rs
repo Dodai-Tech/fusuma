@@ -516,7 +516,6 @@ mod tests {
             assert_eq!(Backend::from_name(b.name()), Some(b));
             assert!(b.crate_name().starts_with("fusuma-render"));
         }
-        assert_eq!(Backend::from_name("skia"), None, "tiny-skia was removed");
         assert_eq!(Backend::from_name("vello"), None);
         assert_eq!(Backend::Integer.lighter(), None);
         assert_eq!(Backend::VelloGpu.lighter(), Some(Backend::VelloCpu));

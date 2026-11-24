@@ -51,12 +51,6 @@ impl RawRender {
         let backend = match self.backend.as_deref() {
             None => None,
             Some("auto") => Some(BackendSetting::Auto),
-            Some("skia") => {
-                return Err(SettingsError(std::string::String::from(
-                    "render backend 'skia' was removed (tiny-skia, Fusuma 0.3); use 'integer' on a microcontroller \
-                     or 'vello-cpu', or 'auto'",
-                )));
-            }
             Some(name) => Some(BackendSetting::Fixed(Backend::from_name(name).ok_or_else(
                 || {
                     let known: std::vec::Vec<&str> =
@@ -142,11 +136,6 @@ mod tests {
         assert!(err("[render]\nbackend = \"vello\"\n").contains("unknown render backend 'vello'"));
         assert!(err("[render]\nbackend = \"vello\"\n").contains("auto, "));
         assert!(err("[render]\nbogus = 1\n").contains("bogus"));
-        let skia = err("[render]\nbackend = \"skia\"\n");
-        assert!(
-            skia.contains("was removed") && skia.contains("integer"),
-            "{skia}"
-        );
         assert!(
             err("[rendr]\nbackend = \"integer\"\n").contains("rendr"),
             "a typo in the table name"

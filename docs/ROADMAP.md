@@ -23,7 +23,7 @@ works and is tested.
   widgets crate); the backend is chosen by target and, on a desktop, at run time (GPU first, CPU if
   there is no usable adapter). The renderer crates stay separate: each is useful alone, and a firmware
   that only draws must not pull in a toolkit.
-* **Two renderers, chosen by whether Vello has SIMD (decided; replaces the memory ranking and `tiny-skia`).**
+* **Two renderers, chosen by whether Vello has SIMD (decided; replaces the earlier memory ranking).**
   **Vello** where it has SIMD (x86, x86_64, aarch64, WebAssembly: the levels `fearless_simd` has): on the GPU when
   there is one, falling back to `vello_cpu` if the GPU fails, and to the integer renderer if Vello's frame does not
   fit. The **integer renderer** (`fusuma-render-embedded`) everywhere else, which is every microcontroller (S3, C6,
@@ -31,10 +31,7 @@ works and is tested.
   97 ms for the first frame, 7 ms a tap and 88 ms a scroll step or page; Vello with Inter 558, 47 and 311 ms. A
   board can still pin Vello in its `fusuma.toml` (link it with the `vello-cpu` and `fonts` features). The look that
   Vello gave those chips (smooth text and edges) moves into the integer renderer (see Order of work).
-  **`tiny-skia` is removed** (`fusuma-render-skia` deleted here and removed from crates.io by its owner): it sat between
-  the two by memory and has no SIMD on a microcontroller either. A `fusuma.toml` that still says `backend = "skia"`
-  gets an error naming the replacement. Earlier decisions this replaces: Vello only (reverted), then "the richest
-  backend that fits in memory" with `tiny-skia` as the middle step.
+  Earlier decisions this replaces: Vello only (reverted), then "the richest backend that fits in memory".
 * **Fonts beyond Latin are tiered, not bundled everywhere.** Bundled: Latin subsets only (213 KB for three fonts).
   Desktop and phone get other scripts (Greek, Cyrillic, CJK, emoji) from system fonts through Fontique with
   fallback: Fusuma's job is to wire that up, never to bundle CJK. A chip with PSRAM may get Greek and Cyrillic as an
@@ -93,14 +90,14 @@ works and is tested.
 - [x] `fusuma-render-embedded`: integer backend, runs on the ESP32-S3 (kept: the lightest backend, see Decisions)
 - [x] `fusuma-render-vello-cpu` on `vello_cpu`, passing the conformance suite and matching the integer backend pixel for pixel; fuzzed
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
-- [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and `-skia`, since removed from crates.io)
+- [x] Published 0.1.0 of `fusuma-render` and `-embedded`
 - [x] `fusuma-render-vello-common` and `-vello-cpu` published (0.2.0); `hibari-os` uses them
 - [x] `fusuma-render-vello` on `vello_gpu` and `wgpu` 30: headless device, renders into an `Rgba8Unorm` texture and reads it back; passes the conformance suite on a real GPU (AMD RX 7800 XT, Vulkan) and matches the CPU backend; tests skip on machines without a GPU. Images go to the GPU as external textures through a `Scene::image_source` hook
 - [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the toolkit's GPU-first choice
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
 - [ ] Benchmark more: a complex scene (many paths, large blurs), the GPU drawing to a surface with no read-back, and a shader chain with read-back versus as a texture
 - [x] Experiment: `vello_cpu` on the S3 measured, see Decisions and Phase 1b
-- [x] Text: Parley layout (`fusuma-text`) and Vello glyph runs draw Inter, Inter Bold and JetBrains Mono (`fusuma-fonts`, Latin subsets, 213 KB for the three) on the CPU and GPU backends, measured and drawn at one size; the bitmap fonts remain the fallback and the integer and `tiny-skia` renderers' only font. `Font` is part of `TextStyle`, `Theme::fonts` maps roles to fonts. Not yet: wrapping and multi-line text in widgets, rich text spans, system fonts, Greek, Cyrillic, CJK or emoji, caret placement in a text field from Parley
+- [x] Text: Parley layout (`fusuma-text`) and Vello glyph runs draw Inter, Inter Bold and JetBrains Mono (`fusuma-fonts`, Latin subsets, 213 KB for the three) on the CPU and GPU backends, measured and drawn at one size; the bitmap fonts remain the fallback and the integer renderer's only font. `Font` is part of `TextStyle`, `Theme::fonts` maps roles to fonts. Not yet: wrapping and multi-line text in widgets, rich text spans, system fonts, Greek, Cyrillic, CJK or emoji, caret placement in a text field from Parley
 - [x] Measured on the ESP32-P4: with fonts the first frame needs about 30 KB of internal RAM when allocations above 512 bytes go to PSRAM (`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512`), against about 240 KB at the default threshold; the first frame takes about 300 ms. Parley is not tried on the S3 or the C6 (no room on the C6)
 
 ## Phase 1b: Vello on the ESP
@@ -115,7 +112,7 @@ works and is tested.
 - [ ] **Speed:** found so far on the S3 watch: Vello rasterised the whole surface for a 47x56 hover (fixed: 127 to 50 ms), and the RGB565 conversion is slow (252 ms of a 750 ms full frame, my own per-row code, not yet fixed). Still unprofiled: path flattening, text layout and glyph drawing, and layout, which together are most of a big update
 - [x] **Text:** Parley builds with `libm` for the S3 (Xtensa) and the P4 and runs on both with `vello_cpu`'s glyph runs; the S3 firmware image with Vello, Parley and the three fonts is 2.9 MB. Shaping works (Romanian ă â î ș ț render); wrapping and bidi are not used by any widget yet
 - [x] **P4:** the showcase runs on an ESP32-P4 7" with `vello_cpu` chosen automatically (first full frame about 210 ms without fonts, 300 ms with, a small update about 10 ms of drawing); the S3 benchmark crate itself was not run there
-- [x] **A fair A/B on the board** (S3 watch, 410x502 first frame): integer 196 ms, Vello 523 ms (948 ms with Inter), `tiny-skia` 1883 ms. Not done: the integer renderer with anti-aliasing added
+- [x] **A fair A/B on the board** (S3 watch, 410x502 first frame): integer 196 ms, Vello 523 ms (948 ms with Inter). Not done: the integer renderer with anti-aliasing added
 
 ### The integer renderer is kept (the removal below is cancelled)
 
@@ -126,10 +123,8 @@ works and is tested.
 - [x] Move the `fusuma` toolkit tests from `Embedded` to `vello_cpu` (done); the launcher and host tests in `hibari-os` still use `Embedded`
 - [x] ~~Delete `fusuma-render-embedded`~~ cancelled: it stays, see Decisions
 - [x] A choice of default backend by hardware: `fusuma-platform` picks by hardware facts (GPU, then PSRAM, then memory) with layered overrides (`[render]` in `fusuma.toml`, a cargo feature) and a memory check; the P4 and desktop use it. **The rule ranks by memory, not speed**: on the S3 it picks Vello although the integer renderer is about 4x faster for a full frame. A speed-aware `prefer = smooth/quality` setting is not built
-- [x] Measured `tiny-skia` on the ESP32-S3: 1883 ms for a full 410x502 frame, the slowest of the three
-- [x] **`tiny-skia`'s clip memory (the backend was removed after, see Decisions):** every `clip` made a surface-sized mask (1 byte a pixel) and every `save` copied it, so a UI frame (a clip per redrawn part, per scroll window and per label) held about three: some 7 bytes a pixel, not the 4 the chooser counted, which would have run a C6 at 172x320 out of its 320 KB heap (the C6 benchmark had no clips, so it did not show). Now a clip is kept as a rectangle, one mask is made only when a shape crosses a clip and is rewritten row by row when the clip changes, and rectangles and text never use it: 5 bytes a pixel, which `Backend::memory` now counts. Tested (no mask for shapes inside their clips, one reused mask for crossing ones, nested clips and restores), each test seen to fail against a broken copy. The new figure is worked out, not measured on a board. With it the C6's own 172x320 LCD gets the integer renderer and a 160x160 one gets `tiny-skia`
 - [ ] A conformance run of the renderers on the C6
-- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers; `fusuma-render-skia` is not in it: removed, here and from crates.io). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
+- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
 
 ### Scrolling, screen shape and responsive layout (done, measured on the S3 watch)
 
@@ -213,7 +208,7 @@ feature (dictionary breaking for CJK, Thai and others) adds more. It builds and 
 
 - [x] A text seam: `TextStyle` carries a `Font` (`Sans`, `SansBold`, `Mono`, `Bitmap`); a backend with vector fonts lays out and draws with them, any other (or a font that is not bundled) draws its bitmap font, so asking is always safe. Measuring and drawing use the same size, which the conformance suite caught
 - [x] `fusuma-text` (Parley layout, one line, cached; `no_std` with alloc) and `fusuma-fonts` (Inter, Inter Bold, JetBrains Mono, Latin subsets under the OFL, one cargo feature each). Not done: system fonts through Fontique (the desktop does not use them yet), and no Greek, Cyrillic, CJK or emoji
-- [x] Glyph drawing: not a `Renderer` call but `Scene::draw_glyphs` in `fusuma-render-vello-common`, implemented by the CPU and GPU scenes through `glyph_run`; tests check the GPU picture against the CPU one and that nothing is drawn outside the measured box. The integer and `tiny-skia` backends keep the bitmap font
+- [x] Glyph drawing: not a `Renderer` call but `Scene::draw_glyphs` in `fusuma-render-vello-common`, implemented by the CPU and GPU scenes through `glyph_run`; tests check the GPU picture against the CPU one and that nothing is drawn outside the measured box. The integer backend keeps the bitmap font
 - [ ] Text widgets: a single-line text field exists (own cursor and selection code, not Parley's editing utilities; up to 64 bytes; IME and clipboard through the desktop platform; no placeholder, no drag selection, no undo). Not done: wrapped and multi-line labels (Parley can wrap, no widget asks it to) and a multi-line text view
 - [ ] Measure: Parley's own code size (only the whole image is known: 2.9 MB on the S3), and whether the lightweight segmenter is enough for Latin text
 - [ ] Per-widget style: font family, size, weight and line height as theme tokens. Done: `Theme::fonts` maps text roles (body, title, mono) to fonts and `TextRole::Code` uses mono; sizes are theme tokens. Not done: weight, line height and per-widget overrides
@@ -253,7 +248,7 @@ desktop-sized trees use the same code with a bigger `N`.
 - [x] `fusuma::Shell`, `Input`, `TouchTracker`, `Clock`, `wheel_pixels` and `App::resized` in `fusuma-ui`: the frame step and input handling every platform shares; a CI rule keeps widgets and renderers out of `fusuma-platform-*`
 - [x] `fusuma-platform-desktop`: a winit window, mouse, touch, keyboard, wheel and resize into the shared `Shell`; GPU Vello when an adapter exists, CPU otherwise, with the same settings layers; the showcase runs in it (`just showcase-desktop`). Theme scaling (`Theme::scaled`) and an idle loop that sleeps (312 wake-ups in 5 s became 0) are done. Not yet: presenting straight from the GPU, real fonts, macOS and Windows run by hand
 - [x] `fusuma-platform-embedded`: the part every board shares (a `Board` trait: size, touch sample, show a region as RGB565 rows; the renderer surface; the frame step), tested on a computer with a fake board; builds `no_std` for RISC-V, Cortex-M0+ (no Vello: no atomics), Cortex-M4F and bare-metal ARM64 (`scripts/ci/embedded_matrix.nu`); the P4 crate is now just a `Board` on top of it
-- [x] The ESP32-S3 watch (Waveshare ESP32-S3-Touch-AMOLED-2.06) runs the showcase on `esp-hal` through `fusuma-platform-embedded` (`tools/fusuma-showcase-s3` in the Hibari repository); the showcase has a compact layout for small screens. Measured first frame at 410x502: integer 196 ms, Vello 523 ms (948 ms with fonts), `tiny-skia` 1883 ms; touch not tried by me
+- [x] The ESP32-S3 watch (Waveshare ESP32-S3-Touch-AMOLED-2.06) runs the showcase on `esp-hal` through `fusuma-platform-embedded` (`tools/fusuma-showcase-s3` in the Hibari repository); the showcase has a compact layout for small screens. Measured first frame at 410x502: integer 196 ms, Vello 523 ms (948 ms with fonts); touch not tried by me
 - [ ] Boards beyond the P4 and the S3 watch: the C6 (the `Board` for their panels; `esp-hal` without ESP-IDF as well as ESP-IDF), a Cortex-M one (RP2040, STM32, nRF), a Linux framebuffer/DRM one for Raspberry Pi-class kiosks with no window system
 - [ ] Mobile (`fusuma-platform-mobile`), Apple Silicon and Windows run by hand (CI builds them)
 - [ ] Platform picked by target automatically (`fusuma-platform-desktop`, `-mobile`; the ESP one is a separate firmware-side crate)

@@ -37,6 +37,6 @@ Inter fonts, of which 49 ms is turning the picture into the panel's RGB565; the 
 conversion but 2 ms. On a screen under 640 logical pixels wide the app switches to a compact layout.
 
 The watch's earlier firmware, `tools/fusuma-showcase-s3` in the Hibari repository (on `esp-hal`, no ESP-IDF, the CPU at
-160 MHz), measured 196 ms with the integer renderer and bitmap text, 523 ms with Vello and bitmap text, 948 ms with Vello
-and Inter, and 1883 ms with `tiny-skia`. Those are not comparable one to one with the numbers above (another runtime and
+160 MHz), measured 196 ms with the integer renderer and bitmap text, 523 ms with Vello and bitmap text, and 948 ms with
+Vello and Inter. Those are not comparable one to one with the numbers above (another runtime and
 clock).

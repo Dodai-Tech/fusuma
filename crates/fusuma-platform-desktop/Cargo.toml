@@ -14,7 +14,9 @@ categories = ["gui"]
 
 [dependencies]
 fusuma = { workspace = true, features = ["std", "toml", "renderer-vello-cpu", "renderer-vello-gpu", "font-inter", "font-inter-bold", "font-jetbrains-mono"] }
-winit = "0.30"
+# Without `wayland-csd-adwaita`: on a Wayland desktop that draws no decorations (GNOME) winit draws its plain
+# fallback frame instead of an Adwaita one, which would pull in a second rasteriser.
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
 softbuffer = "0.4"
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 log = "0.4"
