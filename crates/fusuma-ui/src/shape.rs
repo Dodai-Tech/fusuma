@@ -101,7 +101,7 @@ impl Shape {
     pub const fn safe_insets(self, width: u32, height: u32) -> Insets {
         let r = self.radius(width, height) as u64;
         // 0.293 r, rounded up so the corner is clear by a pixel.
-        let v = (r * 293 + 999) / 1000;
+        let v = (r * 293).div_ceil(1000);
         Insets::all(if v > u32::MAX as u64 {
             u32::MAX
         } else {

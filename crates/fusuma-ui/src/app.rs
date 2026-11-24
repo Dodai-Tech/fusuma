@@ -46,7 +46,7 @@ pub trait App {
     }
 
     /// The shape of the screen is `shape` (rounded corners, a circle): content in a corner is cut off, so a layout keeps
-    /// to the room [`Shape::safe_insets`] leaves. A board sends it once at start; a rectangle never does, so the default
+    /// to the room [`Shape::safe_insets`](crate::Shape::safe_insets) leaves. A board sends it once at start; a rectangle never does, so the default
     /// does nothing.
     fn shape(&mut self, shape: crate::Shape) {
         let _ = shape;
