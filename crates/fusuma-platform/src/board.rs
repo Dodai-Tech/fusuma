@@ -118,6 +118,8 @@ pub struct Controller {
     pub chips: &'static [&'static str],
     /// The screen sizes its driver supports; empty for any.
     pub sizes: &'static [(u32, u32)],
+    /// Whether it takes `display.offset` (a panel whose memory is larger than what is visible).
+    pub offset: bool,
 }
 
 const fn pin(name: &'static str, count: usize, required: bool) -> PinSpec {
@@ -152,6 +154,7 @@ pub const CONTROLLERS: [Controller; 5] = [
         options: &[opt("pclk_mhz", 80, 1, 80)],
         chips: &[],
         sizes: &[],
+        offset: true,
     },
     Controller {
         name: "ek79007",
@@ -167,6 +170,7 @@ pub const CONTROLLERS: [Controller; 5] = [
         // MIPI DSI exists on the P4 only, and the driver's timing is for its 1024x600 panel.
         chips: &["esp32p4"],
         sizes: &[(1024, 600)],
+        offset: false,
     },
     Controller {
         name: "gt911",
@@ -181,6 +185,7 @@ pub const CONTROLLERS: [Controller; 5] = [
         options: &[],
         chips: &[],
         sizes: &[],
+        offset: false,
     },
     Controller {
         name: "ft3168",
@@ -194,6 +199,7 @@ pub const CONTROLLERS: [Controller; 5] = [
         options: &[],
         chips: &[],
         sizes: &[],
+        offset: false,
     },
     Controller {
         name: "ledc",
@@ -203,6 +209,7 @@ pub const CONTROLLERS: [Controller; 5] = [
         options: &[opt("freq_hz", 5000, 100, 40_000)],
         chips: &[],
         sizes: &[],
+        offset: false,
     },
 ];
 
@@ -580,6 +587,13 @@ fn read_display(d: RawDisplay, chip: Option<&str>) -> Result<Display, String> {
         d.options,
         chip,
     )?;
+    let offset = d.offset.unwrap_or([0, 0]);
+    if let Some(c) = wiring.controller
+        && !c.offset
+        && offset != [0, 0]
+    {
+        return Err(format!("display.offset: the {} takes none", c.name));
+    }
     if let Some(c) = wiring.controller
         && !c.sizes.is_empty()
         && !c.sizes.contains(&(d.width, d.height))
@@ -598,7 +612,7 @@ fn read_display(d: RawDisplay, chip: Option<&str>) -> Result<Display, String> {
         width: d.width,
         height: d.height,
         shape,
-        offset: d.offset.unwrap_or([0, 0]),
+        offset,
         grid,
         wiring,
     })
@@ -942,6 +956,10 @@ flash_mb = 32
             .unwrap_err()
             .0;
         assert!(e.contains("lane_mbps = 9000: must be 80 to 1500"), "{e}");
+        let e = read(&p4.replace("width = 1024", "offset = [2, 0]\nwidth = 1024"))
+            .unwrap_err()
+            .0;
+        assert!(e.contains("display.offset: the ek79007 takes none"), "{e}");
         let e = read(&p4.replace("[display]\n", "[displayy]\n"))
             .unwrap_err()
             .0;

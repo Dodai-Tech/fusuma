@@ -12,7 +12,7 @@ authors.workspace = true
 repository.workspace = true
 keywords = ["fonts", "inter", "jetbrains-mono", "embedded", "no-std"]
 categories = ["gui", "embedded", "no-std"]
-include = ["src/**", "fonts/**", "README.md", "LICENSE*"]
+include = ["src/**", "fonts/**", "build.rs", "README.md", "LICENSE*"]
 
 [features]
 default = ["inter"]
@@ -22,6 +22,13 @@ inter = []
 inter-bold = []
 # JetBrains Mono Regular, for logs and anything fixed-width.
 jetbrains-mono = []
+# Glyph atlases of the enabled fonts: every glyph rasterised at build time to 4-bit coverage at a few line heights, so
+# a renderer without a vector rasteriser (the integer one) draws smooth text. `FUSUMA_ATLAS_SIZES` picks the line
+# heights (default "10,15,20", the default theme's caption, body and title).
+atlas = ["dep:ab_glyph"]
+
+[build-dependencies]
+ab_glyph = { version = "0.2", optional = true }
 
 [lints]
 workspace = true

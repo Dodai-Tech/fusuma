@@ -15,6 +15,57 @@ pub trait PixelSource {
     fn pixel_at(&self, x: i32, y: i32) -> Option<Rgb565>;
 }
 
+/// Mixes a colour into pixels already drawn, for anti-aliased text. A target that cannot read its pixels keeps the
+/// default, and the renderer then draws the pixels that are at least half covered, solid.
+pub trait Blend {
+    /// Mixes `color` into row `y` from column `x`, one pixel for each entry of `alpha` (0 keeps the pixel, 255 is
+    /// `color`); pixels outside the target are skipped. False when the target cannot blend.
+    fn blend_row(&mut self, x: i32, y: i32, alpha: &[u8], color: Rgb565) -> bool {
+        let _ = (x, y, alpha, color);
+        false
+    }
+}
+
+/// `color` over `dst` (both RGB565) with coverage `a` out of 255, rounded.
+#[must_use]
+pub fn mix565(dst: u16, color: u16, a: u8) -> u16 {
+    let (a, b) = (u32::from(a), 255 - u32::from(a));
+    let ch = |shift: u32, mask: u32| {
+        let (d, c) = (
+            (u32::from(dst) >> shift) & mask,
+            (u32::from(color) >> shift) & mask,
+        );
+        ((c * a + d * b + 127) / 255) << shift
+    };
+    (ch(11, 0x1f) | ch(5, 0x3f) | ch(0, 0x1f)) as u16
+}
+
+impl<S: AsRef<[u16]> + AsMut<[u16]>> Blend for Frame<S> {
+    fn blend_row(&mut self, x: i32, y: i32, alpha: &[u8], color: Rgb565) -> bool {
+        let (w, h) = (i32::from(self.width), i32::from(self.height));
+        if y < 0 || y >= h {
+            return true;
+        }
+        let color = color.into_storage();
+        let row = &mut self.pixels.as_mut()[(y * w) as usize..((y + 1) * w) as usize];
+        for (i, &a) in alpha.iter().enumerate() {
+            let Some(px) = i32::try_from(i).ok().and_then(|i| x.checked_add(i)) else {
+                break;
+            };
+            if a == 0 || px < 0 || px >= w {
+                continue;
+            }
+            let p = &mut row[px as usize];
+            *p = if a == 255 {
+                color
+            } else {
+                mix565(*p, color, a)
+            };
+        }
+        true
+    }
+}
+
 /// An RGB565 framebuffer of `width` x `height` pixels.
 #[derive(Clone, Debug)]
 pub struct Frame<S> {
@@ -136,6 +187,33 @@ mod tests {
         .unwrap();
         assert_eq!(f.pixel_at(0, 0), Some(Rgb565::new(0, 63, 0)));
         assert_eq!((f.width(), f.height(), f.pixels().len()), (3, 2, 6));
+    }
+
+    #[test]
+    fn blending_mixes_each_channel_and_skips_what_is_outside() {
+        let (white, black) = (0xffffu16, 0u16);
+        assert_eq!(mix565(black, white, 0), black);
+        assert_eq!(mix565(black, white, 255), white);
+        let half = mix565(black, white, 128);
+        assert_eq!((half >> 11, (half >> 5) & 0x3f, half & 0x1f), (16, 32, 16));
+        assert_eq!(
+            mix565(0xf800, 0x001f, 255),
+            0x001f,
+            "red under blue, fully covered"
+        );
+        let mut f = Frame::new(4, 2, vec![0u16; 8]).unwrap();
+        assert!(f.blend_row(
+            -1,
+            1,
+            &[255, 255, 0, 128, 255, 255],
+            Rgb565::new(31, 63, 31)
+        ));
+        assert_eq!(&f.pixels()[4..8], &[white, 0, mix565(0, white, 128), white]);
+        assert!(
+            f.blend_row(0, 5, &[255], Rgb565::new(31, 0, 0)),
+            "a row outside is skipped"
+        );
+        assert_eq!(&f.pixels()[..4], &[0; 4]);
     }
 
     #[test]

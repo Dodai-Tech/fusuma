@@ -15,13 +15,13 @@ publish = false
 [workspace]
 
 [features]
-# The integer renderer only: what the automatic choice picks on every ESP chip (Vello has no SIMD there), and the
-# smallest firmware. `vello-cpu` and `fonts` link Vello for a board that pins it in its `fusuma.toml`.
-default = []
+# The integer renderer with smooth text: what the automatic choice picks on every ESP chip (Vello has no SIMD there).
+# `vello-cpu` links Vello for a board that pins it in its `fusuma.toml`; without `fonts` text is the bitmap font.
+default = ["fonts"]
 # Link the `vello_cpu` renderer next to the integer one, which is always there.
 vello-cpu = ["fusuma/renderer-vello-cpu", "fusuma-platform-embedded/vello-cpu"]
-# Vector fonts (Inter, Inter Bold, JetBrains Mono: about 215 KB of flash) for the Vello renderers. Without it text is
-# the bitmap font. The integer renderer draws the bitmap font (until its glyph atlas, see the roadmap).
+# Inter, Inter Bold and JetBrains Mono: glyph atlases for the integer renderer (about 125 KB of flash) and, with
+# `vello-cpu`, the vector fonts for Vello (about 215 KB more). Without it text is the bitmap font.
 fonts = ["fusuma/font-inter", "fusuma/font-inter-bold", "fusuma/font-jetbrains-mono"]
 
 [dependencies]

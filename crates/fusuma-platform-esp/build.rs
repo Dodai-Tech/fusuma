@@ -127,18 +127,19 @@ fn main() {
     line(format!(
         "/// The screen's outline.\npub(crate) const SHAPE: fusuma::Shape = {shape};"
     ));
-    line(format!(
-        "/// Where the visible area starts in the panel's memory.\npub(crate) const OFFSET: [u16; 2] = {:?};",
-        display.offset
-    ));
+    if controller.offset {
+        line(format!(
+            "/// Where the visible area starts in the panel's memory.\npub(crate) const OFFSET: [u16; 2] = {:?};",
+            display.offset
+        ));
+    }
     line(format!(
         "/// Rectangles start and end on multiples of this.\npub(crate) const GRID: u32 = {};",
         display.grid
     ));
     line(wiring("DISPLAY", &display.wiring));
-    let empty = Wiring::default();
+    // Touch orientation is read whether or not there is a touch panel; the rest only for the parts there are.
     let touch = board.touch.as_ref();
-    line(wiring("TOUCH", touch.map_or(&empty, |t| &t.wiring)));
     line(format!(
         "/// Flip the touch panel's x, y (after the swap).\npub(crate) const TOUCH_MIRROR: [bool; 2] = {:?};",
         touch.map_or([false, false], |t| t.mirror)
@@ -147,12 +148,16 @@ fn main() {
         "/// Swap the touch panel's x and y.\npub(crate) const TOUCH_SWAP_XY: bool = {};",
         touch.is_some_and(|t| t.swap_xy)
     ));
-    let backlight = board.backlight.as_ref();
-    line(wiring("BACKLIGHT", backlight.map_or(&empty, |b| &b.wiring)));
-    line(format!(
-        "/// The backlight is on when its pin is low.\npub(crate) const BACKLIGHT_INVERT: bool = {};",
-        backlight.is_some_and(|b| b.invert)
-    ));
+    if let Some(t) = touch.filter(|t| t.wiring.controller.is_some()) {
+        line(wiring("TOUCH", &t.wiring));
+    }
+    if let Some(b) = board.backlight.as_ref() {
+        line(wiring("BACKLIGHT", &b.wiring));
+        line(format!(
+            "/// The backlight is on when its pin is low.\npub(crate) const BACKLIGHT_INVERT: bool = {};",
+            b.invert
+        ));
+    }
     let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("board.rs");
     fs::write(path, out).unwrap();
 }
@@ -168,14 +173,17 @@ fn wiring(part: &str, w: &Wiring) -> String {
         let list: Vec<String> = gpios.iter().map(u8::to_string).collect();
         let _ = write!(s, "({name:?}, &[{}]), ", list.join(", "));
     }
-    let _ = write!(
-        s,
-        "];\n/// The {part} options from the board file, defaults filled in.\npub(crate) const {part}_OPTIONS: &[(&str, i64)] = &["
-    );
-    for (name, value) in &w.options {
-        let _ = write!(s, "({name:?}, {value}), ");
-    }
     s.push_str("];");
+    if !w.options.is_empty() {
+        let _ = write!(
+            s,
+            "\n/// The {part} options from the board file, defaults filled in.\npub(crate) const {part}_OPTIONS: &[(&str, i64)] = &["
+        );
+        for (name, value) in &w.options {
+            let _ = write!(s, "({name:?}, {value}), ");
+        }
+        s.push_str("];");
+    }
     s
 }
 

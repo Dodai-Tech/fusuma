@@ -1,6 +1,10 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
 
+/// Glyph atlases of the enabled fonts (feature `atlas`).
+#[cfg(feature = "atlas")]
+pub mod atlas;
+
 /// One bundled font file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FontFile {

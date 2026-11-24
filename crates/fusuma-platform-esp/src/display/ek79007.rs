@@ -2,9 +2,9 @@
 
 use esp_idf_svc::sys::fusuma_esp as ffi;
 use fusuma::render::Rect;
-use fusuma_platform_embedded::{ByteOrder, Pixels};
+use fusuma_platform_embedded::{Block, ByteOrder, Pixels, aligned};
 
-use crate::board::{self, DISPLAY_OPTIONS as OPTIONS, DISPLAY_PINS as PINS, HEIGHT, WIDTH};
+use crate::board::{self, DISPLAY_OPTIONS as OPTIONS, DISPLAY_PINS as PINS, GRID, HEIGHT, WIDTH};
 
 /// The panel's frame buffer.
 pub(crate) struct Display {
@@ -46,28 +46,22 @@ impl Display {
 
     /// Copies `region` into the frame buffer and writes it back from the cache.
     pub(crate) fn present(&mut self, region: Rect, pixels: &mut dyn Pixels) {
-        let w = WIDTH as usize;
-        let (x0, x1) = (
-            region.x.max(0) as usize,
-            (region.right().max(0) as usize).min(w),
-        );
-        let (y0, y1) = (
-            region.y.max(0) as usize,
-            (region.bottom().max(0) as usize).min(HEIGHT as usize),
-        );
-        if x1 <= x0 || y1 <= y0 {
+        let Some(r) = aligned(region, WIDTH, HEIGHT, GRID) else {
             return;
-        }
+        };
+        let w = WIDTH as usize;
+        let (x0, y0) = (r.x as usize, r.y as usize);
+        let (x1, y1) = (r.right() as usize, r.bottom() as usize);
         // Every row of the region in one call, straight into the frame buffer (one row every WIDTH).
         let end = (y1 - 1) * w + x1;
-        pixels.rows(
-            y0 as u32,
-            x0 as u32,
-            (x1 - x0) as u32,
-            &mut self.screen[y0 * w + x0..end],
-            w,
-            ByteOrder::Native,
-        );
+        let block = Block {
+            y: y0 as u32,
+            x: x0 as u32,
+            width: (x1 - x0) as u32,
+            stride: w,
+            order: ByteOrder::Native,
+        };
+        pixels.rows(block, &mut self.screen[y0 * w + x0..end]);
         // SAFETY: rows are clamped inside the driver.
         unsafe {
             ffi::fusuma_ek79007_flush_rows(y0 as u32, y1 as u32);

@@ -4,7 +4,7 @@
 mod frame;
 pub mod raster;
 
-pub use frame::{Frame, PixelSource};
+pub use frame::{Blend, Frame, PixelSource, mix565};
 
 use core::fmt::Debug;
 
@@ -161,7 +161,86 @@ impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
     }
 }
 
-impl<T: DrawTarget<Color = Rgb565>> Renderer for Embedded<T>
+impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
+    /// Draws `text` from a glyph atlas (smooth text), clipped, each glyph's coverage blended into the target.
+    #[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+    fn draw_atlas_text(
+        &mut self,
+        atlas: &fusuma_fonts::atlas::Atlas,
+        text: &str,
+        at: Point,
+        style: &TextStyle,
+    ) -> Result<(), Error<T::Error>> {
+        let width = atlas.width(text);
+        let left = left_edge(at.x, width, style.align);
+        // A smaller atlas than asked sits in the middle of the line, as the bitmap font does.
+        let lift = (style.size.saturating_sub(u32::from(atlas.line)) / 2) as i32;
+        let origin = self.shift(Point::new(left, at.y.saturating_add(lift)));
+        if !Self::point_ok(origin) || self.state.clip.is_empty() {
+            return Ok(());
+        }
+        let clip = self.state.clip;
+        let (cx0, cy0) = (i64::from(clip.x), i64::from(clip.y));
+        let (cx1, cy1) = (cx0 + i64::from(clip.w), cy0 + i64::from(clip.h));
+        let color = rgb565(style.color);
+        let opacity = u32::from(style.color.a);
+        let mut buf = [0u8; 256];
+        let mut pen: i64 = 0;
+        for ch in text.chars() {
+            let Some(g) = atlas.glyph_or_replacement(ch) else {
+                continue;
+            };
+            let gx = i64::from(origin.x) + (pen + 32) / 64 + i64::from(g.left);
+            let gy = i64::from(origin.y) + i64::from(g.top);
+            pen += i64::from(g.advance);
+            let (x0, x1) = (gx.max(cx0), (gx + i64::from(g.width)).min(cx1));
+            if x0 >= x1 {
+                continue;
+            }
+            for row in 0..u32::from(g.height) {
+                let y = gy + i64::from(row);
+                if y < cy0 || y >= cy1 {
+                    continue;
+                }
+                let n = (x1 - x0) as usize;
+                for (i, a) in buf[..n].iter_mut().enumerate() {
+                    let c = u32::from(atlas.coverage_at(g, (x0 - gx) as u32 + i as u32, row));
+                    *a = (c * 17 * opacity / 255) as u8;
+                }
+                // Inside the band checked above, so these fit `i32`.
+                let (bx, by) = (x0 as i32, y as i32);
+                if !self.target.blend_row(bx, by, &buf[..n], color) {
+                    // The target cannot blend: the pixels at least half covered, solid.
+                    let solid =
+                        buf[..n]
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, a)| **a >= 128)
+                            .map(|(i, _)| {
+                                embedded_graphics::Pixel(EgPoint::new(bx + i as i32, by), color)
+                            });
+                    self.target.draw_iter(solid).map_err(Error::Target)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The atlas for `style`'s font at its size, when smooth text is built in and the font is not the bitmap one.
+#[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+fn atlas_for(style: &TextStyle) -> Option<&'static fusuma_fonts::atlas::Atlas> {
+    use fusuma_fonts::atlas::{ATLASES, Atlas, AtlasFont};
+    let face = match style.font {
+        fusuma_render::Font::Sans => AtlasFont::Sans,
+        fusuma_render::Font::SansBold => AtlasFont::SansBold,
+        fusuma_render::Font::Mono => AtlasFont::Mono,
+        fusuma_render::Font::Bitmap => return None,
+    };
+    Atlas::pick(ATLASES, face, style.size)
+}
+
+impl<T: DrawTarget<Color = Rgb565> + Blend> Renderer for Embedded<T>
 where
     T::Error: Debug,
 {
@@ -409,6 +488,10 @@ where
         if text.is_empty() || style.color.a == 0 {
             return Ok(());
         }
+        #[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+        if let Some(atlas) = atlas_for(style) {
+            return self.draw_atlas_text(atlas, text, at, style);
+        }
         let font = font_for(style.size);
         let width = text_size(font, text).w;
         let left = left_edge(at.x, width, style.align);
@@ -425,6 +508,18 @@ where
     }
 
     fn measure_text(&self, text: &str, style: &TextStyle) -> Size {
+        #[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+        if let Some(atlas) = atlas_for(style) {
+            let width = atlas.width(text);
+            return Size::new(
+                width,
+                if width == 0 {
+                    0
+                } else {
+                    style.size.max(u32::from(atlas.line))
+                },
+            );
+        }
         text_size(font_for(style.size), text)
     }
 
@@ -629,5 +724,275 @@ mod tests {
         r.clear(Color::WHITE).unwrap();
         assert!(r.target_mut().pixels().iter().all(|&p| p == 0xFFFF));
         assert!(r.into_target().pixels().iter().all(|&p| p == 0xFFFF));
+    }
+}
+
+#[cfg(test)]
+#[cfg(all(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+mod atlas_text_tests {
+    extern crate std;
+    use std::vec;
+    use std::vec::Vec;
+
+    use fusuma_render::{Align, Font, Probe, Rect, Renderer, TextStyle};
+
+    use super::*;
+
+    type Screen = Embedded<Frame<Vec<u16>>>;
+
+    fn screen(w: u16, h: u16) -> Screen {
+        Embedded::new(Frame::new(w, h, vec![0u16; usize::from(w) * usize::from(h)]).unwrap())
+    }
+
+    /// The brightness (0 to 255) of every pixel of a `w x h` area of `r`.
+    fn grey(r: &impl Probe, w: u32, h: u32) -> Vec<u8> {
+        (0..h as i32)
+            .flat_map(|y| (0..w as i32).map(move |x| (x, y)))
+            .map(|(x, y)| r.pixel(x, y).map_or(0, |c| c.g))
+            .collect()
+    }
+
+    /// White `text` on black in `font` at line `size`, drawn by `r`.
+    fn paint<R: Renderer>(r: &mut R, text: &str, font: Font, size: u32) {
+        r.clear(Color::BLACK).unwrap();
+        r.draw_text(
+            text,
+            Point::new(2, 2),
+            &TextStyle::new(size, Color::WHITE).font(font),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn smooth_text_has_partial_pixels_and_fits_its_measured_box() {
+        for (font, size) in [
+            (Font::Sans, 10),
+            (Font::Sans, 15),
+            (Font::SansBold, 20),
+            (Font::Mono, 15),
+        ] {
+            let mut r = screen(160, 40);
+            let text = "Wi-Fi ș 70%";
+            paint(&mut r, text, font, size);
+            let px = grey(&r, 160, 40);
+            let partial = px.iter().filter(|&&g| g > 10 && g < 245).count();
+            let full = px.iter().filter(|&&g| g >= 245).count();
+            // At a 10 pixel line Inter's stems are thinner than a pixel, so none is fully covered there.
+            let strong = px.iter().any(|&g| g > if size >= 15 { 240 } else { 180 });
+            assert!(
+                partial > 20 && strong,
+                "{font:?} {size}: {partial} partial, {full} full"
+            );
+            let m = r.measure_text(text, &TextStyle::new(size, Color::WHITE).font(font));
+            assert_eq!(m.h, size, "the line is as high as asked");
+            // No ink outside the measured box (from (2, 2)), allowing a pixel for edges.
+            for y in 0..40i32 {
+                for x in 0..160i32 {
+                    let inside =
+                        (1..=2 + m.w as i32).contains(&x) && (1..=2 + m.h as i32).contains(&y);
+                    assert!(
+                        inside || px[(y * 160 + x) as usize] == 0,
+                        "{font:?} {size}: ink at ({x}, {y}) outside {m:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_bitmap_font_is_still_the_bitmap_font() {
+        let mut a = screen(100, 30);
+        paint(&mut a, "Hi", Font::Bitmap, 20);
+        assert!(
+            grey(&a, 100, 30).iter().all(|&g| g == 0 || g == 255),
+            "one bit a pixel"
+        );
+        assert_eq!(
+            a.measure_text("Hi", &TextStyle::new(20, Color::WHITE).font(Font::Bitmap)),
+            text_size(font_for(20), "Hi")
+        );
+    }
+
+    #[test]
+    fn text_is_clipped_aligned_and_blends_with_what_is_under_it() {
+        let style = TextStyle::new(15, Color::WHITE);
+        let mut r = screen(120, 30);
+        r.clear(Color::rgb(0, 0, 255)).unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(0, 0, 20, 30)).unwrap();
+        r.draw_text("Notifications", Point::new(2, 2), &style)
+            .unwrap();
+        r.restore().unwrap();
+        for y in 0..30 {
+            for x in 20..120 {
+                assert_eq!(
+                    r.pixel(x, y),
+                    Some(Color::rgb(0, 0, 255)),
+                    "({x}, {y}) is outside the clip"
+                );
+            }
+        }
+        // Cut across the line: rows below the clip stay untouched.
+        let mut r2 = screen(120, 30);
+        r2.clear(Color::BLACK).unwrap();
+        r2.save().unwrap();
+        r2.clip(Rect::new(0, 0, 120, 9)).unwrap();
+        r2.draw_text("Wipg", Point::new(2, 2), &style).unwrap();
+        r2.restore().unwrap();
+        assert!(
+            (0..120).any(|x| (0..9).any(|y| r2.pixel(x, y).is_some_and(|c| c.g > 0))),
+            "the top shows"
+        );
+        for y in 9..30 {
+            for x in 0..120 {
+                assert_eq!(
+                    r2.pixel(x, y),
+                    Some(Color::BLACK),
+                    "({x}, {y}) is below the clip"
+                );
+            }
+        }
+        // An edge pixel is a mix of white and the blue under it, not of white and black.
+        let mixed = (0..30)
+            .flat_map(|y| (0..20).map(move |x| (x, y)))
+            .filter_map(|(x, y)| r.pixel(x, y))
+            .any(|c| c.r > 40 && c.r < 210 && c.b > 230);
+        assert!(mixed, "edges blend into the blue");
+        // Right-aligned text ends at the anchor.
+        let mut r = screen(120, 30);
+        r.clear(Color::BLACK).unwrap();
+        r.draw_text("Wi", Point::new(100, 5), &style.aligned(Align::Right))
+            .unwrap();
+        let ink_x: Vec<i32> = (0..120)
+            .filter(|&x| (0..30).any(|y| r.pixel(x, y).is_some_and(|c| c.g > 0)))
+            .collect();
+        assert!(
+            *ink_x.last().unwrap() <= 100 && *ink_x.last().unwrap() >= 95,
+            "{ink_x:?}"
+        );
+        // Transparent text draws nothing; absurd positions do not panic.
+        r.draw_text(
+            "Wi",
+            Point::new(10, 5),
+            &TextStyle::new(15, Color::rgba(255, 0, 0, 0)),
+        )
+        .unwrap();
+        r.draw_text("Wi", Point::new(i32::MAX, i32::MIN), &style)
+            .unwrap();
+        r.translate(i32::MAX, 0).unwrap();
+        r.draw_text("Wi", Point::new(i32::MAX, 0), &style).unwrap();
+    }
+
+    /// A target that cannot read its pixels: the text is drawn one bit a pixel.
+    struct Plain(Frame<Vec<u16>>);
+    impl embedded_graphics::geometry::OriginDimensions for Plain {
+        fn size(&self) -> embedded_graphics::geometry::Size {
+            self.0.size()
+        }
+    }
+    impl DrawTarget for Plain {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+        fn draw_iter<I: IntoIterator<Item = embedded_graphics::Pixel<Rgb565>>>(
+            &mut self,
+            p: I,
+        ) -> Result<(), Self::Error> {
+            self.0.draw_iter(p)
+        }
+    }
+    impl Blend for Plain {}
+
+    #[test]
+    fn a_target_that_cannot_blend_gets_the_half_covered_pixels_solid() {
+        let mut r = Embedded::new(Plain(Frame::new(80, 24, vec![0u16; 80 * 24]).unwrap()));
+        r.draw_text("Wi", Point::new(2, 2), &TextStyle::new(15, Color::WHITE))
+            .unwrap();
+        let px = r.target().0.pixels();
+        assert!(px.iter().all(|&p| p == 0 || p == 0xffff), "no blending");
+        assert!(
+            px.iter().filter(|&&p| p == 0xffff).count() > 20,
+            "but the strokes are there"
+        );
+    }
+
+    /// The atlas draws the same text as Vello with the same font: the same ink in the same place. Not the same
+    /// pixels: Vello hints and kerns, the atlas does neither, and positions glyphs on whole pixels.
+    #[test]
+    fn smooth_text_looks_like_vellos() {
+        for (font, size) in [
+            (Font::Sans, 10),
+            (Font::Sans, 15),
+            (Font::Sans, 20),
+            (Font::SansBold, 20),
+            (Font::Mono, 15),
+        ] {
+            let text = "Settings 42 ș";
+            let (w, h) = (180u32, 32u32);
+            let mut a = screen(w as u16, h as u16);
+            let mut v = fusuma_render_vello_cpu::new(w, h).unwrap();
+            paint(&mut a, text, font, size);
+            paint(&mut v, text, font, size);
+            let (pa, pv) = (grey(&a, w, h), grey(&v, w, h));
+            let ink = |p: &[u8]| p.iter().map(|&g| u64::from(g)).sum::<u64>();
+            let (ia, iv) = (ink(&pa), ink(&pv));
+            let ratio = ia as f64 / iv as f64;
+            // Where the ink is: the bounding box of pixels above half.
+            let bbox = |p: &[u8]| {
+                let lit: Vec<(u32, u32)> = (0..h)
+                    .flat_map(|y| (0..w).map(move |x| (x, y)))
+                    .filter(|&(x, y)| p[(y * w + x) as usize] > 127)
+                    .collect();
+                let xs = lit.iter().map(|p| p.0);
+                let ys = lit.iter().map(|p| p.1);
+                (
+                    xs.clone().min().unwrap(),
+                    ys.clone().min().unwrap(),
+                    xs.max().unwrap(),
+                    ys.max().unwrap(),
+                )
+            };
+            let (ba, bv) = (bbox(&pa), bbox(&pv));
+            // Blurred difference: each pixel against the 3x3 mean of the other, so a half-pixel shift does not count.
+            let diff: u64 = (1..h - 1)
+                .flat_map(|y| (1..w - 1).map(move |x| (x, y)))
+                .map(|(x, y)| {
+                    let mean = |p: &[u8]| {
+                        (0..9)
+                            .map(|k| u64::from(p[((y + k / 3 - 1) * w + x + k % 3 - 1) as usize]))
+                            .sum::<u64>()
+                            / 9
+                    };
+                    mean(&pa).abs_diff(mean(&pv))
+                })
+                .sum();
+            let rel = diff as f64 / iv as f64;
+            if let Ok(dir) = std::env::var("FUSUMA_ATLAS_PGM") {
+                let mut out = std::format!("P5 {w} {} 255\n", 2 * h).into_bytes();
+                out.extend_from_slice(&pa);
+                out.extend_from_slice(&pv);
+                std::fs::write(std::format!("{dir}/{font:?}-{size}.pgm"), out).unwrap();
+            }
+            std::println!(
+                "{font:?} {size}: ink ratio {ratio:.3}, boxes {ba:?} vs {bv:?}, blurred difference {:.1}% of the ink",
+                rel * 100.0
+            );
+            assert!(
+                (0.85..1.15).contains(&ratio),
+                "{font:?} {size}: ink {ia} vs {iv}"
+            );
+            assert!(
+                ba.1.abs_diff(bv.1) <= 1 && ba.3.abs_diff(bv.3) <= 1,
+                "{font:?} {size}: rows {ba:?} vs {bv:?}"
+            );
+            assert!(
+                ba.0.abs_diff(bv.0) <= 1 && ba.2.abs_diff(bv.2) <= 3,
+                "{font:?} {size}: columns {ba:?} vs {bv:?}"
+            );
+            assert!(
+                rel < 0.25,
+                "{font:?} {size}: blurred difference {:.1}%",
+                rel * 100.0
+            );
+        }
     }
 }

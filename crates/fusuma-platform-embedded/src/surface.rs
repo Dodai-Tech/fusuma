@@ -14,7 +14,7 @@ use fusuma::{App, Shell};
 
 #[cfg(feature = "vello-cpu")]
 use crate::board::rgb565;
-use crate::board::{ByteOrder, Pixels};
+use crate::board::{Block, ByteOrder, Pixels};
 
 /// The backends linked into this build: the integer one always, the others by cargo feature.
 pub const LINKED: &[Backend] = &[
@@ -112,25 +112,15 @@ impl Surface {
 }
 
 impl Pixels for Surface {
-    fn rows(
-        &mut self,
-        y: u32,
-        x: u32,
-        width: u32,
-        out: &mut [u16],
-        stride: usize,
-        order: ByteOrder,
-    ) {
+    fn rows(&mut self, block: Block, out: &mut [u16]) {
         match self {
-            Self::Integer(r, w) => {
-                copy_rows(r.target().pixels(), *w, y, x, width, out, stride, order)
-            }
+            Self::Integer(r, w) => copy_rows(r.target().pixels(), *w, block, out),
             #[cfg(feature = "vello-cpu")]
             Self::Vello(r, w) => {
                 let w = *w;
                 r.with_scene(|scene| {
                     let rgba = fusuma::renderers::vello_cpu::Scene::pixels(scene);
-                    rgba_rows(rgba, w, y, x, width, out, stride, order);
+                    rgba_rows(rgba, w, block, out);
                 });
             }
         }
@@ -173,54 +163,17 @@ fn copy_row(src: &[u16], w: u32, y: u32, x: u32, out: &mut [u16]) {
     out[..n].copy_from_slice(&src[start..start + n]);
 }
 
-/// The part of a block of rows that lies in a `w` x `h` picture: per row the source start and the number of pixels,
-/// and how many rows. `None` when nothing does.
-fn block(
-    w: u32,
-    h: u32,
-    y: u32,
-    x: u32,
-    width: u32,
-    out: usize,
-    stride: usize,
-) -> Option<(usize, usize)> {
-    let (w, x, width) = (w as usize, x as usize, width as usize);
-    if x >= w || y >= h || width == 0 || stride < width || stride == 0 {
-        return None;
-    }
-    let n = width.min(w - x);
-    // Rows that `out` holds whole (a last one may be cut to `width`).
-    let fit = if out >= width {
-        (out - width) / stride + 1
-    } else {
-        0
-    };
-    let rows = fit.min((h - y) as usize);
-    (rows > 0).then_some((n, rows))
-}
-
-/// Copies a block of rows of a `w` wide RGB565 picture into `out` (one row every `stride`), in byte `order`, in
-/// one pass.
-#[allow(clippy::too_many_arguments)]
-fn copy_rows(
-    src: &[u16],
-    w: u32,
-    y: u32,
-    x: u32,
-    width: u32,
-    out: &mut [u16],
-    stride: usize,
-    order: ByteOrder,
-) {
+/// Copies `block` of a `w` wide RGB565 picture into `out`, in one pass.
+fn copy_rows(src: &[u16], w: u32, block: Block, out: &mut [u16]) {
     let h = (src.len() / (w.max(1) as usize)) as u32;
-    let Some((n, rows)) = block(w, h, y, x, width, out.len(), stride) else {
+    let Some((n, rows)) = block.fit(w, h, out.len()) else {
         return;
     };
-    let w = w as usize;
+    let (w, stride) = (w as usize, block.stride);
     for r in 0..rows {
-        let at = (y as usize + r) * w + x as usize;
+        let at = (block.y as usize + r) * w + block.x as usize;
         let (from, to) = (&src[at..at + n], &mut out[r * stride..r * stride + n]);
-        match order {
+        match block.order {
             ByteOrder::Native => to.copy_from_slice(from),
             ByteOrder::BigEndian => {
                 for (d, s) in to.iter_mut().zip(from) {
@@ -231,31 +184,21 @@ fn copy_rows(
     }
 }
 
-/// Converts a block of rows of a `w` wide RGBA8 picture to RGB565 in `out` (one row every `stride`), in byte
-/// `order`, in one pass: one slice a row and no bounds check a pixel.
+/// Converts `block` of a `w` wide RGBA8 picture to RGB565 in `out`, in one pass: one slice a row and no bounds
+/// check a pixel.
 #[cfg(feature = "vello-cpu")]
-#[allow(clippy::too_many_arguments)]
-fn rgba_rows(
-    rgba: &[u8],
-    w: u32,
-    y: u32,
-    x: u32,
-    width: u32,
-    out: &mut [u16],
-    stride: usize,
-    order: ByteOrder,
-) {
+fn rgba_rows(rgba: &[u8], w: u32, block: Block, out: &mut [u16]) {
     let h = (rgba.len() / (w.max(1) as usize * 4)) as u32;
-    let Some((n, rows)) = block(w, h, y, x, width, out.len(), stride) else {
+    let Some((n, rows)) = block.fit(w, h, out.len()) else {
         return;
     };
-    let w = w as usize;
+    let (w, stride) = (w as usize, block.stride);
     for r in 0..rows {
-        let at = ((y as usize + r) * w + x as usize) * 4;
+        let at = ((block.y as usize + r) * w + block.x as usize) * 4;
         let from = &rgba[at..at + n * 4];
         let to = &mut out[r * stride..r * stride + n];
         for (d, [r, g, b, _]) in to.iter_mut().zip(from.as_chunks::<4>().0) {
-            *d = order.of(rgb565(*r, *g, *b));
+            *d = block.order.of(rgb565(*r, *g, *b));
         }
     }
 }
@@ -337,26 +280,18 @@ mod band_tests {
     }
 
     /// What a block of rows must hold: the row-by-row path, then the swap, as before.
-    fn reference(
-        row: &mut dyn FnMut(u32, u32, &mut [u16]),
-        y: u32,
-        x: u32,
-        width: u32,
-        out: &mut [u16],
-        stride: usize,
-        order: ByteOrder,
-    ) {
-        let width = width as usize;
-        for (i, line) in out.chunks_mut(stride).enumerate() {
+    fn reference(row: &mut dyn FnMut(u32, u32, &mut [u16]), b: Block, out: &mut [u16]) {
+        let width = b.width as usize;
+        for (i, line) in out.chunks_mut(b.stride).enumerate() {
             let Some(dst) = line.get_mut(..width) else {
                 break;
             };
             // Only the part of the row inside the picture is written, as `row` does.
             let mut tmp: Vec<u16> = dst.to_vec();
-            row(y + i as u32, x, &mut tmp);
+            row(b.y + i as u32, b.x, &mut tmp);
             for (d, t) in dst.iter_mut().zip(&tmp) {
                 if *d != *t {
-                    *d = order.of(*t);
+                    *d = b.order.of(*t);
                 }
             }
         }
@@ -382,16 +317,15 @@ mod band_tests {
                 - (next() % 2) as usize * (case % 3 == 0) as usize;
             let mut got = vec![0u16; len];
             let mut want = got.clone();
-            copy_rows(&src, w, y, x, width, &mut got, stride, order);
-            reference(
-                &mut |y, x, o| copy_row(&src, w, y, x, o),
+            let b = Block {
                 y,
                 x,
                 width,
-                &mut want,
                 stride,
                 order,
-            );
+            };
+            copy_rows(&src, w, b, &mut got);
+            reference(&mut |y, x, o| copy_row(&src, w, y, x, o), b, &mut want);
             assert_eq!(
                 got, want,
                 "case {case}: y {y} x {x} width {width} stride {stride} {order:?}"
@@ -404,7 +338,15 @@ mod band_tests {
         let src: Vec<u16> = (0..16).map(|i| 0x0100 * i + 0x00ab).collect();
         // A 4x4 picture; rows 1 and 2, columns 1..3, into a frame buffer 5 wide.
         let mut fb = vec![0u16; 10];
-        copy_rows(&src, 4, 1, 1, 2, &mut fb[1..], 5, ByteOrder::BigEndian);
+        let b = Block {
+            y: 1,
+            x: 1,
+            width: 2,
+            stride: 5,
+            order: ByteOrder::BigEndian,
+        };
+        copy_rows(&src, 4, b, &mut fb[1..]);
+        assert_eq!(Block::band(1, 1, 2, ByteOrder::Native).stride, 2);
         let be = |v: u16| v.to_be();
         assert_eq!(
             fb,
@@ -444,16 +386,15 @@ mod band_tests {
             };
             let mut got = vec![0u16; stride * (rows - 1) + width as usize];
             let mut want = got.clone();
-            rgba_rows(&rgba, w, y, x, width, &mut got, stride, order);
-            reference(
-                &mut |y, x, o| rgba_row(&rgba, w, y, x, o),
+            let b = Block {
                 y,
                 x,
                 width,
-                &mut want,
                 stride,
                 order,
-            );
+            };
+            rgba_rows(&rgba, w, b, &mut got);
+            reference(&mut |y, x, o| rgba_row(&rgba, w, y, x, o), b, &mut want);
             assert_eq!(got, want, "case {case}");
         }
     }

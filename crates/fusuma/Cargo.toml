@@ -24,15 +24,21 @@ toml = ["fusuma-platform/toml"]
 renderer-integer = ["dep:fusuma-render-embedded"]
 renderer-vello-cpu = ["dep:fusuma-render-vello-cpu"]
 renderer-vello-gpu = ["dep:fusuma-render-vello"]
-# Vector text through Parley, and which fonts to bundle (each is flash: about 65 to 90 KB). Without a font, or for a
-# font that is not bundled, text is the built-in bitmap font.
+# `fusuma::text`: Parley layout over the bundled fonts, for an app that lays out text itself.
 text = ["dep:fusuma-text", "fusuma-render-vello-cpu?/text", "fusuma-render-vello?/text"]
+# Which fonts to bundle, for every linked renderer: the Vello ones draw them from their outlines through Parley
+# (about 65 to 90 KB each), the integer one from glyph atlases made at build time (about 40 KB each at the default
+# line heights), with no Parley. Without a font, or for a font that is not bundled, text is the bitmap font.
 # Inter Regular, the UI font.
-font-inter = ["text", "fusuma-render-vello-cpu?/inter", "fusuma-render-vello?/inter"]
+font-inter = ["fusuma-render-vello-cpu?/inter", "fusuma-render-vello?/inter", "fusuma-render-embedded?/inter"]
 # Inter Bold, for titles.
-font-inter-bold = ["text", "fusuma-render-vello-cpu?/inter-bold", "fusuma-render-vello?/inter-bold"]
+font-inter-bold = ["fusuma-render-vello-cpu?/inter-bold", "fusuma-render-vello?/inter-bold", "fusuma-render-embedded?/inter-bold"]
 # JetBrains Mono, for logs and code.
-font-jetbrains-mono = ["text", "fusuma-render-vello-cpu?/jetbrains-mono", "fusuma-render-vello?/jetbrains-mono"]
+font-jetbrains-mono = [
+    "fusuma-render-vello-cpu?/jetbrains-mono",
+    "fusuma-render-vello?/jetbrains-mono",
+    "fusuma-render-embedded?/jetbrains-mono",
+]
 # `png()` for the CPU Vello renderer: the surface as a PNG file.
 png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 

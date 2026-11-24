@@ -9,7 +9,8 @@ mod surface;
 mod target;
 
 pub use board::{
-    Board, ByteOrder, HELD_THROUGH_ERRORS, HeldTouch, Pixels, aligned, band_rows, orient, rgb565,
+    Block, Board, ByteOrder, HELD_THROUGH_ERRORS, HeldTouch, Pixels, aligned, band_rows, orient,
+    rgb565,
 };
 pub use driver::{Driver, DriverError, Step, Timing};
 pub use surface::{DrawError, LINKED, Surface};

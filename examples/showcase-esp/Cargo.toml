@@ -34,8 +34,8 @@ esp-idf-svc = { version = "0.53", features = ["experimental"] }
 # Ask the build for a renderer (the strongest layer of the choice). With none, the board's hardware decides.
 # If several are on, the lightest wins.
 render-integer = []
-# Vello and its fonts are linked only for this one: the automatic choice is the integer renderer on every ESP chip.
-render-vello-cpu = ["fusuma-platform-esp/vello-cpu", "fusuma-platform-esp/fonts", "fusuma-showcase/fonts"]
+# Vello is linked only for this one: the automatic choice is the integer renderer on every ESP chip.
+render-vello-cpu = ["fusuma-platform-esp/vello-cpu"]
 
 [build-dependencies]
 embuild = "0.33"

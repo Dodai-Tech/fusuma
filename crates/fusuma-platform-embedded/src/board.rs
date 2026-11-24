@@ -110,30 +110,74 @@ pub trait Pixels {
     /// the picture are left as they were.
     fn row(&mut self, y: u32, x: u32, out: &mut [u16]);
 
-    /// Writes a block of rows in one call: `width` pixels from column `x` of each row from `y`, into `out` one
-    /// row every `stride` pixels (`stride` is `width` for a packed band, the screen width for a frame buffer), as
-    /// many rows as `out` holds, in byte `order`. Faster than [`row`](Self::row) row by row: one call, one pass,
-    /// and the byte swap a panel needs done on the way. What lies outside the picture is left as it was.
-    fn rows(
-        &mut self,
-        y: u32,
-        x: u32,
-        width: u32,
-        out: &mut [u16],
-        stride: usize,
-        order: ByteOrder,
-    ) {
-        let width = width as usize;
-        if width == 0 || stride < width {
+    /// Writes `block` into `out` in one call, as many rows as `out` holds. Faster than [`row`](Self::row) row by
+    /// row: one call, one pass, and the byte swap a panel needs done on the way. What lies outside the picture is
+    /// left as it was.
+    fn rows(&mut self, block: Block, out: &mut [u16]) {
+        let width = block.width as usize;
+        if width == 0 || block.stride < width {
             return;
         }
-        for (i, line) in out.chunks_mut(stride).enumerate() {
+        for (i, line) in out.chunks_mut(block.stride).enumerate() {
             let Some(dst) = line.get_mut(..width) else {
                 break;
             };
-            self.row(y.saturating_add(i as u32), x, dst);
-            order.apply(dst);
+            self.row(block.y.saturating_add(i as u32), block.x, dst);
+            block.order.apply(dst);
         }
+    }
+}
+
+/// Which rows a board asks [`Pixels::rows`] for, and how it wants them laid out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Block {
+    /// The first row.
+    pub y: u32,
+    /// The first column.
+    pub x: u32,
+    /// Pixels a row.
+    pub width: u32,
+    /// Where each row goes in the output: one row every `stride` pixels (`width` for a packed band, the screen
+    /// width for a frame buffer).
+    pub stride: usize,
+    /// The byte order the panel takes.
+    pub order: ByteOrder,
+}
+
+impl Block {
+    /// A packed band: rows of `width` pixels from `(x, y)`, one after the other.
+    #[must_use]
+    pub const fn band(x: u32, y: u32, width: u32, order: ByteOrder) -> Self {
+        Self {
+            y,
+            x,
+            width,
+            stride: width as usize,
+            order,
+        }
+    }
+
+    /// The part of this block inside a `w` x `h` picture, for an output of `out` pixels: the pixels a row and the
+    /// number of rows. `None` when nothing is inside.
+    #[must_use]
+    pub fn fit(&self, w: u32, h: u32, out: usize) -> Option<(usize, usize)> {
+        let (w, x, width, stride) = (
+            w as usize,
+            self.x as usize,
+            self.width as usize,
+            self.stride,
+        );
+        if x >= w || self.y >= h || width == 0 || stride < width {
+            return None;
+        }
+        // Rows that `out` holds whole (a last one may be cut to `width`).
+        let fit = if out >= width {
+            (out - width) / stride + 1
+        } else {
+            0
+        };
+        let rows = fit.min((h - self.y) as usize);
+        (rows > 0).then_some((width.min(w - x), rows))
     }
 }
 

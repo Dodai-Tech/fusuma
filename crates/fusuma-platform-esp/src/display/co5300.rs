@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use esp_idf_svc::sys::{MALLOC_CAP_DMA, MALLOC_CAP_INTERNAL, fusuma_esp as ffi, heap_caps_malloc};
 use fusuma::render::Rect;
-use fusuma_platform_embedded::{ByteOrder, Pixels, aligned, band_rows};
+use fusuma_platform_embedded::{Block, ByteOrder, Pixels, aligned, band_rows};
 
 use crate::board::{self, DISPLAY_OPTIONS as OPTIONS, DISPLAY_PINS as PINS, GRID, HEIGHT, WIDTH};
 
@@ -33,7 +33,10 @@ pub(crate) struct Display {
 impl Display {
     /// Brings the panel up.
     pub(crate) fn open() -> anyhow::Result<Self> {
-        let d = board::pins(PINS, "d");
+        let d = PINS
+            .iter()
+            .find(|(n, _)| *n == "d")
+            .map_or(&[][..], |(_, g)| *g);
         anyhow::ensure!(d.len() == 4, "co5300: pins.d needs four GPIOs");
         let cfg = ffi::fusuma_co5300_config_t {
             sck: board::pin(PINS, "sck"),
@@ -104,7 +107,7 @@ impl Display {
             let band = &mut self.bands[self.next][..(width * h) as usize];
             let t0 = Instant::now();
             // One pass: the rows, already in the panel's big-endian order.
-            pixels.rows(y, x0, width, band, width as usize, ByteOrder::BigEndian);
+            pixels.rows(Block::band(x0, y, width, ByteOrder::BigEndian), band);
             let t1 = Instant::now();
             // SAFETY: the band is DMA-capable and stays untouched until the driver's next call: the other band is
             // filled next, and its draw waits for this transfer before it starts.

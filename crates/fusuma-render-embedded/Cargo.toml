@@ -12,12 +12,25 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# Smooth text: Inter, Inter Bold and JetBrains Mono from glyph atlases rasterised at build time (about 125 KB of
+# flash at the default line heights 10, 15 and 20; see `fusuma-fonts`), blended into the target. Without it text is
+# the built-in bitmap font.
+# One feature per face; a style in a face that is not built in is drawn with the bitmap font.
+fonts = ["inter", "inter-bold", "jetbrains-mono"]
+inter = ["dep:fusuma-fonts", "fusuma-fonts/atlas", "fusuma-fonts/inter"]
+inter-bold = ["dep:fusuma-fonts", "fusuma-fonts/atlas", "fusuma-fonts/inter-bold"]
+jetbrains-mono = ["dep:fusuma-fonts", "fusuma-fonts/atlas", "fusuma-fonts/jetbrains-mono"]
+
 [dependencies]
 fusuma-render.workspace = true
 embedded-graphics.workspace = true
+fusuma-fonts = { workspace = true, optional = true }
 
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
+# The reference smooth text is held to: Vello drawing the same fonts.
+fusuma-render-vello-cpu = { workspace = true, features = ["std", "inter", "inter-bold", "jetbrains-mono"] }
 
 [lints]
 workspace = true
