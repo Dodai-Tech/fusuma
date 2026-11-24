@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fusuma board file (board.toml)",
+  "description": "One board: its parts and their wiring. Read by fusuma_platform::BoardFile, which checks pins and options against each controller.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "about": { "type": "string" },
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "shape": { "enum": ["rect", "rounded", "circle"] },
+        "radius": { "type": "integer", "minimum": 1 },
+        "offset": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 },
+        "grid": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "controller": { "enum": ["co5300", "ek79007"] },
+        "bus": { "enum": ["qspi", "dsi"] },
+        "pins": { "$ref": "#/$defs/pins" },
+        "options": { "$ref": "#/$defs/options" }
+      }
+    },
+    "touch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controller"],
+      "properties": {
+        "controller": { "enum": ["gt911", "ft3168"] },
+        "bus": { "enum": ["i2c"] },
+        "pins": { "$ref": "#/$defs/pins" },
+        "options": { "$ref": "#/$defs/options" },
+        "mirror": { "type": "array", "items": { "type": "boolean" }, "minItems": 2, "maxItems": 2 },
+        "swap_xy": { "type": "boolean" }
+      }
+    },
+    "backlight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controller"],
+      "properties": {
+        "controller": { "enum": ["ledc"] },
+        "bus": { "enum": ["pwm"] },
+        "pins": { "$ref": "#/$defs/pins" },
+        "options": { "$ref": "#/$defs/options" },
+        "invert": { "type": "boolean" }
+      }
+    },
+    "firmware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chip", "flash_mb"],
+      "properties": {
+        "chip": { "enum": ["esp32", "esp32s2", "esp32s3", "esp32c2", "esp32c3", "esp32c6", "esp32h2", "esp32p4"] },
+        "flash_mb": { "type": "integer", "minimum": 1 },
+        "boot_limit_mb": { "type": "integer", "minimum": 1 },
+        "target": { "type": "string" }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ram_kb"],
+      "properties": {
+        "ram_kb": { "type": "integer", "minimum": 0 },
+        "psram_kb": { "type": "integer", "minimum": 0 },
+        "fpu": { "type": "boolean" },
+        "simd": { "type": "boolean" },
+        "gpu": { "type": "boolean" }
+      }
+    },
+    "render": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend": { "enum": ["auto", "integer", "vello-cpu", "vello-gpu"] },
+        "fallback": { "type": "boolean" },
+        "min_free_kb": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "pins": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "integer", "minimum": 0, "maximum": 63 },
+          { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 63 } }
+        ]
+      }
+    },
+    "options": { "type": "object", "additionalProperties": { "type": "integer" } }
+  }
+}

@@ -32,3 +32,39 @@ the app need at their peak, which you can read from the heap's minimum-free wate
 With the `toml` feature, `RenderLayer::from_toml` reads a file (unknown keys and backend names are errors that
 name them), `RawRender` lets another crate's file embed a `[render]` table, and `SETTINGS_SCHEMA` is the JSON
 schema (`fusuma.schema.json`). `Render::layered(&[file, user, build])` combines layers.
+
+## Board files
+
+With the `toml` feature, `board::BoardFile::from_toml` reads a **board file**: one TOML file that describes a board,
+its parts and how they are wired, so a board made of known parts is a file, not code.
+
+```toml
+name = "s3-amoled-206"
+about = "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502)"
+
+[display]
+width = 410
+height = 502
+shape = "rounded"     # rect (default), rounded (with radius) or circle
+radius = 70
+offset = [22, 0]      # where the visible area starts in the panel's memory
+grid = 2              # rectangles start and end on multiples of this
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 11, d = [4, 5, 6, 7], cs = 12, rst = 8 }
+
+[touch]
+controller = "ft3168"
+pins = { sda = 15, scl = 14, rst = 9 }
+
+[firmware]            # optional: only for a board that is flashed
+chip = "esp32s3"
+flash_mb = 32
+boot_limit_mb = 16    # the bootloader boots no app past this
+```
+
+`[backlight]`, `[hardware]` and `[render]` are optional too. Every key, controller, pin and option is checked against
+`board::CONTROLLERS` (which chips a controller works on, which pins it needs, its numbers with their ranges and
+defaults), and an error names the file and the key. `BOARD_SCHEMA` is the JSON schema (`board.schema.json`).
+`fusuma-platform-esp` builds a firmware from these files, `scripts/showcase.nu` recognises and flashes boards from
+them, and Hibari OS reads the same format.

@@ -1,0 +1,39 @@
+# The Waveshare ESP32-P4-WIFI6-Touch-LCD-7B: a 1024x600 MIPI DSI panel (EK79007) with a frame buffer, GT911 touch and
+# an LEDC backlight. Pins and timings from Waveshare's BSP (waveshare/esp32_p4_wifi6_touch_lcd_7b 3.0.1).
+# Schema: crates/fusuma-platform/board.schema.json.
+name = "p4-7in"
+about = "Waveshare ESP32-P4 7-inch touch board (1024x600)"
+capabilities = ["display", "touch", "wifi", "ble", "storage"]
+
+[display]
+width = 1024
+height = 600
+controller = "ek79007"
+bus = "dsi"
+pins = { rst = 33 }
+# The DSI PHY is powered from LDO_VO3 at 2.5 V.
+options = { lanes = 2, lane_mbps = 1000, phy_ldo_channel = 3, phy_ldo_mv = 2500 }
+
+[touch]
+controller = "gt911"
+bus = "i2c"
+pins = { sda = 7, scl = 8 }
+# The touch layer is mounted turned 180 degrees from the panel (as in the BSP).
+mirror = [true, true]
+
+[backlight]
+controller = "ledc"
+bus = "pwm"
+pins = { pwm = 32 }
+invert = true
+
+[firmware]
+chip = "esp32p4"
+flash_mb = 32
+
+[hardware]
+ram_kb = 475
+psram_kb = 32768
+fpu = true
+# Vello has no SIMD code for RISC-V, so the automatic choice is the integer renderer.
+simd = false

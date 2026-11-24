@@ -2,8 +2,9 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Fusuma — the components showcase on ESP32 boards (examples/showcase-esp)
 # ──────────────────────────────────────────────────────────────────────────────
-# One firmware crate, one build per board: each board has its chip, Rust target, toolchain and sdkconfig
-# (`BOARDS`). `install` without `--board` asks the connected chip what it is and picks the board for it.
+# One firmware crate, one build per board: a board is a directory under crates/fusuma-platform-esp/boards with its
+# board file (`board.toml`), sdkconfig and partition table; the chip gives the Rust target and toolchain (`CHIPS`).
+# `install` without `--board` asks the connected chip what it is and picks the board for it.
 # The firmware is not a workspace member (it needs the ESP toolchain), so its generated file, build
 # and flashing live here, tested. Flashing is non-destructive: the image goes into an OTA slot and an
 # `otadata` entry selects it; `restore` erases `otadata` so the board boots its factory app again.
@@ -19,35 +20,48 @@ const ROOT = path self ..
 const CRATE = "examples/showcase-esp"
 const BIN = "fusuma-showcase-esp"
 
-# The boards the showcase builds for. `chip` and `flash_mb` are what `espflash board-info` reports, so a connected
-# board is recognised by them; `boot_limit_mb` is how far into flash the bootloader boots an app (0: no limit);
-# `espup` means the toolchain comes from espup and needs its environment (`~/export-esp.sh`).
-export const BOARDS = [
+# Where the board files are: one directory per board, its `board.toml` the one description of it (see
+# crates/fusuma-platform/board.schema.json), with its `sdkconfig.defaults.in` and `partitions.csv` next to it.
+export const BOARDS_DIR = path self ../crates/fusuma-platform-esp/boards
+
+# What an ESP-IDF build needs for each chip: the Rust target and the toolchain (`espup` means it comes from espup and
+# needs its environment, `~/export-esp.sh`). The chip is the board's; nothing here is a board.
+export const CHIPS = {
+    esp32p4: { target: "riscv32imafc-esp-espidf", toolchain: "nightly-2026-09-15", espup: false }
+    esp32s3: { target: "xtensa-esp32s3-espidf", toolchain: "esp", espup: true }
+    esp32c6: { target: "riscv32imac-esp-espidf", toolchain: "nightly-2026-09-15", espup: false }
+}
+
+# A board from its board file's text, with what the chip adds; `dir` is where its files are.
+export def board_from [text: string, dir: string]: nothing -> record {
+    let f = $text | from toml
+    let chip = $f.firmware.chip
+    let c = $CHIPS | get -o $chip
+    if $c == null { error make { msg: $"($dir): no ESP-IDF target known for chip ($chip); known: ($CHIPS | columns | str join ', ')" } }
     {
-        name: "p4-7in"
-        chip: "esp32p4"
-        flash_mb: 32
-        target: "riscv32imafc-esp-espidf"
-        toolchain: "nightly-2026-09-15"
-        espup: false
-        boot_limit_mb: 0
-        about: "Waveshare ESP32-P4 7-inch touch board (1024x600)"
+        name: $f.name
+        about: ($f.about? | default $f.name)
+        chip: $chip
+        flash_mb: $f.firmware.flash_mb
+        boot_limit_mb: ($f.firmware.boot_limit_mb? | default 0)
+        target: $c.target
+        toolchain: $c.toolchain
+        espup: $c.espup
+        dir: $dir
     }
-    {
-        name: "s3-amoled-206"
-        chip: "esp32s3"
-        flash_mb: 32
-        target: "xtensa-esp32s3-espidf"
-        toolchain: "esp"
-        espup: true
-        # Measured in Hibari: `ota_1` at 16 MB is skipped by this board's bootloader.
-        boot_limit_mb: 16
-        about: "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502)"
-    }
-]
+}
+
+# Every board under `dir`, sorted by name.
+export def load_boards [dir: string = $BOARDS_DIR]: nothing -> list<record> {
+    ls $dir | where type == dir | get name | sort | each { |d|
+        let file = $d | path join board.toml
+        if ($file | path exists) { board_from (open --raw $file) $d }
+    } | compact
+}
 
 # The board called `name`; error listing the known ones.
-export def board_named [name: string, boards: list = $BOARDS]: nothing -> record {
+export def board_named [name: string, boards?: list]: nothing -> record {
+    let boards = $boards | default (load_boards)
     let b = $boards | where name == $name
     if ($b | is-empty) { error make { msg: $"no board '($name)'; known: ($boards.name | str join ', ')" } }
     $b | first
@@ -63,7 +77,8 @@ export def parse_board_info [text: string]: nothing -> record {
 
 # The board for a connected chip: the only one with its chip (and, when several share it, its flash size). Error when
 # none or several fit, naming them, so `--board` can settle it.
-export def pick_board [info: record, boards: list = $BOARDS]: nothing -> record {
+export def pick_board [info: record, boards?: list]: nothing -> record {
+    let boards = $boards | default (load_boards)
     let same_chip = $boards | where chip == $info.chip
     if ($same_chip | is-empty) {
         error make { msg: $"no showcase board has an ($info.chip); known: ($boards | each { |b| $'($b.name) [($b.chip)]' } | str join ', ')" }
@@ -183,12 +198,15 @@ def esp_env [home: string, board: record]: nothing -> record {
     $base | merge {
         HOME: $home
         MCU: $board.chip
-        ESP_IDF_SDKCONFIG_DEFAULTS: (board_dir $board | path join sdkconfig.defaults)
+        ESP_IDF_SDKCONFIG_DEFAULTS: (generated_sdkconfig $board)
+        FUSUMA_BOARD: $board.name
     }
 }
 
-def board_dir [board: record]: nothing -> path {
-    $ROOT | path join $CRATE boards $board.name
+# The board's sdkconfig with its partition table filled in, generated next to its build (never into the board's
+# directory, which stays only what a person wrote).
+def generated_sdkconfig [board: record]: nothing -> path {
+    target_dir $board | path join sdkconfig.defaults
 }
 
 # Each board builds into its own directory, so two boards with the same chip never share an ESP-IDF build.
@@ -201,10 +219,12 @@ def elf_path [board: record]: nothing -> path {
 }
 
 def "main gen-sdkconfig" [--board: string = "p4-7in"] {
-    let dir = board_dir (board_named $board)
-    let csv = $dir | path join partitions.csv | path expand
-    sdkconfig (open --raw ($dir | path join sdkconfig.defaults.in)) $csv | save -f ($dir | path join sdkconfig.defaults)
-    print -e $"Generated ($board)/sdkconfig.defaults \(partitions: ($csv))"
+    let b = board_named $board
+    let csv = $b.dir | path join partitions.csv | path expand
+    let out = generated_sdkconfig $b
+    mkdir ($out | path dirname)
+    sdkconfig (open --raw ($b.dir | path join sdkconfig.defaults.in)) $csv | save -f $out
+    print -e $"Generated ($out) \(partitions: ($csv))"
 }
 
 # What is connected on `port`: the chip and the board the showcase would build for it.
@@ -227,8 +247,8 @@ export def feature_args [features: string]: nothing -> list<string> {
 
 # The cargo arguments that build `board` with the extra `features`.
 export def build_args [board: record, features: string, target_dir: string]: nothing -> list<string> {
-    let all = [$"board-($board.name)"] | append ($features | split row --regex '[,\s]+' | where { |f| $f | is-not-empty })
-    [$"+($board.toolchain)" "build" "--release" "--target" $board.target "--target-dir" $target_dir ...(feature_args ($all | str join ","))]
+    # The board itself is not a feature: FUSUMA_BOARD names it (see `esp_env`).
+    [$"+($board.toolchain)" "build" "--release" "--target" $board.target "--target-dir" $target_dir ...(feature_args $features)]
 }
 
 def "main build" [--board: string, --features: string = ""] {

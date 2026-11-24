@@ -1,6 +1,6 @@
 [package]
 name = "fusuma-showcase-esp"
-description = "The Fusuma components showcase on ESP32 boards: the Waveshare ESP32-P4 7-inch board and the ESP32-S3-Touch-AMOLED-2.06 watch, one board per build (see scripts/showcase.nu)"
+description = "The Fusuma components showcase on ESP32 boards, one board per build: FUSUMA_BOARD names its board file (see scripts/showcase.nu)"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
@@ -31,9 +31,6 @@ anyhow = "1"
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 
 [features]
-# The board, exactly one; the script turns on the right one.
-board-p4-7in = ["fusuma-platform-esp/board-p4-7in"]
-board-s3-amoled-206 = ["fusuma-platform-esp/board-s3-amoled-206"]
 # Ask the build for a renderer (the strongest layer of the choice). With none, the board's hardware decides.
 # If several are on, the lightest wins.
 render-integer = []
@@ -43,13 +40,8 @@ render-vello-cpu = ["fusuma-platform-esp/vello-cpu", "fusuma-platform-esp/fonts"
 [build-dependencies]
 embuild = "0.33"
 
-# Every board's C shim. Each one is empty on the other boards' chips, so they can all be listed.
+# Fusuma's ESP drivers, one per controller; the board file decides which ones run.
 [[package.metadata.esp-idf-sys.extra_components]]
-component_dirs = ["../../crates/fusuma-platform-esp/components/wt_display"]
-bindings_header = "../../crates/fusuma-platform-esp/components/wt_display/include/wt_display.h"
-bindings_module = "wt_display"
-
-[[package.metadata.esp-idf-sys.extra_components]]
-component_dirs = ["../../crates/fusuma-platform-esp/components/s3_amoled"]
-bindings_header = "../../crates/fusuma-platform-esp/components/s3_amoled/include/s3_amoled.h"
-bindings_module = "s3_amoled"
+component_dirs = ["../../crates/fusuma-platform-esp/components/fusuma_esp"]
+bindings_header = "../../crates/fusuma-platform-esp/components/fusuma_esp/include/fusuma_esp.h"
+bindings_module = "fusuma_esp"

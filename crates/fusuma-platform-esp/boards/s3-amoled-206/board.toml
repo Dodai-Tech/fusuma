@@ -1,0 +1,40 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-2.06 watch: the one description of this board. The ESP firmware's build reads
+# it to pick and wire its drivers, `scripts/showcase.nu` to recognise and flash it, and Hibari OS reads the same
+# format. Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-amoled-206"
+about = "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 410
+height = 502
+# The glass's corner radius is a guess by eye (Hibari), not a measurement: the panel's data sheet does not say.
+shape = "rounded"
+radius = 70
+# The panel's memory is 22 columns wider on the left than what is visible.
+offset = [22, 0]
+# The CO5300 takes rectangles that start and end on even columns and rows.
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 11, d = [4, 5, 6, 7], cs = 12, rst = 8 }
+options = { pclk_mhz = 80 }
+
+[touch]
+controller = "ft3168"
+bus = "i2c"
+pins = { sda = 15, scl = 14, rst = 9 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 32
+# Measured in Hibari: the bootloader does not boot ota_1 at 16 MB.
+boot_limit_mb = 16
+
+# What the chip has, for tools and for Hibari's preview; the ESP runtime measures RAM and PSRAM itself.
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+# Vello has no SIMD code for Xtensa, so the automatic choice is the integer renderer.
+simd = false

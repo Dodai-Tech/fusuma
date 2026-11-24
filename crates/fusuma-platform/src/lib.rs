@@ -230,6 +230,8 @@ extern crate std;
 mod settings;
 #[cfg(feature = "toml")]
 pub use settings::{RawRender, SETTINGS_SCHEMA, SettingsError};
+#[cfg(feature = "toml")]
+pub mod board;
 
 /// Why a backend was chosen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

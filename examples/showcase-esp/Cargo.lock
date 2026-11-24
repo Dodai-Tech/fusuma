@@ -1034,6 +1034,7 @@ dependencies = [
  "anyhow",
  "esp-idf-svc",
  "fusuma",
+ "fusuma-platform",
  "fusuma-platform-embedded",
  "log",
 ]

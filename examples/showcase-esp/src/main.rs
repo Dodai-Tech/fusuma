@@ -1,4 +1,4 @@
-//! The Fusuma components showcase on an ESP32 board (the P4 7" board or the S3 watch, by cargo feature).
+//! The Fusuma components showcase on an ESP32 board: the one `FUSUMA_BOARD` names (see `scripts/showcase.nu`).
 //!
 //! The app is `fusuma-showcase`, the same code the host tests draw. Everything else (display, touch, the
 //! frame loop and which renderer to draw with) is `fusuma-platform-esp`. The renderer is automatic; the

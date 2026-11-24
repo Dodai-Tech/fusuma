@@ -1,8 +1,10 @@
 //! Fusuma on ESP-IDF boards. See the README.
 
-mod boards;
-
-use boards::current as board;
+mod backlight;
+mod board;
+mod display;
+mod panel;
+mod touch;
 
 use std::time::{Duration, Instant};
 
@@ -59,7 +61,7 @@ fn hardware() -> Hardware {
     Hardware {
         ram_kb: u32::try_from(ram / 1024).unwrap_or(u32::MAX),
         psram_kb: u32::try_from(psram / 1024).unwrap_or(u32::MAX),
-        fpu: board::FPU,
+        fpu: board::fpu(),
         // Vello has no SIMD code for Xtensa or RISC-V: it runs its scalar fallback here.
         simd: fusuma_platform_embedded::vello_has_simd(),
         gpu: false,
@@ -104,8 +106,8 @@ pub fn run<A: App>(
 }
 
 fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow::Result<()> {
-    log::info!("board: {}", board::NAME);
-    let panel = board::open(options.backlight)?;
+    log::info!("board: {} ({}, {})", board::NAME, board::ABOUT, board::CHIP);
+    let panel = panel::EspBoard::open(options.backlight)?;
     let (w, h) = panel.size();
     // The layers, weakest first: the automatic rule needs no layer, then the project's file, then the build.
     let file = match options.settings {

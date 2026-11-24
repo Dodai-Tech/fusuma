@@ -49,6 +49,59 @@ pub const fn band_rows(width: u32, capacity: u32, step: u32) -> u32 {
     if rows == 0 { step } else { rows }
 }
 
+/// A touch sample as the controller reports it, turned to the screen: x and y swapped first if `swap_xy`, then
+/// flipped along each axis that `mirror` says, and cut to the `width x height` screen.
+#[must_use]
+pub fn orient(x: u16, y: u16, width: u32, height: u32, swap_xy: bool, mirror: [bool; 2]) -> Point {
+    let (x, y) = if swap_xy { (y, x) } else { (x, y) };
+    let fit = |v: u16, max: u32, flip: bool| {
+        let v = i32::from(v)
+            .min(i32::try_from(max).unwrap_or(i32::MAX) - 1)
+            .max(0);
+        if flip {
+            i32::try_from(max).unwrap_or(i32::MAX) - 1 - v
+        } else {
+            v
+        }
+    };
+    Point::new(fit(x, width, mirror[0]), fit(y, height, mirror[1]))
+}
+
+/// How many failed reads in a row a held finger survives. Some controllers (the FT3168) answer NAK now and then
+/// while idle or touched; more failures than this mean the bus is gone, and a finger is let go rather than held
+/// forever.
+pub const HELD_THROUGH_ERRORS: u32 = 5;
+
+/// Where the finger is, from samples that may fail: a failed read keeps the last position, up to
+/// [`HELD_THROUGH_ERRORS`] in a row.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HeldTouch {
+    held: Option<Point>,
+    failed: u32,
+    /// Failed reads since the start.
+    pub errors: u32,
+}
+
+impl HeldTouch {
+    /// Takes one sample (`None` when the read failed) and says where the finger is.
+    pub fn sample(&mut self, read: Option<Option<Point>>) -> Option<Point> {
+        match read {
+            Some(at) => {
+                self.held = at;
+                self.failed = 0;
+            }
+            None => {
+                self.errors = self.errors.saturating_add(1);
+                self.failed = self.failed.saturating_add(1);
+                if self.failed > HELD_THROUGH_ERRORS {
+                    self.held = None;
+                }
+            }
+        }
+        self.held
+    }
+}
+
 /// The picture a frame drew, readable a row at a time as RGB565. A board asks for the rows it wants to show, in
 /// whatever order and chunks its panel likes: a panel with a frame buffer copies them in, one on an SPI bus sends
 /// them as they come.
@@ -164,6 +217,52 @@ mod tests {
         assert_eq!(rgb565(0, 255, 0), 0x07E0);
         assert_eq!(rgb565(0, 0, 255), 0x001F);
         assert_eq!(rgb565(0x07, 0x03, 0x07), 0, "the low bits are dropped");
+    }
+
+    #[test]
+    fn touch_is_turned_to_the_screen_and_cut_to_it() {
+        assert_eq!(
+            orient(10, 20, 100, 50, false, [false, false]),
+            Point::new(10, 20)
+        );
+        assert_eq!(
+            orient(10, 20, 100, 50, false, [true, true]),
+            Point::new(89, 29)
+        );
+        assert_eq!(
+            orient(10, 20, 100, 50, true, [false, false]),
+            Point::new(20, 10),
+            "swapped"
+        );
+        assert_eq!(
+            orient(10, 20, 100, 50, true, [true, false]),
+            Point::new(79, 10),
+            "swapped, then flipped"
+        );
+        assert_eq!(
+            orient(500, 500, 100, 50, false, [false, false]),
+            Point::new(99, 49),
+            "cut to the screen"
+        );
+        assert_eq!(
+            orient(500, 0, 100, 50, false, [true, false]),
+            Point::new(0, 0)
+        );
+    }
+
+    #[test]
+    fn a_held_finger_survives_a_few_failed_reads_but_not_a_dead_bus() {
+        let mut t = HeldTouch::default();
+        let p = Some(Point::new(5, 6));
+        assert_eq!(t.sample(Some(p)), p);
+        for _ in 0..HELD_THROUGH_ERRORS {
+            assert_eq!(t.sample(None), p, "a NAK now and then keeps the finger");
+        }
+        assert_eq!(t.sample(None), None, "one more: the bus is gone, let go");
+        assert_eq!(t.sample(None), None);
+        assert_eq!(t.sample(Some(p)), p, "a good read takes it again");
+        assert_eq!(t.sample(Some(None)), None, "lifted");
+        assert_eq!(t.errors, HELD_THROUGH_ERRORS + 2);
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 use std/assert
 use runner.nu *
-use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args BOARDS board_named parse_board_info pick_board check_bootable espup_env build_args]
+use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args BOARDS_DIR CHIPS board_from load_boards board_named parse_board_info pick_board check_bootable espup_env build_args]
 
 def "test showcase: the partition path is filled in everywhere" [] {
     let out = sdkconfig "A=1\nP=\"@PARTITIONS@\"\nQ=\"@PARTITIONS@\"\n" "/x/p.csv"
@@ -73,7 +73,6 @@ def "test showcase: cargo features are passed through, in any list format" [] {
     assert equal (feature_args "a b , c") ["--features" "a,b,c"]
 }
 
-const ESP_BOARDS = path self ../../examples/showcase-esp/boards
 
 const BOARD_INFO_S3 = "[INFO ] Connecting...
 Chip type:         esp32s3 (revision v0.2)
@@ -105,18 +104,32 @@ def "test showcase: two boards with one chip are told apart by flash, else --boa
     assert error { pick_board { chip: "esp32c6", flash_mb: 4 } $boards }
 }
 
-def "test showcase: every board has a name, chip, target and toolchain, and its files" [] {
-    assert (($BOARDS.name | uniq | length) == ($BOARDS | length))
-    for b in $BOARDS {
-        for k in [chip target toolchain flash_mb boot_limit_mb espup about] { assert ($k in $b) $"($b.name) has ($k)" }
-        let dir = $ESP_BOARDS | path join $b.name
-        assert ($dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
-        assert ($dir | path join partitions.csv | path exists) $"($b.name) has a partition table"
-        let idf = open --raw ($dir | path join sdkconfig.defaults.in)
+def "test showcase: the boards come from their board files, with the chip target and toolchain" [] {
+    let boards = load_boards
+    assert equal ($boards.name) ["p4-7in" "s3-amoled-206"]
+    for b in $boards {
+        assert ($b.dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
+        assert ($b.dir | path join partitions.csv | path exists) $"($b.name) has a partition table"
+        let idf = open --raw ($b.dir | path join sdkconfig.defaults.in)
         assert ($idf | str contains $'CONFIG_IDF_TARGET="($b.chip)"') $"($b.name)'s sdkconfig is for its chip"
+        assert equal $b.target ($CHIPS | get $b.chip | get target)
     }
-    assert equal (board_named "p4-7in").chip "esp32p4"
+    let s3 = board_named "s3-amoled-206"
+    assert equal [$s3.chip $s3.flash_mb $s3.boot_limit_mb $s3.toolchain $s3.espup] ["esp32s3" 32 16 "esp" true]
+    assert equal (board_named "p4-7in").boot_limit_mb 0 "no limit when the file says none"
     assert error { board_named "nope" }
+}
+
+def "test showcase: a new board is a file, and an unknown chip is refused" [] {
+    let text = "name = \"c6-lcd\"\nabout = \"a C6 board\"\n[firmware]\nchip = \"esp32c6\"\nflash_mb = 4\n"
+    let b = board_from $text "/t/c6-lcd"
+    assert equal [$b.name $b.about $b.target $b.boot_limit_mb $b.dir] ["c6-lcd" "a C6 board" "riscv32imac-esp-espidf" 0 "/t/c6-lcd"]
+    assert error { board_from ($text | str replace "esp32c6" "esp32h2") "/t/h2" }
+    let dir = mktemp -d
+    mkdir ($dir | path join one) ($dir | path join notes)
+    $text | save ($dir | path join one board.toml)
+    assert equal (load_boards $dir | get name) ["c6-lcd"] "a directory without a board.toml is not a board"
+    rm -rf $dir
 }
 
 def "test showcase: a slot past where the bootloader boots is refused" [] {
@@ -135,9 +148,9 @@ def "test showcase: the espup exports become the environment, its PATH in front"
 
 def "test showcase: a board builds with its toolchain, target, directory and feature" [] {
     let a = build_args (board_named "s3-amoled-206") "render-vello-cpu, fonts" "/t/s3"
-    assert equal $a ["+esp" "build" "--release" "--target" "xtensa-esp32s3-espidf" "--target-dir" "/t/s3" "--features" "board-s3-amoled-206,render-vello-cpu,fonts"]
+    assert equal $a ["+esp" "build" "--release" "--target" "xtensa-esp32s3-espidf" "--target-dir" "/t/s3" "--features" "render-vello-cpu,fonts"]
     let p = build_args (board_named "p4-7in") "" "/t/p4"
-    assert equal ($p | last 2) ["--features" "board-p4-7in"]
+    assert equal ($p | last) "/t/p4" "no features, and the board is not one"
     assert equal $p.0 "+nightly-2026-09-15"
 }
 

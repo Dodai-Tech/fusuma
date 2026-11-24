@@ -1,0 +1,9 @@
+dependencies:
+  # GT911 touch through esp_lcd_touch, on any chip.
+  espressif/esp_lcd_touch_gt911: "^1"
+  # The EK79007 DSI panel, only where there is DSI.
+  espressif/esp_lcd_ek79007:
+    version: "^2.0.2~1"
+    rules:
+      - if: "target == esp32p4"
+  idf: ">=5.5"

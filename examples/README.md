@@ -5,17 +5,19 @@ a progress bar, keyboard focus and a dark/light theme switch. It is `no_std` and
 the same code is tested on the host (`just showcase-shots` writes a PNG of every page to
 `docs/screenshots/`) and runs on a board.
 
-**`showcase-esp/`** is that app on ESP32 boards, on ESP-IDF, one build per board (a cargo feature, a Rust target, an
-sdkconfig and a partition table each, in `boards/<name>/`):
+**`showcase-esp/`** is that app on ESP32 boards, on ESP-IDF, one build per board. A board is a board file and its
+sdkconfig and partition table in `crates/fusuma-platform-esp/boards/<name>/`; the chip gives the Rust target and
+toolchain:
 
 | Board | Chip | Screen | Toolchain |
 |---|---|---|---|
 | `p4-7in`: Waveshare ESP32-P4 7" touch board | ESP32-P4 | 1024x600 DSI with a frame buffer, GT911 touch | `nightly-2026-09-15` |
 | `s3-amoled-206`: Waveshare ESP32-S3-Touch-AMOLED-2.06 watch | ESP32-S3 | 410x502 CO5300 AMOLED over QSPI, FT3168 touch | `esp` (espup) |
 
-`just showcase-esp` asks the connected chip what it is (`espflash board-info`), picks the board for it, builds and flashes
-the `ota_0` slot; the factory app stays. Two boards with the same chip are told apart by flash size, or by `board=`. It is
-not a workspace member (it needs the ESP toolchain). The C shims are in `crates/fusuma-platform-esp/components`.
+`just showcase-esp` asks the connected chip what it is (`espflash board-info`), picks the board for it from the board
+files, builds and flashes the `ota_0` slot; the factory app stays. Two boards with the same chip are told apart by flash
+size, or by `board=`. A new board made of known controllers is a new directory, no code. It is not a workspace member (it
+needs the ESP toolchain).
 
 ```
 just showcase-esp /dev/ttyACM0                  # detect, build, flash
