@@ -1,14 +1,16 @@
 //! Fusuma on ESP-IDF boards. See the README.
 
-mod hw;
+mod boards;
+
+use boards::current as board;
 
 use std::time::{Duration, Instant};
 
 use fusuma::App;
-use fusuma_platform_embedded::{Driver, DriverError};
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
 use fusuma::platform::{Hardware, Machine, Render};
-
+use fusuma_platform_embedded::Board as _;
+use fusuma_platform_embedded::{Driver, DriverError};
 
 /// The backends linked into this program: the integer one always, the others by cargo feature.
 pub const LINKED: &[Backend] = &[
@@ -59,7 +61,7 @@ fn hardware() -> Hardware {
     Hardware {
         ram_kb: u32::try_from(ram / 1024).unwrap_or(u32::MAX),
         psram_kb: u32::try_from(psram / 1024).unwrap_or(u32::MAX),
-        fpu: cfg!(target_feature = "f"),
+        fpu: board::FPU,
         gpu: false,
     }
 }
@@ -68,7 +70,8 @@ fn hardware() -> Hardware {
 /// PSRAM, in bytes.
 fn heap() -> (usize, usize, usize) {
     use esp_idf_svc::sys::{
-        MALLOC_CAP_INTERNAL, MALLOC_CAP_SPIRAM, heap_caps_get_free_size, heap_caps_get_minimum_free_size,
+        MALLOC_CAP_INTERNAL, MALLOC_CAP_SPIRAM, heap_caps_get_free_size,
+        heap_caps_get_minimum_free_size,
     };
     // SAFETY: plain getters with no preconditions.
     unsafe {
@@ -100,14 +103,10 @@ pub fn run<A: App>(
         .map_err(|_| anyhow::anyhow!("the app thread panicked"))?
 }
 
-fn run_here<A: App>(
-    make: impl FnOnce(u32, u32) -> A,
-    options: Options,
-) -> anyhow::Result<()> {
-
-    let board = hw::P4Board::new()?;
-    hw::set_backlight(options.backlight);
-    let (w, h) = (hw::WIDTH as u32, hw::HEIGHT as u32);
+fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow::Result<()> {
+    log::info!("board: {}", board::NAME);
+    let panel = board::open(options.backlight)?;
+    let (w, h) = panel.size();
     // The layers, weakest first: the automatic rule needs no layer, then the project's file, then the build.
     let file = match options.settings {
         Some(text) => RenderLayer::from_toml(text)
@@ -120,12 +119,7 @@ fn run_here<A: App>(
         hardware: Some(hardware()),
         render,
     };
-    let facts = machine.hardware.unwrap_or(Hardware {
-        ram_kb: 0,
-        psram_kb: 0,
-        fpu: false,
-        gpu: false,
-    });
+    let facts = hardware();
     log::info!(
         "{w}x{h} screen, {} KB RAM, {} KB PSRAM, fpu {}",
         facts.ram_kb,
@@ -145,23 +139,33 @@ fn run_here<A: App>(
         }
     );
     log::info!("renderer: {plan}");
-    let mut driver = Driver::new(make(w, h), board, plan.uses)
+    let mut driver = Driver::new(make(w, h), panel, plan.uses)
         .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;
     let started_at = Instant::now();
     let mut report = Instant::now();
+    // (count, total ms, worst ms) of the updates after the first: small ones (under a tenth of the screen, a tap or a
+    // hover) and big ones (page changes, scrolling).
+    let (mut small, mut big) = ((0u32, 0u64, 0u64), (0u32, 0u64, 0u64));
 
     loop {
         let now = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         let begun = Instant::now();
         match driver.step(now) {
             Ok(step) if step.shown.is_some() => {
+                let took = u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX);
                 if driver.shell().stats.frames == 0 {
-                    log::info!("heap after the first frame: internal free {} KB", heap().0 / 1024);
+                    log::info!(
+                        "first frame {took} ms; internal RAM free {} KB",
+                        heap().0 / 1024
+                    );
+                } else if let Some(r) = step.shown {
+                    let tenth = u64::from(r.w) * u64::from(r.h) * 10 < u64::from(w) * u64::from(h);
+                    let slot = if tenth { &mut small } else { &mut big };
+                    slot.0 += 1;
+                    slot.1 += took;
+                    slot.2 = slot.2.max(took);
                 }
-                driver
-                    .shell_mut()
-                    .stats
-                    .record(u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX));
+                driver.shell_mut().stats.record(took);
             }
             Ok(_) => {}
             Err(DriverError::Draw(e)) => log::error!("draw failed: {}", e.0),
@@ -179,6 +183,18 @@ fn run_here<A: App>(
                 low / 1024,
                 psram / 1024
             );
+            log::info!(
+                "updates: small {} (avg {} ms, worst {} ms), big {} (avg {} ms, worst {} ms)",
+                small.0,
+                small.1.checked_div(u64::from(small.0)).unwrap_or(0),
+                small.2,
+                big.0,
+                big.1.checked_div(u64::from(big.0)).unwrap_or(0),
+                big.2
+            );
+            if let Some(line) = driver.board_mut().report() {
+                log::info!("{line}");
+            }
         }
         std::thread::sleep(Duration::from_millis(8));
     }

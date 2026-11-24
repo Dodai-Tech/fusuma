@@ -1,6 +1,6 @@
 [package]
 name = "fusuma-platform-esp"
-description = "Fusuma on ESP-IDF boards: the display, touch and frame loop, and the renderer picked from the chip's memory (today the Waveshare ESP32-P4 7-inch board)"
+description = "Fusuma on ESP-IDF boards: the display, touch and frame loop, and the renderer picked from the chip's memory (the Waveshare ESP32-P4 7-inch board and ESP32-S3 AMOLED 2.06 watch)"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
@@ -16,6 +16,10 @@ publish = false
 
 [features]
 default = ["skia", "vello-cpu", "fonts"]
+# The board, exactly one. Its C shim (components/<board>) must be listed in the firmware's
+# `package.metadata.esp-idf-sys.extra_components`; see examples/showcase-esp.
+board-p4-7in = []
+board-s3-amoled-206 = []
 # Link the `tiny-skia` and the `vello_cpu` renderers next to the integer one, which is always there.
 # Leaving both off links the integer renderer only (the smallest firmware).
 skia = ["fusuma/renderer-skia", "fusuma-platform-embedded/skia"]

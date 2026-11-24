@@ -1,0 +1,55 @@
+[package]
+name = "fusuma-showcase-esp"
+description = "The Fusuma components showcase on ESP32 boards: the Waveshare ESP32-P4 7-inch board and the ESP32-S3-Touch-AMOLED-2.06 watch, one board per build (see scripts/showcase.nu)"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Sorin Albu-Irimies"]
+publish = false
+
+# Not a member of the Fusuma workspace: it needs the ESP toolchain, and each board its own target (see
+# ../../scripts/showcase.nu, which picks the board from the chip that is connected).
+[workspace]
+
+[[bin]]
+name = "fusuma-showcase-esp"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+[profile.dev]
+debug = true
+opt-level = "s"
+
+[dependencies]
+fusuma-showcase = { path = "../showcase" }
+fusuma-platform-esp = { path = "../../crates/fusuma-platform-esp" }
+anyhow = "1"
+# Direct, so the build script sees esp-idf-sys and passes the linker arguments on.
+esp-idf-svc = { version = "0.53", features = ["experimental"] }
+
+[features]
+# The board, exactly one; the script turns on the right one.
+board-p4-7in = ["fusuma-platform-esp/board-p4-7in"]
+board-s3-amoled-206 = ["fusuma-platform-esp/board-s3-amoled-206"]
+# Ask the build for a renderer (the strongest layer of the choice). With none, the board's hardware decides.
+# If several are on, the lightest wins.
+render-integer = []
+render-skia = []
+render-vello-cpu = []
+
+[build-dependencies]
+embuild = "0.33"
+
+# Every board's C shim. Each one is empty on the other boards' chips, so they can all be listed.
+[[package.metadata.esp-idf-sys.extra_components]]
+component_dirs = ["../../crates/fusuma-platform-esp/components/wt_display"]
+bindings_header = "../../crates/fusuma-platform-esp/components/wt_display/include/wt_display.h"
+bindings_module = "wt_display"
+
+[[package.metadata.esp-idf-sys.extra_components]]
+component_dirs = ["../../crates/fusuma-platform-esp/components/s3_amoled"]
+bindings_header = "../../crates/fusuma-platform-esp/components/s3_amoled/include/s3_amoled.h"
+bindings_module = "s3_amoled"

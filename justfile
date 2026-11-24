@@ -298,23 +298,32 @@ clean:
     cargo clean
     rm -rf dist
 
-# ── Showcase (examples/showcase, examples/showcase-p4) ────────────────────────
+# ── Showcase (examples/showcase, examples/showcase-esp) ───────────────────────
 
 # Render every showcase page to PNG on the host (docs/screenshots)
 showcase-shots:
     FUSUMA_SHOWCASE_PNG=docs/screenshots cargo test -p fusuma-showcase
 
-# Build the ESP32-P4 showcase firmware (needs the ESP toolchain)
-showcase-p4-build:
-    nu scripts/showcase.nu build
+# Which showcase board is connected (asks the chip); e.g. just showcase-esp-detect /dev/ttyACM0
+showcase-esp-detect port="":
+    nu scripts/showcase.nu detect --port "{{ port }}"
 
-# Flash the showcase to the P4's ota_0 slot (the factory app stays); e.g. just showcase-p4-install /dev/ttyACM0
-showcase-p4-install port="" features="":
-    nu scripts/showcase.nu install --port "{{ port }}" --features "{{ features }}"
+# Build the ESP showcase firmware for a board (p4-7in, s3-amoled-206); needs the ESP toolchain
+showcase-esp-build board features="":
+    nu scripts/showcase.nu build --board "{{ board }}" --features "{{ features }}"
 
-# Boot the P4's factory app again
-showcase-p4-restore port="":
+# Build for the connected board and flash its ota_0 slot (the factory app stays); board="" detects it.
+# e.g. just showcase-esp /dev/ttyACM0, or just showcase-esp /dev/ttyACM0 render-integer
+showcase-esp port="" features="" board="":
+    nu scripts/showcase.nu install --port "{{ port }}" --features "{{ features }}" --board "{{ board }}"
+
+# Boot the board's factory app again
+showcase-esp-restore port="":
     nu scripts/showcase.nu restore --port "{{ port }}"
+
+# Read what the board logs, without resetting it (a reset wipes its statistics)
+showcase-esp-log port="/dev/ttyACM0" seconds="15":
+    nu -c "^stty -F {{ port }} 115200 raw -echo -hupcl; ^timeout {{ seconds }} cat {{ port }}"
 
 # Run the components showcase in a window; the renderer is chosen for you, or: just showcase-desktop --renderer vello-cpu
 showcase-desktop *args:

@@ -22,7 +22,7 @@ members = [
 ]
 
 # The firmware needs the ESP toolchain, so it builds on its own (scripts/showcase.nu).
-exclude = ["examples/showcase-p4", "crates/fusuma-platform-esp"]
+exclude = ["examples/showcase-esp", "crates/fusuma-platform-esp"]
 
 [workspace.package]
 version = "0.2.0"

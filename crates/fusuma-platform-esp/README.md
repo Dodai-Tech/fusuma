@@ -19,9 +19,17 @@ With `fallback` (on by default) an explicit choice that does not fit in memory s
 `skia` and `vello-cpu` (on by default) link those renderers next to the integer one; turn both off for the
 smallest firmware, and the choice is made among what is linked.
 
-Today it supports the Waveshare ESP32-P4 7" touch board (1024x600, GT911); the C shim for its display and touch
-is in `components/wt_display` (from the WeatherTrack P4 firmware). The firmware crate that uses it must list
-that directory in its `package.metadata.esp-idf-sys.extra_components`, see `examples/showcase-p4`.
+It supports two boards, one per build, chosen by a cargo feature:
+
+| Feature | Board | C shim |
+|---|---|---|
+| `board-p4-7in` | Waveshare ESP32-P4 7" touch board (1024x600 DSI, GT911) | `components/wt_display` (from the WeatherTrack P4 firmware) |
+| `board-s3-amoled-206` | Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502 CO5300 over QSPI, FT3168) | `components/s3_amoled` (from Hibari's Rust drivers) |
+
+The firmware crate lists every shim in its `package.metadata.esp-idf-sys.extra_components`; each one builds empty on
+the other chips, see `examples/showcase-esp`. The S3's panel has no frame buffer: an update goes out in bands of even
+rows through two DMA buffers, one converted while the other is sent, and the log reports the conversion and the wait
+every 10 seconds. Its 70 px corner radius is a guess by eye, not a measurement.
 
 A choice is predicted from the memory the chip reports; allocation failure inside a renderer cannot be caught,
 so the check has to be right before the surface is made.
@@ -34,7 +42,7 @@ from the firmware:
 - **A stack of its own.** Parley and glyph drawing are deep calls, and the main task's 32 KB overflowed. `run` runs the
   app on a thread with `Options::stack_kb` (128 by default).
 - **Allocations in PSRAM.** Set `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512` in the firmware's sdkconfig (see
-  `examples/showcase-p4/sdkconfig.defaults.in`). At the default of 16384 almost everything Parley allocates lands in
+  `examples/showcase-esp/boards/p4-7in/sdkconfig.defaults.in`). At the default of 16384 almost everything Parley allocates lands in
   internal RAM: measured on the P4, the first frame left **9 KB** of internal RAM free (1 KB at the lowest); at 512 it
   leaves **234 KB** (190 KB steady, 157 KB at the lowest), more than the bitmap text did (116 KB, 86 KB lowest).
 

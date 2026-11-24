@@ -1,4 +1,4 @@
-sdkconfig.defaults
+boards/*/sdkconfig.defaults
 target/
 .embuild/
 sdkconfig

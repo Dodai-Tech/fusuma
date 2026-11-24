@@ -71,6 +71,11 @@ impl<A: App, B: Board> Driver<A, B> {
         &self.board
     }
 
+    /// The board, to read and reset its own numbers or change a setting (brightness) from outside.
+    pub fn board_mut(&mut self) -> &mut B {
+        &mut self.board
+    }
+
     /// The surface the app draws on.
     pub const fn surface(&self) -> &Surface {
         &self.surface

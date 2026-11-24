@@ -1,0 +1,5 @@
+[toolchain]
+# The P4's toolchain, pinned: nightlies after 2026-09 fail to build std for *-esp-espidf (libc `stat` fields missing).
+# The S3 (Xtensa) builds with the `esp` toolchain from espup instead; `nu scripts/showcase.nu` passes `+esp` for it.
+channel = "nightly-2026-09-15"
+components = ["rust-src"]

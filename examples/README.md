@@ -5,17 +5,26 @@ a progress bar, keyboard focus and a dark/light theme switch. It is `no_std` and
 the same code is tested on the host (`just showcase-shots` writes a PNG of every page to
 `docs/screenshots/`) and runs on a board.
 
-**`showcase-p4/`** is that app on the Waveshare ESP32-P4 7" touch board (1024x600, GT911 touch), drawn with
-`vello_cpu` straight into the DSI frame buffer, redrawing only the part that changed. It is an ESP-IDF
-project of its own (it needs the ESP toolchain, so it is not a workspace member); the display and touch C
-shim in `components/wt_display` comes from the WeatherTrack P4 firmware.
+**`showcase-esp/`** is that app on ESP32 boards, on ESP-IDF, one build per board (a cargo feature, a Rust target, an
+sdkconfig and a partition table each, in `boards/<name>/`):
+
+| Board | Chip | Screen | Toolchain |
+|---|---|---|---|
+| `p4-7in`: Waveshare ESP32-P4 7" touch board | ESP32-P4 | 1024x600 DSI with a frame buffer, GT911 touch | `nightly-2026-09-15` |
+| `s3-amoled-206`: Waveshare ESP32-S3-Touch-AMOLED-2.06 watch | ESP32-S3 | 410x502 CO5300 AMOLED over QSPI, FT3168 touch | `esp` (espup) |
+
+`just showcase-esp` asks the connected chip what it is (`espflash board-info`), picks the board for it, builds and flashes
+the `ota_0` slot; the factory app stays. Two boards with the same chip are told apart by flash size, or by `board=`. It is
+not a workspace member (it needs the ESP toolchain). The C shims are in `crates/fusuma-platform-esp/components`.
 
 ```
-just showcase-p4-install /dev/ttyACM0   # build and flash to the ota_0 slot; the factory app stays
-just showcase-p4-restore /dev/ttyACM0   # boot the factory app again
+just showcase-esp /dev/ttyACM0                  # detect, build, flash
+just showcase-esp /dev/ttyACM0 render-integer   # ask for a renderer
+just showcase-esp-log                           # read the board's log without a reset
+just showcase-esp-restore /dev/ttyACM0          # boot the factory app again
 ```
 
-Measured on the board: the first frame (1024x600) takes about 210 ms (76 ms drawing), and a small update
+Measured on the P4: the first frame (1024x600) takes about 210 ms (76 ms drawing), and a small update
 such as a hovered button about 60 ms, most of it converting the pixels and clearing the surface, not
 drawing. Text is Inter, Inter Bold and JetBrains Mono through `fusuma-text`, with the built-in bitmap font as the
 fallback (the Typography page shows all three).
@@ -23,9 +32,11 @@ fallback (the Typography page shows all three).
 **`showcase-desktop/`** is the same app in a window on a computer: `just showcase-desktop` (or `just showcase-desktop
 --renderer vello-cpu` to force the CPU). It uses `fusuma-platform-desktop`, which picks Vello on the GPU when there is one.
 
-**`tools/fusuma-showcase-s3`** (in the Hibari repository, next to the drivers it reuses) is the same app on the
-Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502 AMOLED, FT3168 touch), on `esp-hal` with no ESP-IDF. On a screen under
-640 logical pixels wide the app switches to a compact layout (a Previous and Next row instead of the sidebar, pages that
-scroll). From the Hibari repository: `just native-install board=s3-fusuma-showcase`. Measured on the watch, the first
-full frame takes 196 ms with the integer renderer and bitmap text, 523 ms with Vello and bitmap text, 948 ms with Vello and
-the Inter fonts, and 1883 ms with `tiny-skia`; the shared rule picks Vello when it is linked.
+Measured on the S3 watch with this firmware (ESP-IDF, 240 MHz): the first full frame takes **558 ms** with Vello and the
+Inter fonts, of which 49 ms is turning the picture into the panel's RGB565; the panel transfer hides behind the
+conversion but 2 ms. On a screen under 640 logical pixels wide the app switches to a compact layout.
+
+The watch's earlier firmware, `tools/fusuma-showcase-s3` in the Hibari repository (on `esp-hal`, no ESP-IDF, the CPU at
+160 MHz), measured 196 ms with the integer renderer and bitmap text, 523 ms with Vello and bitmap text, 948 ms with Vello
+and Inter, and 1883 ms with `tiny-skia`. Those are not comparable one to one with the numbers above (another runtime and
+clock).

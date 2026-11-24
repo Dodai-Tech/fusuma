@@ -1,21 +1,95 @@
 #!/usr/bin/env nu
 # ──────────────────────────────────────────────────────────────────────────────
-# Fusuma — the ESP32-P4 components showcase (examples/showcase-p4)
+# Fusuma — the components showcase on ESP32 boards (examples/showcase-esp)
 # ──────────────────────────────────────────────────────────────────────────────
+# One firmware crate, one build per board: each board has its chip, Rust target, toolchain and sdkconfig
+# (`BOARDS`). `install` without `--board` asks the connected chip what it is and picks the board for it.
 # The firmware is not a workspace member (it needs the ESP toolchain), so its generated file, build
 # and flashing live here, tested. Flashing is non-destructive: the image goes into an OTA slot and an
 # `otadata` entry selects it; `restore` erases `otadata` so the board boots its factory app again.
 #
-#   nu scripts/showcase.nu gen-sdkconfig
-#   nu scripts/showcase.nu build [--features render-skia]
-#   nu scripts/showcase.nu install [--slot ota_0] [--port /dev/ttyACM0] [--features render-skia]
+#   nu scripts/showcase.nu detect  [--port P]
+#   nu scripts/showcase.nu build   --board B [--features render-skia]
+#   nu scripts/showcase.nu install [--board B] [--slot ota_0] [--port /dev/ttyACM0] [--features render-skia]
 #   nu scripts/showcase.nu restore [--port P]
 #   nu scripts/showcase.nu monitor [--port P]
 # ──────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path self ..
-const CRATE = "examples/showcase-p4"
-const BIN = "fusuma-showcase-p4"
+const CRATE = "examples/showcase-esp"
+const BIN = "fusuma-showcase-esp"
+
+# The boards the showcase builds for. `chip` and `flash_mb` are what `espflash board-info` reports, so a connected
+# board is recognised by them; `boot_limit_mb` is how far into flash the bootloader boots an app (0: no limit);
+# `espup` means the toolchain comes from espup and needs its environment (`~/export-esp.sh`).
+export const BOARDS = [
+    {
+        name: "p4-7in"
+        chip: "esp32p4"
+        flash_mb: 32
+        target: "riscv32imafc-esp-espidf"
+        toolchain: "nightly-2026-09-15"
+        espup: false
+        boot_limit_mb: 0
+        about: "Waveshare ESP32-P4 7-inch touch board (1024x600)"
+    }
+    {
+        name: "s3-amoled-206"
+        chip: "esp32s3"
+        flash_mb: 32
+        target: "xtensa-esp32s3-espidf"
+        toolchain: "esp"
+        espup: true
+        # Measured in Hibari: `ota_1` at 16 MB is skipped by this board's bootloader.
+        boot_limit_mb: 16
+        about: "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502)"
+    }
+]
+
+# The board called `name`; error listing the known ones.
+export def board_named [name: string, boards: list = $BOARDS]: nothing -> record {
+    let b = $boards | where name == $name
+    if ($b | is-empty) { error make { msg: $"no board '($name)'; known: ($boards.name | str join ', ')" } }
+    $b | first
+}
+
+# The chip and flash size in `espflash board-info`'s output.
+export def parse_board_info [text: string]: nothing -> record {
+    let chip = $text | parse --regex 'Chip type:\s+(?<chip>esp32[a-z0-9]*)' | get chip.0? | default ""
+    let flash = $text | parse --regex 'Flash size:\s+(?<mb>\d+)MB' | get mb.0? | default "0" | into int
+    if ($chip | is-empty) { error make { msg: "espflash board-info did not say which chip this is" } }
+    { chip: $chip, flash_mb: $flash }
+}
+
+# The board for a connected chip: the only one with its chip (and, when several share it, its flash size). Error when
+# none or several fit, naming them, so `--board` can settle it.
+export def pick_board [info: record, boards: list = $BOARDS]: nothing -> record {
+    let same_chip = $boards | where chip == $info.chip
+    if ($same_chip | is-empty) {
+        error make { msg: $"no showcase board has an ($info.chip); known: ($boards | each { |b| $'($b.name) [($b.chip)]' } | str join ', ')" }
+    }
+    let fit = if ($same_chip | length) == 1 { $same_chip } else { $same_chip | where flash_mb == $info.flash_mb }
+    if ($fit | length) != 1 {
+        error make { msg: $"several boards have an ($info.chip): ($same_chip.name | str join ', '); choose one with --board" }
+    }
+    $fit | first
+}
+
+# Error unless the slot lies where the board's bootloader boots an app from.
+export def check_bootable [board: record, target: record] {
+    let limit = $board.boot_limit_mb * 1024 * 1024
+    if $limit > 0 and ($target.offset + $target.size) > $limit {
+        error make { msg: $"($target.name) ends past ($board.boot_limit_mb) MB, where ($board.name)'s bootloader does not boot; use another slot" }
+    }
+}
+
+# The variables an espup toolchain needs, from the `export K="V"` lines of `export-esp.sh` (PATH entries are put in
+# front of `path`).
+export def espup_env [text: string, path: list<string>]: nothing -> record {
+    let pairs = $text | lines | parse --regex '^export (?<k>[A-Z_]+)="(?<v>[^"]*)"'
+    let extra = $pairs | where k == PATH | get v | each { |v| $v | str replace ':$PATH' '' }
+    $pairs | where k != PATH | reduce --fold { PATH: ($extra | append $path) } { |p, acc| $acc | insert $p.k $p.v }
+}
 
 # The template with its @PARTITIONS@ placeholder filled in with an absolute path.
 export def sdkconfig [template: string, partitions: string]: nothing -> string {
@@ -97,20 +171,52 @@ export def port_args [port: string]: nothing -> list<string> {
     if ($port | is-empty) { [] } else { ["--port" $port] }
 }
 
-# The environment an ESP build needs: a clean PATH, so nothing from other toolchains leaks in.
-def esp_env [home: string]: nothing -> record {
-    { HOME: $home, PATH: ["/usr/bin" ($home | path join .cargo bin) "/usr/local/bin"] }
+# The environment an ESP build for `board` needs: a clean PATH, so nothing from other toolchains leaks in, the chip
+# and the board's sdkconfig, and espup's variables for a toolchain from espup.
+def esp_env [home: string, board: record]: nothing -> record {
+    let path = ["/usr/bin" ($home | path join .cargo bin) "/usr/local/bin"]
+    let base = if $board.espup {
+        let file = $home | path join export-esp.sh
+        if not ($file | path exists) { error make { msg: $"($board.name) needs the esp toolchain: run `espup install` \(no ($file))" } }
+        espup_env (open --raw $file) $path
+    } else { { PATH: $path } }
+    $base | merge {
+        HOME: $home
+        MCU: $board.chip
+        ESP_IDF_SDKCONFIG_DEFAULTS: (board_dir $board | path join sdkconfig.defaults)
+    }
 }
 
-def elf_path []: nothing -> path {
-    $ROOT | path join $CRATE target riscv32imafc-esp-espidf release $BIN
+def board_dir [board: record]: nothing -> path {
+    $ROOT | path join $CRATE boards $board.name
 }
 
-def "main gen-sdkconfig" [] {
-    let dir = $ROOT | path join $CRATE
+# Each board builds into its own directory, so two boards with the same chip never share an ESP-IDF build.
+def target_dir [board: record]: nothing -> path {
+    $ROOT | path join $CRATE target $board.name
+}
+
+def elf_path [board: record]: nothing -> path {
+    target_dir $board | path join $board.target release $BIN
+}
+
+def "main gen-sdkconfig" [--board: string = "p4-7in"] {
+    let dir = board_dir (board_named $board)
     let csv = $dir | path join partitions.csv | path expand
     sdkconfig (open --raw ($dir | path join sdkconfig.defaults.in)) $csv | save -f ($dir | path join sdkconfig.defaults)
-    print -e $"Generated sdkconfig.defaults \(partitions: ($csv))"
+    print -e $"Generated ($board)/sdkconfig.defaults \(partitions: ($csv))"
+}
+
+# What is connected on `port`: the chip and the board the showcase would build for it.
+def detect [port: string]: nothing -> record {
+    let out = ^espflash board-info ...(port_args $port) | complete
+    if $out.exit_code != 0 { error make { msg: $"espflash board-info failed: ($out.stderr | str trim)" } }
+    pick_board (parse_board_info $out.stdout)
+}
+
+def "main detect" [--port: string = ""] {
+    let b = detect $port
+    print $"($b.name): ($b.about) \(($b.chip), ($b.target))"
 }
 
 # The cargo arguments for a comma or space separated list of features: `[--features a,b]`, or nothing.
@@ -119,24 +225,33 @@ export def feature_args [features: string]: nothing -> list<string> {
     if ($list | is-empty) { [] } else { ["--features" ($list | str join ",")] }
 }
 
-def "main build" [--features: string = ""] {
-    main gen-sdkconfig
-    cd ($ROOT | path join $CRATE)
-    let extra = feature_args $features
-    with-env (esp_env $nu.home-dir) { ^cargo build --release ...$extra }
+# The cargo arguments that build `board` with the extra `features`.
+export def build_args [board: record, features: string, target_dir: string]: nothing -> list<string> {
+    let all = [$"board-($board.name)"] | append ($features | split row --regex '[,\s]+' | where { |f| $f | is-not-empty })
+    [$"+($board.toolchain)" "build" "--release" "--target" $board.target "--target-dir" $target_dir ...(feature_args ($all | str join ","))]
 }
 
-def "main install" [--slot: string = "ota_0", --port: string = "", --features: string = ""] {
+def "main build" [--board: string, --features: string = ""] {
+    let b = board_named $board
+    main gen-sdkconfig --board $board
+    cd ($ROOT | path join $CRATE)
+    with-env (esp_env $nu.home-dir $b) { ^cargo ...(build_args $b $features (target_dir $b)) }
+}
+
+def "main install" [--board: string = "", --slot: string = "ota_0", --port: string = "", --features: string = ""] {
     let seq = slot_seq $slot
-    main build --features $features
+    let b = if ($board | is-empty) { detect $port } else { board_named $board }
+    print -e $"Board: ($b.name), ($b.about)"
+    main build --board $b.name --features $features
     let image = mktemp --suffix .bin
-    ^espflash save-image --chip esp32p4 --flash-size 32mb (elf_path) $image
+    ^espflash save-image --chip $b.chip --flash-size $"($b.flash_mb)mb" (elf_path $b) $image
     let table_file = mktemp --suffix .bin
     ^espflash read-flash ...(port_args $port) 0x8000 0xc00 $table_file
     let table = parse_ptable (open --raw $table_file | into binary)
     let target = partition $table $slot
     let otadata = partition $table otadata
     check_fits $target (ls $image | get size.0 | into int)
+    check_bootable $b $target
     let entry = mktemp --suffix .bin
     otadata_entry $seq | save -f $entry
     ^espflash write-bin ...(port_args $port) $target.offset $image
@@ -158,4 +273,4 @@ def "main monitor" [--port: string = ""] {
     ^espflash monitor ...(port_args $port)
 }
 
-def main [] { print -e "usage: nu scripts/showcase.nu <gen-sdkconfig|build|install|restore|monitor>" }
+def main [] { print -e "usage: nu scripts/showcase.nu <detect|gen-sdkconfig|build|install|restore|monitor>" }

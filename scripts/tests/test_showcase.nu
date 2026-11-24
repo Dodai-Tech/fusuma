@@ -1,10 +1,11 @@
 #!/usr/bin/env nu
 # ── Fusuma · test_showcase.nu ─────────────────────────────────────
-# The P4 showcase's helpers: the generated sdkconfig, the OTA entry and the partition table.
+# The ESP showcase's helpers: the boards and how a connected one is recognised, the generated sdkconfig, the OTA
+# entry and the partition table.
 
 use std/assert
 use runner.nu *
-use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args]
+use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args BOARDS board_named parse_board_info pick_board check_bootable espup_env build_args]
 
 def "test showcase: the partition path is filled in everywhere" [] {
     let out = sdkconfig "A=1\nP=\"@PARTITIONS@\"\nQ=\"@PARTITIONS@\"\n" "/x/p.csv"
@@ -70,6 +71,74 @@ def "test showcase: cargo features are passed through, in any list format" [] {
     assert equal (feature_args "") []
     assert equal (feature_args "render-skia") ["--features" "render-skia"]
     assert equal (feature_args "a b , c") ["--features" "a,b,c"]
+}
+
+const ESP_BOARDS = path self ../../examples/showcase-esp/boards
+
+const BOARD_INFO_S3 = "[INFO ] Connecting...
+Chip type:         esp32s3 (revision v0.2)
+Crystal frequency: 40 MHz
+Flash size:        32MB
+Features:          WiFi, BLE, Embedded Flash"
+
+def "test showcase: board-info gives the chip and the flash size" [] {
+    assert equal (parse_board_info $BOARD_INFO_S3) { chip: "esp32s3", flash_mb: 32 }
+    assert equal (parse_board_info "Chip type:   esp32p4 (revision v1.3)\nFlash size:  16MB") { chip: "esp32p4", flash_mb: 16 }
+    assert error { parse_board_info "Error: no device" }
+}
+
+def "test showcase: each connected chip picks its board" [] {
+    assert equal (pick_board { chip: "esp32s3", flash_mb: 32 }).name "s3-amoled-206"
+    assert equal (pick_board { chip: "esp32p4", flash_mb: 32 }).name "p4-7in"
+    assert error { pick_board { chip: "esp32c6", flash_mb: 4 } }
+}
+
+def "test showcase: two boards with one chip are told apart by flash, else --board is needed" [] {
+    let boards = [
+        { name: "big", chip: "esp32s3", flash_mb: 32 }
+        { name: "small", chip: "esp32s3", flash_mb: 8 }
+        { name: "twin", chip: "esp32c6", flash_mb: 4 }
+        { name: "twin2", chip: "esp32c6", flash_mb: 4 }
+    ]
+    assert equal (pick_board { chip: "esp32s3", flash_mb: 8 } $boards).name "small"
+    assert error { pick_board { chip: "esp32s3", flash_mb: 16 } $boards }
+    assert error { pick_board { chip: "esp32c6", flash_mb: 4 } $boards }
+}
+
+def "test showcase: every board has a name, chip, target and toolchain, and its files" [] {
+    assert (($BOARDS.name | uniq | length) == ($BOARDS | length))
+    for b in $BOARDS {
+        for k in [chip target toolchain flash_mb boot_limit_mb espup about] { assert ($k in $b) $"($b.name) has ($k)" }
+        let dir = $ESP_BOARDS | path join $b.name
+        assert ($dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
+        assert ($dir | path join partitions.csv | path exists) $"($b.name) has a partition table"
+        let idf = open --raw ($dir | path join sdkconfig.defaults.in)
+        assert ($idf | str contains $'CONFIG_IDF_TARGET="($b.chip)"') $"($b.name)'s sdkconfig is for its chip"
+    }
+    assert equal (board_named "p4-7in").chip "esp32p4"
+    assert error { board_named "nope" }
+}
+
+def "test showcase: a slot past where the bootloader boots is refused" [] {
+    let s3 = board_named "s3-amoled-206"
+    check_bootable $s3 { name: "ota_0", offset: 0xa00000, size: 0x600000 }
+    assert error { check_bootable $s3 { name: "ota_1", offset: 0x1000000, size: 0x600000 } }
+    check_bootable (board_named "p4-7in") { name: "ota_1", offset: 0xe00000, size: 0x3f0000 }
+}
+
+def "test showcase: the espup exports become the environment, its PATH in front" [] {
+    let text = "export LIBCLANG_PATH=\"/t/esp-clang/lib\"\nexport PATH=\"/t/xtensa/bin:$PATH\"\n"
+    let vars = espup_env $text ["/usr/bin"]
+    assert equal $vars.LIBCLANG_PATH "/t/esp-clang/lib"
+    assert equal $vars.PATH ["/t/xtensa/bin" "/usr/bin"]
+}
+
+def "test showcase: a board builds with its toolchain, target, directory and feature" [] {
+    let a = build_args (board_named "s3-amoled-206") "render-skia, fonts" "/t/s3"
+    assert equal $a ["+esp" "build" "--release" "--target" "xtensa-esp32s3-espidf" "--target-dir" "/t/s3" "--features" "board-s3-amoled-206,render-skia,fonts"]
+    let p = build_args (board_named "p4-7in") "" "/t/p4"
+    assert equal ($p | last 2) ["--features" "board-p4-7in"]
+    assert equal $p.0 "+nightly-2026-09-15"
 }
 
 def main [] { run-tests }
