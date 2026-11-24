@@ -51,6 +51,10 @@ def main [--skip-fmt, --skip-test, --skip-nu] {
     $ok = (run_step "vello backends without std, with libm" {
         cargo clippy --lib --no-default-features --features libm -p fusuma-render-vello-common -p fusuma-render-vello-cpu -- -D warnings
     }) and $ok
+    $ok = (run_step "vector text without std, with libm (what a chip builds)" {
+        cargo clippy --lib --no-default-features --features libm,inter,inter-bold,jetbrains-mono -p fusuma-render-vello-cpu -- -D warnings
+        cargo clippy --lib --no-default-features --features inter,inter-bold,jetbrains-mono -p fusuma-text -- -D warnings
+    }) and $ok
     if not $skip_test {
         $ok = (run_step "cargo test --workspace" { cargo test --workspace --all-features }) and $ok
     }

@@ -13,6 +13,10 @@ pub use fusuma_anim as anim;
 /// The renderer choice: which backend a machine draws with, from its hardware, with overrides.
 pub use fusuma_platform as platform;
 
+/// Vector text: Parley layout over the bundled fonts (the `text` feature and a `font-*` one).
+#[cfg(feature = "text")]
+pub use fusuma_text as text;
+
 /// The renderer backends linked by the `renderer-*` features.
 pub mod renderers {
     /// The integer, `no_std` renderer for microcontroller displays (`renderer-integer`).

@@ -8,7 +8,7 @@ use crate::theme::{ButtonVariant, Round, Surface, TextRole};
 use crate::textinput::InputText;
 
 /// How many bytes of text a label or a button keeps.
-pub const TEXT_CAP: usize = 32;
+pub const TEXT_CAP: usize = 64;
 
 /// A short piece of text stored inline, so a widget owns its text and needs no allocator. Longer
 /// text is cut at a character boundary.

@@ -8,7 +8,7 @@ use crate::event::Pointer;
 use crate::theme::{ButtonVariant, Round, Surface, TextRole, Theme};
 use crate::tree::{CrossAlign, Length, NodeId, Style, Tree};
 
-const THEME: Theme = Theme::DARK;
+const THEME: Theme = crate::theme::BITMAP_TEST;
 const W: u32 = 160;
 const H: u32 = 120;
 const BOUNDS: Rect = Rect::new(0, 0, W, H);

@@ -62,7 +62,8 @@ works and is tested.
 - [x] Benchmark of a UI frame (`cargo run --release -p fusuma-render-vello --example bench`, read-back included): at 410x502 `vello_cpu` 0.18 ms and `vello_gpu` 0.61 ms; at 1920x1080 1.75 ms and 3.56 ms. A simple scene: the CPU wins while the picture has to come back to the CPU
 - [ ] Benchmark more: a complex scene (many paths, large blurs), the GPU drawing to a surface with no read-back, and a shader chain with read-back versus as a texture
 - [x] Experiment: `vello_cpu` on the S3 measured, see Decisions and Phase 1b
-- [ ] Text: Vello glyph runs with a Rust text stack replace the bitmap fonts on the CPU and GPU backends
+- [x] Text: Parley layout (`fusuma-text`) and Vello glyph runs draw Inter, Inter Bold and JetBrains Mono (`fusuma-fonts`, Latin subsets, 213 KB for the three) on the CPU and GPU backends, measured and drawn at one size; the bitmap fonts remain the fallback and the integer and `tiny-skia` renderers' only font. `Font` is part of `TextStyle`, `Theme::fonts` maps roles to fonts. Not yet: wrapping and multi-line text in widgets, rich text spans, system fonts, Greek, Cyrillic, CJK or emoji, caret placement in a text field from Parley
+- [x] Measured on the ESP32-P4: with fonts the first frame needs about 30 KB of internal RAM when allocations above 512 bytes go to PSRAM (`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512`), against about 240 KB at the default threshold; the first frame takes about 300 ms. Parley is not tried on the S3 or the C6 (no room on the C6)
 
 ## Phase 1b: Vello on the ESP
 

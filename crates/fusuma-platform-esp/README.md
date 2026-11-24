@@ -26,6 +26,20 @@ that directory in its `package.metadata.esp-idf-sys.extra_components`, see `exam
 A choice is predicted from the memory the chip reports; allocation failure inside a renderer cannot be caught,
 so the check has to be right before the surface is made.
 
+## Memory and text
+
+Vector text (the default `fonts` feature: Inter, Inter Bold, JetBrains Mono, about 215 KB of flash) needs two things
+from the firmware:
+
+- **A stack of its own.** Parley and glyph drawing are deep calls, and the main task's 32 KB overflowed. `run` runs the
+  app on a thread with `Options::stack_kb` (128 by default).
+- **Allocations in PSRAM.** Set `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512` in the firmware's sdkconfig (see
+  `examples/showcase-p4/sdkconfig.defaults.in`). At the default of 16384 almost everything Parley allocates lands in
+  internal RAM: measured on the P4, the first frame left **9 KB** of internal RAM free (1 KB at the lowest); at 512 it
+  leaves **234 KB** (190 KB steady, 157 KB at the lowest), more than the bitmap text did (116 KB, 86 KB lowest).
+
+The log line `alive: ... internal RAM free ... (lowest ever ...)` is the number to set `min_free_kb` from.
+
 ## What this crate does not contain
 
 Components, layout, theme, focus, scrolling, the frame clock and the turning of touch samples into pointer events

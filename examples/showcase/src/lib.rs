@@ -39,7 +39,7 @@ pub const fn theme(dark: bool) -> Theme {
         text: fusuma::TextSizes {
             caption: 15,
             body: 20,
-            title: 20,
+            title: 30,
         },
         control_height: 56,
         indicator: 28,
@@ -73,17 +73,20 @@ pub enum Page {
     Controls,
     /// A text field.
     Text,
+    /// The bundled fonts.
+    Typography,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Buttons,
         Self::Selection,
         Self::List,
         Self::Progress,
         Self::Controls,
         Self::Text,
+        Self::Typography,
     ];
 
     /// The name in the sidebar.
@@ -96,6 +99,7 @@ impl Page {
             Self::Progress => "Progress",
             Self::Controls => "Controls",
             Self::Text => "Text",
+            Self::Typography => "Typography",
         }
     }
 }
@@ -169,7 +173,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 6],
+    sidebar: [Option<NodeId>; 7],
     body: Option<NodeId>,
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
@@ -194,7 +198,7 @@ impl Showcase {
             dark: true,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
-            sidebar: [None; 6],
+            sidebar: [None; 7],
             body: None,
             content: None,
             theme_button: None,
@@ -416,6 +420,34 @@ impl Showcase {
                 t.label(
                     Some(c),
                     "Drag the slider, or focus it and use Left and Right.",
+                    TextRole::Caption,
+                )?;
+            }
+            Page::Typography => {
+                t.label(Some(c), "Typography", TextRole::Title)?;
+                t.label(
+                    Some(c),
+                    "Inter Bold, for titles and emphasis",
+                    TextRole::Title,
+                )?;
+                t.label(
+                    Some(c),
+                    "Inter Regular: the quick brown fox jumps over the lazy dog.",
+                    TextRole::Body,
+                )?;
+                t.label(
+                    Some(c),
+                    "Romanian: ăâîșț ĂÂÎȘȚ, and more: éüñß €",
+                    TextRole::Body,
+                )?;
+                t.label(
+                    Some(c),
+                    "let x = 42; // JetBrains Mono, fixed width",
+                    TextRole::Code,
+                )?;
+                t.label(
+                    Some(c),
+                    "With no font bundled, text is the bitmap font.",
                     TextRole::Caption,
                 )?;
             }
@@ -693,7 +725,7 @@ impl App for Showcase {
             self.theme = theme(self.dark).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();
-            self.sidebar = [None; 6];
+            self.sidebar = [None; 7];
             self.content = None;
             let _ = self.build();
         } else if bounds != self.bounds {

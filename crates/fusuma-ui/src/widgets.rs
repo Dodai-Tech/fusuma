@@ -285,7 +285,7 @@ impl<const N: usize> Tree<N> {
 
     /// The size the widget wants, from its content and the theme.
     pub(crate) fn measure_widget<R: Renderer>(&self, i: usize, r: &R, theme: &Theme) -> Size {
-        let body = TextStyle::new(theme.text.body, Color::BLACK);
+        let body = TextStyle::new(theme.text.body, Color::BLACK).font(theme.fonts.body);
         let text = |t: &str| r.measure_text(t, &body);
         match self.nodes[i].kind {
             Kind::Checkbox { text: t, .. }
@@ -407,7 +407,7 @@ impl<const N: usize> Tree<N> {
                         r.stroke_path(&tick, 2, look.glyph)?;
                     }
                 }
-                let style = TextStyle::new(theme.text.body, look.text);
+                let style = TextStyle::new(theme.text.body, look.text).font(theme.fonts.body);
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(
                     px(rect.x, ind.saturating_add(theme.spacing.md)),
@@ -431,7 +431,7 @@ impl<const N: usize> Tree<N> {
                 if let Some(fill) = fill {
                     r.fill_rect(rect, theme.radii.sm, fill)?;
                 }
-                let style = TextStyle::new(theme.text.body, label);
+                let style = TextStyle::new(theme.text.body, label).font(theme.fonts.body);
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(px(rect.x, theme.spacing.md), centred(rect, size).y);
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
@@ -462,7 +462,7 @@ impl<const N: usize> Tree<N> {
                 let knob = Point::new(px(knob_x, d / 2), px(top, h / 2));
                 let knob_color = if on { look.glyph } else { look.border };
                 r.fill_circle(knob, d / 2, knob_color)?;
-                let style = TextStyle::new(theme.text.body, look.text);
+                let style = TextStyle::new(theme.text.body, look.text).font(theme.fonts.body);
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(
                     px(rect.x, w.saturating_add(theme.spacing.md)),
@@ -547,7 +547,7 @@ mod tests {
     use fusuma_render::Probe;
     use fusuma_render_vello_cpu::VelloCpu;
 
-    const THEME: Theme = Theme::DARK;
+    const THEME: Theme = crate::theme::BITMAP_TEST;
 
     fn screen() -> VelloCpu {
         fusuma_render_vello_cpu::new(240, 320).unwrap()

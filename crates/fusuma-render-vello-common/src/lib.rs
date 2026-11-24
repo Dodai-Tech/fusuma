@@ -94,6 +94,28 @@ pub trait Scene {
     /// Ends the innermost clip.
     fn pop_clip(&mut self);
 
+    /// Whether this scene can draw glyph runs. Vector text is used (for measuring as well as drawing) only when
+    /// it can, so the size a text was measured at is the size it is drawn at. The default cannot.
+    #[cfg(feature = "text")]
+    fn can_draw_glyphs(&self) -> bool {
+        false
+    }
+
+    /// Fills glyphs of `font` at `size` pixels per em with the current paint, `glyphs` placed relative to
+    /// `origin` (in the current translated space). Returns false when this scene cannot draw glyphs, and the
+    /// caller draws the bitmap font instead. The default cannot.
+    #[cfg(feature = "text")]
+    fn draw_glyphs(
+        &mut self,
+        font: &fusuma_text::FontData,
+        size: f32,
+        glyphs: &[fusuma_text::Glyph],
+        origin: (f64, f64),
+    ) -> bool {
+        let _ = (font, size, glyphs, origin);
+        false
+    }
+
     /// The whole surface as premultiplied RGBA, 4 bytes per pixel, row by row, rendering first if
     /// anything changed since the last call.
     fn pixels(&mut self) -> &[u8];
@@ -115,6 +137,9 @@ struct Inner<S> {
     size: Size,
     state: State,
     stack: Vec<State>,
+    /// Vector fonts, set up on first use.
+    #[cfg(feature = "text")]
+    text: Option<fusuma_text::TextEngine>,
 }
 
 /// The Fusuma renderer on a Vello scene.
@@ -209,6 +234,8 @@ impl<S: Scene> Backend<S> {
                 size,
                 state,
                 stack: Vec::new(),
+                #[cfg(feature = "text")]
+                text: None,
             }),
         }
     }
@@ -232,6 +259,44 @@ impl<S: Scene> Inner<S> {
 
     fn hidden(&self) -> bool {
         self.state.clip.is_empty()
+    }
+
+    /// The text engine, made on first use.
+    #[cfg(feature = "text")]
+    fn engine(&mut self) -> &mut fusuma_text::TextEngine {
+        self.text.get_or_insert_with(fusuma_text::TextEngine::new)
+    }
+
+    /// The size of `text` in a vector font, if the style asks for one that is bundled.
+    #[cfg(feature = "text")]
+    fn measure_vector_text(&mut self, text: &str, style: &TextStyle) -> Option<Size> {
+        if !self.scene.can_draw_glyphs() {
+            return None;
+        }
+        self.engine().measure(text, style.font, style.size)
+    }
+
+    /// Draws `text` with a vector font when the style asks for one that is bundled and the scene can draw
+    /// glyphs; false means the caller draws the bitmap font.
+    #[cfg(feature = "text")]
+    fn draw_vector_text(&mut self, text: &str, at: Point, style: &TextStyle) -> bool {
+        // Glyph positions are `f32`, which keeps whole pixels only up to about 16 million.
+        let far = |v: i32| i64::from(v).abs() > 1 << 22;
+        if !self.scene.can_draw_glyphs() {
+            return false;
+        }
+        let Some(laid) = self.engine().layout(text, style.font, style.size).cloned() else {
+            return false;
+        };
+        let left = left_edge(at.x, laid.size.w, style.align);
+        if far(left) || far(at.y) {
+            return true;
+        }
+        self.scene.set_paint(solid(style.color));
+        let origin = (f64::from(left), f64::from(at.y));
+        laid.runs
+            .iter()
+            .all(|r| self.scene.draw_glyphs(&r.font, r.size, &r.glyphs, origin))
     }
 
     /// Whether a local point, once translated, is inside the safe band.
@@ -430,6 +495,10 @@ impl<S: Scene> Renderer for Backend<S> {
         if text.is_empty() || style.color.a == 0 || i.hidden() {
             return Ok(());
         }
+        #[cfg(feature = "text")]
+        if i.draw_vector_text(text, at, style) {
+            return Ok(());
+        }
         let font = font_for(style.size);
         let k = text_scale(style.size);
         let left = left_edge(at.x, scaled_text_size(style.size, text).w, style.align);
@@ -458,6 +527,10 @@ impl<S: Scene> Renderer for Backend<S> {
     }
 
     fn measure_text(&self, text: &str, style: &TextStyle) -> Size {
+        #[cfg(feature = "text")]
+        if let Some(s) = self.inner.borrow_mut().measure_vector_text(text, style) {
+            return s;
+        }
         scaled_text_size(style.size, text)
     }
 

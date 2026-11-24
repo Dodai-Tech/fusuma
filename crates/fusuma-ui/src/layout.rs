@@ -155,7 +155,7 @@ impl<const N: usize> Tree<N> {
             Kind::Button { text, .. } => {
                 let t = renderer.measure_text(
                     text.as_str(),
-                    &TextStyle::new(theme.text.body, Color::BLACK),
+                    &TextStyle::new(theme.text.body, Color::BLACK).font(theme.fonts.body),
                 );
                 Size::new(
                     t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
@@ -310,7 +310,7 @@ mod tests {
         fusuma_render_vello_cpu::new(8, 8).unwrap()
     }
 
-    const THEME: Theme = Theme::DARK;
+    const THEME: Theme = crate::theme::BITMAP_TEST;
 
     fn rect<const N: usize>(t: &Tree<N>, id: crate::tree::NodeId) -> Rect {
         t.rect(id).unwrap()

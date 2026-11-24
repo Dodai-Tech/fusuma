@@ -4,7 +4,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # `fusuma-render*` crates (the renderer) must not depend on any other `fusuma-*` crate (the
 # toolkit), so a project that only needs drawing, such as a microcontroller firmware, never pulls
-# in toolkit code. The renderer crates may depend on each other.
+# in toolkit code. The renderer crates may depend on each other, and on the font and text crates they draw with
+# (`fusuma-fonts`, `fusuma-text`).
 #
 #   nu scripts/ci/layers.nu      # exit 1 and list the offending dependencies on a violation
 # ──────────────────────────────────────────────────────────────────────────────
@@ -14,9 +15,14 @@ export def is_renderer [name: string]: nothing -> bool {
     ($name == "fusuma-render") or ($name | str starts-with "fusuma-render-")
 }
 
-# Whether `name` is a toolkit crate: a `fusuma` crate that is not a renderer crate.
+# The crates that draw text for the renderers: font data and text layout. They sit below the renderers (a renderer
+# measures and draws text with them) and know nothing of widgets, so a renderer may depend on them.
+export const DRAWING_SUPPORT = ["fusuma-fonts" "fusuma-text"]
+
+# Whether `name` is a toolkit crate: a `fusuma` crate that is neither a renderer crate nor drawing support.
 export def is_toolkit [name: string]: nothing -> bool {
-    (($name == "fusuma") or ($name | str starts-with "fusuma-")) and not (is_renderer $name)
+    let ours = ($name == "fusuma") or ($name | str starts-with "fusuma-")
+    $ours and (not (is_renderer $name)) and (not ($name in $DRAWING_SUPPORT))
 }
 
 # `{from, to}` pairs where a renderer crate depends on a toolkit crate. `packages` is the

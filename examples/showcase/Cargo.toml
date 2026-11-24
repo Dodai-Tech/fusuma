@@ -10,7 +10,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-fusuma.workspace = true
+fusuma = { workspace = true, features = ["font-inter", "font-inter-bold", "font-jetbrains-mono"] }
 
 [dev-dependencies]
 fusuma = { workspace = true, features = ["std", "png"] }

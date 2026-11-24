@@ -1,6 +1,6 @@
 //! Theme tokens: everything a widget needs to look like something, as plain data.
 
-use fusuma_render::{Color, TextStyle};
+use fusuma_render::{Color, Font, TextStyle};
 
 /// Colours as semantic roles, never as brand values: a widget asks for "the text colour", not for
 /// a grey.
@@ -91,6 +91,8 @@ pub struct Theme {
     pub radii: Radii,
     /// Text sizes.
     pub text: TextSizes,
+    /// Which font each kind of text uses.
+    pub fonts: Fonts,
     /// Height of a button or an input, in pixels; also the smallest touch target.
     pub control_height: u32,
     /// Width of outlines, in pixels.
@@ -101,6 +103,27 @@ pub struct Theme {
     pub track_height: u32,
     /// Motion durations.
     pub motion: MotionTimes,
+}
+
+/// The font of each kind of text. A backend without that font (or built without vector fonts) draws its bitmap
+/// font instead, so the choice is safe everywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fonts {
+    /// Ordinary and small text, and what widgets show: buttons, lists, fields.
+    pub body: Font,
+    /// Headings.
+    pub title: Font,
+    /// Fixed-width text: [`TextRole::Code`].
+    pub mono: Font,
+}
+
+impl Fonts {
+    /// Inter for text, Inter Bold for headings, JetBrains Mono for code.
+    pub const DEFAULT: Self = Self {
+        body: Font::Sans,
+        title: Font::SansBold,
+        mono: Font::Mono,
+    };
 }
 
 impl Theme {
@@ -156,6 +179,18 @@ impl Theme {
     }
 }
 
+/// The dark theme drawn with the built-in bitmap font, whatever fonts the build bundles: tests that count
+/// pixels or check text metrics must not change with a cargo feature another crate turns on.
+#[cfg(test)]
+pub(crate) const BITMAP_TEST: Theme = Theme {
+    fonts: Fonts {
+        body: Font::Bitmap,
+        title: Font::Bitmap,
+        mono: Font::Bitmap,
+    },
+    ..Theme::DARK
+};
+
 /// What a text is for; decides its size and colour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum TextRole {
@@ -166,6 +201,8 @@ pub enum TextRole {
     Body,
     /// Small, muted text.
     Caption,
+    /// Fixed-width text, for a log or code.
+    Code,
 }
 
 /// The background of a container.
@@ -266,6 +303,7 @@ impl Theme {
             body: 15,
             title: 20,
         },
+        fonts: Fonts::DEFAULT,
         control_height: 44,
         border_width: 1,
         indicator: 20,
@@ -323,9 +361,18 @@ impl Theme {
     #[must_use]
     pub const fn text_style(&self, role: TextRole) -> TextStyle {
         match role {
-            TextRole::Title => TextStyle::new(self.text.title, self.colors.text),
-            TextRole::Body => TextStyle::new(self.text.body, self.colors.text),
-            TextRole::Caption => TextStyle::new(self.text.caption, self.colors.text_muted),
+            TextRole::Title => {
+                TextStyle::new(self.text.title, self.colors.text).font(self.fonts.title)
+            }
+            TextRole::Body => {
+                TextStyle::new(self.text.body, self.colors.text).font(self.fonts.body)
+            }
+            TextRole::Caption => {
+                TextStyle::new(self.text.caption, self.colors.text_muted).font(self.fonts.body)
+            }
+            TextRole::Code => {
+                TextStyle::new(self.text.body, self.colors.text).font(self.fonts.mono)
+            }
         }
     }
 
@@ -526,5 +573,29 @@ mod tests {
         huge.control_height = u32::MAX;
         assert_eq!(huge.scaled(800).control_height, u32::MAX);
         assert!(base.scaled(125).radii.sm <= base.scaled(125).radii.md);
+    }
+
+    #[test]
+    fn each_text_role_has_its_font_and_scaling_keeps_the_fonts() {
+        use fusuma_render::Font;
+        let th = Theme::DARK;
+        assert_eq!(th.text_style(TextRole::Title).font, Font::SansBold);
+        assert_eq!(th.text_style(TextRole::Body).font, Font::Sans);
+        assert_eq!(th.text_style(TextRole::Caption).font, Font::Sans);
+        assert_eq!(th.text_style(TextRole::Code).font, Font::Mono);
+        assert_eq!(th.text_style(TextRole::Code).size, th.text.body);
+        assert_eq!(
+            th.scaled(200).fonts,
+            th.fonts,
+            "scaling changes lengths, not fonts"
+        );
+        assert_eq!(Theme::LIGHT.fonts, Fonts::DEFAULT);
+        let mut mono_body = th;
+        mono_body.fonts.body = Font::Mono;
+        assert_eq!(
+            mono_body.text_style(TextRole::Body).font,
+            Font::Mono,
+            "a theme can pick any font"
+        );
     }
 }

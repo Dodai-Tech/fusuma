@@ -110,7 +110,7 @@ mod tests {
     use fusuma_render::{Point, Rect};
     use fusuma_render_vello_cpu::VelloCpu;
 
-    const THEME: Theme = Theme::DARK;
+    const THEME: Theme = crate::theme::BITMAP_TEST;
 
     fn screen() -> VelloCpu {
         fusuma_render_vello_cpu::new(8, 8).unwrap()

@@ -397,7 +397,7 @@ impl<const N: usize> Tree<N> {
         let Kind::TextInput { text, cursor, .. } = &self.nodes[i].kind else {
             return (0, 0);
         };
-        let style = TextStyle::new(theme.text.body, theme.colors.text);
+        let style = TextStyle::new(theme.text.body, theme.colors.text).font(theme.fonts.body);
         let s = text.as_str();
         let at = usize::from(*cursor).min(s.len());
         let focused = self.focus == Some(self.id_of(i));
@@ -416,7 +416,7 @@ impl<const N: usize> Tree<N> {
             && let Some(i) = self.input_index(id)
         {
             let (shift, _) = self.input_metrics(i, r, theme);
-            let style = TextStyle::new(theme.text.body, theme.colors.text);
+            let style = TextStyle::new(theme.text.body, theme.colors.text).font(theme.fonts.body);
             let inner = self.input_inner(i, theme);
             let want = i64::from(x) - i64::from(inner.x) + i64::from(shift);
             let Kind::TextInput {
@@ -508,7 +508,7 @@ impl<const N: usize> Tree<N> {
         } else {
             c.text
         };
-        let style = TextStyle::new(theme.text.body, color);
+        let style = TextStyle::new(theme.text.body, color).font(theme.fonts.body);
         let line_h = r.measure_text("M", &style).h;
         let top = centred(rect, fusuma_render::Size::new(0, line_h)).y;
         let origin = i64::from(inner.x) - i64::from(shift);
@@ -533,7 +533,7 @@ impl<const N: usize> Tree<N> {
                 r.draw_text(
                     pre,
                     Point::new(px, top),
-                    &TextStyle::new(theme.text.body, c.primary),
+                    &TextStyle::new(theme.text.body, c.primary).font(theme.fonts.body),
                 )?;
                 let underline = Rect::new(
                     px,
@@ -566,7 +566,7 @@ mod tests {
     use fusuma_render::Probe;
     use fusuma_render_vello_cpu::VelloCpu;
 
-    const THEME: Theme = Theme::DARK;
+    const THEME: Theme = crate::theme::BITMAP_TEST;
 
     fn screen() -> VelloCpu {
         fusuma_render_vello_cpu::new(300, 120).unwrap()
@@ -782,7 +782,7 @@ mod tests {
             screen()
                 .measure_text(
                     &"abcdef"[..n],
-                    &TextStyle::new(THEME.text.body, THEME.colors.text),
+                    &TextStyle::new(THEME.text.body, THEME.colors.text).font(THEME.fonts.body),
                 )
                 .w as i32
         };

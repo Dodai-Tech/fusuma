@@ -1,0 +1,27 @@
+[package]
+name = "fusuma-fonts"
+description = "The fonts Fusuma can bundle (Inter, JetBrains Mono), Latin subsets under the SIL Open Font License, one cargo feature each"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-fonts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The code is MIT; the font files are under the SIL Open Font License 1.1 (their texts are in `fonts/`).
+license = "MIT AND OFL-1.1"
+authors.workspace = true
+repository.workspace = true
+keywords = ["fonts", "inter", "jetbrains-mono", "embedded", "no-std"]
+categories = ["gui", "embedded", "no-std"]
+include = ["src/**", "fonts/**", "README.md", "LICENSE*"]
+
+[features]
+default = ["inter"]
+# Inter Regular: the default UI font.
+inter = []
+# Inter Bold, for titles and emphasis.
+inter-bold = []
+# JetBrains Mono Regular, for logs and anything fixed-width.
+jetbrains-mono = []
+
+[lints]
+workspace = true

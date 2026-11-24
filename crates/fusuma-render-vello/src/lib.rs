@@ -326,6 +326,39 @@ impl Scene for GpuScene {
         self.scene.pop_clip();
     }
 
+    #[cfg(feature = "text")]
+    fn can_draw_glyphs(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "text")]
+    fn draw_glyphs(
+        &mut self,
+        font: &fusuma_render_vello_common::peniko::FontData,
+        size: f32,
+        glyphs: &[fusuma_text::Glyph],
+        origin: (f64, f64),
+    ) -> bool {
+        let (ox, oy) = (origin.0 as f32, origin.1 as f32);
+        let placed: Vec<glifo::Glyph> = glyphs
+            .iter()
+            .map(|g| glifo::Glyph {
+                id: g.id,
+                x: g.x + ox,
+                y: g.y + oy,
+            })
+            .collect();
+        let drawn = self
+            .scene
+            .glyph_run(&mut self.resources, font)
+            .font_size(size)
+            .hint(true)
+            .fill_glyphs(placed.into_iter())
+            .is_ok();
+        self.dirty = true;
+        drawn
+    }
+
     fn pixels(&mut self) -> &[u8] {
         if self.dirty {
             self.render();
@@ -524,5 +557,42 @@ mod tests {
             assert_eq!(r.pixel(5, 4).unwrap(), Color::rgb(0, 255, 0));
             assert_eq!(r.pixel(4, 5).unwrap(), Color::rgb(0, 0, 255));
         }
+    }
+
+    /// The GPU draws vector text through `glyph_run` like the CPU does. Skipped where there is no GPU.
+    #[cfg(feature = "inter")]
+    #[test]
+    fn vector_text_draws_on_the_gpu_and_matches_the_cpu() {
+        use fusuma_render::{Color, Font, Point, Probe, Renderer, TextStyle};
+        let Ok(mut gpu) = new(200, 50) else {
+            eprintln!("no GPU here, skipped");
+            return;
+        };
+        let mut cpu = fusuma_render_vello_cpu::new(200, 50).unwrap();
+        let style = TextStyle::new(24, Color::WHITE).font(Font::Sans);
+        gpu.clear(Color::BLACK).unwrap();
+        gpu.draw_text("Hello Ășț", Point::new(4, 4), &style)
+            .unwrap();
+        cpu.clear(Color::BLACK).unwrap();
+        cpu.draw_text("Hello Ășț", Point::new(4, 4), &style)
+            .unwrap();
+        assert_eq!(
+            gpu.measure_text("Hello Ășț", &style),
+            cpu.measure_text("Hello Ășț", &style)
+        );
+        let (mut lit, mut far) = (0, 0);
+        for y in 0..50 {
+            for x in 0..200 {
+                let (a, b) = (gpu.pixel(x, y).unwrap(), cpu.pixel(x, y).unwrap());
+                lit += usize::from(a != Color::BLACK);
+                let d = |p: u8, q: u8| p.abs_diff(q) > 60;
+                far += usize::from(d(a.r, b.r) || d(a.g, b.g) || d(a.b, b.b));
+            }
+        }
+        assert!(lit > 80, "the GPU drew text: {lit} pixels");
+        assert!(
+            far * 20 < lit,
+            "the two pictures agree: {far} of {lit} pixels differ clearly"
+        );
     }
 }

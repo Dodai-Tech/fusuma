@@ -25,4 +25,4 @@ pub use geometry::{Point, Rect, Size};
 pub use image::Image;
 pub use path::{PathCmd, triangle};
 pub use renderer::{Capabilities, Error, MIN_STATE_DEPTH, Probe, Renderer};
-pub use text::{Align, TextStyle, left_edge};
+pub use text::{Align, Font, TextStyle, left_edge};

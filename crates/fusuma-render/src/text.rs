@@ -14,6 +14,21 @@ pub enum Align {
     Right,
 }
 
+/// Which font a run of text asks for. A backend that has no vector fonts (or not this one) draws its built-in
+/// bitmap font instead, so asking is always safe.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Font {
+    /// The UI font (Inter when the `inter` font is bundled).
+    #[default]
+    Sans,
+    /// The bold face of the UI font.
+    SansBold,
+    /// The fixed-width font (JetBrains Mono when bundled), for logs and code.
+    Mono,
+    /// The built-in bitmap font, on every backend and with no font data: three monospace sizes.
+    Bitmap,
+}
+
 /// How to draw a run of text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TextStyle {
@@ -23,6 +38,8 @@ pub struct TextStyle {
     pub color: Color,
     /// Alignment around the anchor.
     pub align: Align,
+    /// Which font.
+    pub font: Font,
 }
 
 impl TextStyle {
@@ -33,7 +50,14 @@ impl TextStyle {
             size,
             color,
             align: Align::Left,
+            font: Font::Sans,
         }
+    }
+
+    /// The same style in another font.
+    #[must_use]
+    pub const fn font(self, font: Font) -> Self {
+        Self { font, ..self }
     }
 
     /// The same style with another alignment.
@@ -72,5 +96,14 @@ mod tests {
         let s = TextStyle::new(16, Color::WHITE).aligned(Align::Center);
         assert_eq!((s.size, s.align), (16, Align::Center));
         assert_eq!(TextStyle::new(8, Color::BLACK).align, Align::Left);
+    }
+
+    #[test]
+    fn a_style_defaults_to_the_sans_font_and_can_change_it() {
+        let s = TextStyle::new(20, Color::WHITE);
+        assert_eq!(s.font, Font::Sans);
+        assert_eq!(s.font(Font::Mono).font, Font::Mono);
+        assert_eq!(s.font(Font::Bitmap).size, 20, "the rest is kept");
+        assert_eq!(Font::default(), Font::Sans);
     }
 }

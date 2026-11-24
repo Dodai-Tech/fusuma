@@ -8,7 +8,7 @@ use crate::focus::Key;
 use crate::theme::{ButtonVariant, Theme};
 use crate::tree::{ActionKind, CrossAlign, Length, NodeId, Style, Tree};
 
-const THEME: Theme = Theme::DARK;
+const THEME: Theme = crate::theme::BITMAP_TEST;
 const W: u32 = 200;
 const H: u32 = 300;
 /// The scroller's viewport height.

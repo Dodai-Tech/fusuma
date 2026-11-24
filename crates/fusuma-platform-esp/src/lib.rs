@@ -30,6 +30,9 @@ pub struct Options {
     pub build: RenderLayer,
     /// Backlight, 0 to 100.
     pub backlight: i32,
+    /// Stack of the thread the app runs on, in kilobytes. Text layout and drawing are deep calls: the main task's
+    /// 32 KB overflowed once Parley was in, so the app gets a stack of its own.
+    pub stack_kb: usize,
 }
 
 impl Default for Options {
@@ -38,6 +41,7 @@ impl Default for Options {
             settings: None,
             build: RenderLayer::EMPTY,
             backlight: 80,
+            stack_kb: 128,
         }
     }
 }
@@ -61,6 +65,22 @@ fn hardware() -> Hardware {
     }
 }
 
+/// Free internal RAM, the lowest it has been since boot (the number `min_free_kb` should be set from), and free
+/// PSRAM, in bytes.
+fn heap() -> (usize, usize, usize) {
+    use esp_idf_svc::sys::{
+        MALLOC_CAP_INTERNAL, MALLOC_CAP_SPIRAM, heap_caps_get_free_size, heap_caps_get_minimum_free_size,
+    };
+    // SAFETY: plain getters with no preconditions.
+    unsafe {
+        (
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+            heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+            heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        )
+    }
+}
+
 /// RGBA8 (premultiplied; every pixel here is opaque) to RGB565.
 pub(crate) fn rgb565(r: u8, g: u8, b: u8) -> u16 {
     ((u16::from(r) & 0xF8) << 8) | ((u16::from(g) & 0xFC) << 3) | (u16::from(b) >> 3)
@@ -70,8 +90,26 @@ pub(crate) fn rgb565(r: u8, g: u8, b: u8) -> u16 {
 ///
 /// # Errors
 /// When the display cannot be brought up or no renderer can be made.
-pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow::Result<()> {
+pub fn run<A: App>(
+    make: impl FnOnce(u32, u32) -> A + Send + 'static,
+    options: Options,
+) -> anyhow::Result<()> {
     esp_idf_svc::log::EspLogger::initialize_default();
+    log::info!("heap at start: internal free {} KB", heap().0 / 1024);
+    // The app is made and run on a thread with the stack it asked for; this one only waits for it.
+    std::thread::Builder::new()
+        .name("fusuma".into())
+        .stack_size(options.stack_kb.max(16) * 1024)
+        .spawn(move || run_here(make, options))
+        .map_err(|e| anyhow::anyhow!("cannot start the app thread: {e}"))?
+        .join()
+        .map_err(|_| anyhow::anyhow!("the app thread panicked"))?
+}
+
+fn run_here<A: App>(
+    make: impl FnOnce(u32, u32) -> A,
+    options: Options,
+) -> anyhow::Result<()> {
 
     hw::init()?;
     hw::set_backlight(options.backlight);
@@ -134,6 +172,9 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
         let now = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         let begun = Instant::now();
         if let Some(region) = surface.frame(&mut shell, now) {
+            if shell.stats.frames == 0 {
+                log::info!("heap after the first frame: internal free {} KB", heap().0 / 1024);
+            }
             surface.present(region, screen);
             hw::flush_rows(
                 region.y.max(0) as u32,
@@ -145,10 +186,14 @@ pub fn run<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow
         }
         if report.elapsed() > Duration::from_secs(10) {
             report = Instant::now();
+            let (free, low, psram) = heap();
             log::info!(
-                "alive: {} frames, {} ms each on average",
+                "alive: {} frames, {} ms each on average; internal RAM free {} KB (lowest ever {} KB), PSRAM free {} KB",
                 shell.stats.frames,
-                shell.stats.average_ms()
+                shell.stats.average_ms(),
+                free / 1024,
+                low / 1024,
+                psram / 1024
             );
         }
         std::thread::sleep(Duration::from_millis(8));

@@ -34,7 +34,8 @@ renderer crates stay separate, because each is useful alone.
 | `fusuma-platform-esp` | runs an `App` on an ESP-IDF board (display, touch, frame loop) and picks the renderer itself; today the Waveshare ESP32-P4 7" ([`crates/fusuma-platform-esp`](crates/fusuma-platform-esp)) | no | working |
 | [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | runs an `App` in a window on Linux, macOS and Windows (winit, softbuffer) with mouse, touch and keyboard, and picks the renderer itself: Vello on the GPU if there is one, else on the CPU | no | working on Linux; macOS and Windows not tried |
 | `fusuma-shaders` | shader contract and engine | no | planned |
-| `fusuma-text` | real text: fonts, shaping, line breaking (on Parley) for desktop and phone; the bitmap fonts stay for microcontrollers | no | planned |
+| [`fusuma-text`](crates/fusuma-text) | real text: Parley layout and measuring over the bundled fonts, cached; `no_std` with an allocator, so it runs on a P4. Single-line so far (Parley wraps; no widget uses it yet) | no | working |
+| [`fusuma-fonts`](crates/fusuma-fonts) | the bundled fonts as `&'static [u8]`: Inter, Inter Bold, JetBrains Mono (Latin subsets, SIL OFL), one cargo feature each | yes | working |
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
 
 See the [roadmap](docs/ROADMAP.md). A renderer crate never depends on a toolkit crate: a firmware

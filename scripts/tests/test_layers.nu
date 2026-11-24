@@ -31,6 +31,14 @@ def "test layers: renderer crates may depend on each other, and the toolkit on t
     assert equal (violations [(pkg fusuma [fusuma-render fusuma-render-embedded]) (pkg fusuma-widgets [fusuma])]) []
 }
 
+def "test layers: text and font crates are drawing support, which a renderer may use" [] {
+    assert (not (is_toolkit "fusuma-text"))
+    assert (not (is_toolkit "fusuma-fonts"))
+    assert (is_toolkit "fusuma-ui")
+    assert equal (violations [(pkg fusuma-render-vello-common [fusuma-render fusuma-text fusuma-fonts])]) []
+    assert equal (violations [(pkg fusuma-render-vello-cpu [fusuma-text fusuma-ui])] | length) 1
+}
+
 def "test layers: unrelated crates and empty lists are fine" [] {
     assert equal (violations []) []
     assert equal (violations [(pkg something [fusuma])]) []

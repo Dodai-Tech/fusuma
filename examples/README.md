@@ -17,8 +17,8 @@ just showcase-p4-restore /dev/ttyACM0   # boot the factory app again
 
 Measured on the board: the first frame (1024x600) takes about 210 ms (76 ms drawing), and a small update
 such as a hovered button about 60 ms, most of it converting the pixels and clearing the surface, not
-drawing. Text uses the three built-in bitmap fonts (up to 10x20), so it looks small on a 7" screen until
-`fusuma-text` exists.
+drawing. Text is Inter, Inter Bold and JetBrains Mono through `fusuma-text`, with the built-in bitmap font as the
+fallback (the Typography page shows all three).
 
 **`showcase-desktop/`** is the same app in a window on a computer: `just showcase-desktop` (or `just showcase-desktop
 --renderer vello-cpu` to force the CPU). It uses `fusuma-platform-desktop`, which picks Vello on the GPU when there is one.

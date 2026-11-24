@@ -247,7 +247,7 @@ impl<const N: usize> Tree<N> {
                 if let Some(border) = look.border {
                     r.stroke_rect(rect, look.radius, theme.border_width, border)?;
                 }
-                let style = TextStyle::new(theme.text.body, look.text);
+                let style = TextStyle::new(theme.text.body, look.text).font(theme.fonts.body);
                 let at = centred(rect, r.measure_text(text.as_str(), &style));
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
                 self.ring(i, r, theme, look.radius)
@@ -277,7 +277,7 @@ mod tests {
     use fusuma_render::{Probe, Renderer};
     use fusuma_render_vello_cpu::VelloCpu;
 
-    const THEME: Theme = Theme::DARK;
+    const THEME: Theme = crate::theme::BITMAP_TEST;
     const W: u32 = 160;
     const H: u32 = 120;
 

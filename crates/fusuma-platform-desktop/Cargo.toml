@@ -13,7 +13,7 @@ keywords = ["gui", "window", "desktop", "vello"]
 categories = ["gui"]
 
 [dependencies]
-fusuma = { workspace = true, features = ["std", "toml", "renderer-vello-cpu", "renderer-vello-gpu"] }
+fusuma = { workspace = true, features = ["std", "toml", "renderer-vello-cpu", "renderer-vello-gpu", "font-inter", "font-inter-bold", "font-jetbrains-mono"] }
 winit = "0.30"
 softbuffer = "0.4"
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }

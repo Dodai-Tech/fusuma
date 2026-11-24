@@ -13,7 +13,7 @@ keywords = ["gui", "toolkit", "embedded", "no-std", "vello"]
 categories = ["gui", "embedded", "no-std"]
 
 [features]
-default = ["std", "renderer-vello-cpu"]
+default = ["std", "renderer-vello-cpu", "font-inter", "font-inter-bold"]
 # The standard library. Without it the crate is `no_std` (the Vello renderers then need `libm`, see their README).
 std = ["fusuma-render-vello-cpu?/std", "fusuma-render-skia?/std"]
 # Reading renderer settings from TOML (`fusuma.toml`).
@@ -23,6 +23,15 @@ renderer-integer = ["dep:fusuma-render-embedded"]
 renderer-skia = ["dep:fusuma-render-skia"]
 renderer-vello-cpu = ["dep:fusuma-render-vello-cpu"]
 renderer-vello-gpu = ["dep:fusuma-render-vello"]
+# Vector text through Parley, and which fonts to bundle (each is flash: about 65 to 90 KB). Without a font, or for a
+# font that is not bundled, text is the built-in bitmap font.
+text = ["dep:fusuma-text", "fusuma-render-vello-cpu?/text", "fusuma-render-vello?/text"]
+# Inter Regular, the UI font.
+font-inter = ["text", "fusuma-render-vello-cpu?/inter", "fusuma-render-vello?/inter"]
+# Inter Bold, for titles.
+font-inter-bold = ["text", "fusuma-render-vello-cpu?/inter-bold", "fusuma-render-vello?/inter-bold"]
+# JetBrains Mono, for logs and code.
+font-jetbrains-mono = ["text", "fusuma-render-vello-cpu?/jetbrains-mono", "fusuma-render-vello?/jetbrains-mono"]
 # `png()` for the CPU Vello renderer: the surface as a PNG file.
 png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 
@@ -31,6 +40,7 @@ fusuma-ui.workspace = true
 fusuma-render.workspace = true
 fusuma-anim.workspace = true
 fusuma-platform.workspace = true
+fusuma-text = { workspace = true, optional = true }
 fusuma-render-embedded = { workspace = true, optional = true }
 fusuma-render-skia = { workspace = true, optional = true, default-features = false }
 fusuma-render-vello-cpu = { workspace = true, optional = true }

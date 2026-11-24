@@ -39,7 +39,8 @@ reports an animation.
 
 ## Limits
 
-- Text is the bitmap fonts (up to 10x20) until `fusuma-text` exists.
+- Text is Inter, Inter Bold and JetBrains Mono (Latin subsets: no Greek, Cyrillic, CJK or emoji, and no system fonts
+  yet) drawn by Parley and the Vello glyph runs. It is a single line per label; nothing wraps yet.
 - Text input is a single line of at most 64 bytes, with no mouse-drag selection, no double-click word selection, no
   caret blink and no undo.
 - Typing, edit keys, IME and clipboard are tested through the translation functions and the app, not with real

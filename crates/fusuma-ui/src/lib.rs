@@ -23,8 +23,8 @@ pub use focus::Key;
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{
-    ButtonState, ButtonStyle, ButtonVariant, Colors, MotionTimes, Radii, Round, Spacing, Surface,
-    TextRole, TextSizes, Theme,
+    ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, MotionTimes, Radii, Round, Spacing,
+    Surface, TextRole, TextSizes, Theme,
 };
 pub use tree::{
     Action, ActionKind, Axis, BuildError, CrossAlign, Length, NodeId, SmallText, Style, TEXT_CAP,

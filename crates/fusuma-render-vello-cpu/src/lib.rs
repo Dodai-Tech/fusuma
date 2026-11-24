@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
 
-#[cfg(feature = "png")]
+#[cfg(any(feature = "png", feature = "text"))]
 extern crate alloc;
 
 use fusuma_render::Renderer;
@@ -99,6 +99,39 @@ impl Scene for CpuScene {
 
     fn pop_clip(&mut self) {
         self.ctx.pop_clip();
+    }
+
+    #[cfg(feature = "text")]
+    fn can_draw_glyphs(&self) -> bool {
+        true
+    }
+
+    #[cfg(feature = "text")]
+    fn draw_glyphs(
+        &mut self,
+        font: &fusuma_render_vello_common::peniko::FontData,
+        size: f32,
+        glyphs: &[fusuma_text::Glyph],
+        origin: (f64, f64),
+    ) -> bool {
+        let (ox, oy) = (origin.0 as f32, origin.1 as f32);
+        let placed: alloc::vec::Vec<vello_cpu::Glyph> = glyphs
+            .iter()
+            .map(|g| vello_cpu::Glyph {
+                id: g.id,
+                x: g.x + ox,
+                y: g.y + oy,
+            })
+            .collect();
+        let drawn = self
+            .ctx
+            .glyph_run(&mut self.resources, font)
+            .font_size(size)
+            .hint(true)
+            .fill_glyphs(placed.into_iter())
+            .is_ok();
+        self.dirty = true;
+        drawn
     }
 
     fn pixels(&mut self) -> &[u8] {
@@ -224,19 +257,25 @@ mod tests {
     /// One scene on both backends: shapes without curves, text and an image must match, because
     /// the two backends share the fonts and the rules.
     fn scene<R: fusuma_render::Renderer>(r: &mut R) {
-        use fusuma_render::{Align, Image, TextStyle};
+        use fusuma_render::{Align, Font, Image, TextStyle};
         let white = Color::WHITE;
         r.clear(Color::rgb(24, 24, 32)).unwrap();
         r.fill_rect(Rect::new(8, 8, 100, 40), 0, Color::rgb(0, 160, 160))
             .unwrap();
         r.stroke_rect(Rect::new(8, 60, 100, 30), 0, 2, Color::rgb(250, 200, 0))
             .unwrap();
-        r.draw_text("Dodai", Point::new(12, 14), &TextStyle::new(20, white))
-            .unwrap();
+        r.draw_text(
+            "Dodai",
+            Point::new(12, 14),
+            &TextStyle::new(20, white).font(Font::Bitmap),
+        )
+        .unwrap();
         r.draw_text(
             "Fusuma",
             Point::new(110, 70),
-            &TextStyle::new(14, white).aligned(Align::Right),
+            &TextStyle::new(14, white)
+                .font(Font::Bitmap)
+                .aligned(Align::Right),
         )
         .unwrap();
         r.save().unwrap();
@@ -244,8 +283,12 @@ mod tests {
         r.clip(Rect::new(0, 0, 30, 30)).unwrap();
         r.fill_rect(Rect::new(-10, -10, 60, 60), 0, Color::rgb(200, 40, 40))
             .unwrap();
-        r.draw_text("clip", Point::new(2, 8), &TextStyle::new(10, white))
-            .unwrap();
+        r.draw_text(
+            "clip",
+            Point::new(2, 8),
+            &TextStyle::new(10, white).font(Font::Bitmap),
+        )
+        .unwrap();
         r.restore().unwrap();
         let data = [
             255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 0,
@@ -310,8 +353,12 @@ mod tests {
         let paint = |size: u32| {
             let mut r = new(120, 60).unwrap();
             r.clear(Color::BLACK).unwrap();
-            r.draw_text("I", Point::new(0, 0), &TextStyle::new(size, Color::WHITE))
-                .unwrap();
+            r.draw_text(
+                "I",
+                Point::new(0, 0),
+                &TextStyle::new(size, Color::WHITE).font(fusuma_render::Font::Bitmap),
+            )
+            .unwrap();
             r
         };
         let (small, big) = (paint(20), paint(40));
@@ -341,12 +388,181 @@ mod tests {
             }
         }
         assert_eq!(
-            small.measure_text("abc", &TextStyle::new(20, Color::WHITE)),
+            small.measure_text(
+                "abc",
+                &TextStyle::new(20, Color::WHITE).font(fusuma_render::Font::Bitmap)
+            ),
             fusuma_render::Size::new(30, 20)
         );
         assert_eq!(
-            big.measure_text("abc", &TextStyle::new(40, Color::WHITE)),
+            big.measure_text(
+                "abc",
+                &TextStyle::new(40, Color::WHITE).font(fusuma_render::Font::Bitmap)
+            ),
             fusuma_render::Size::new(60, 40)
         );
+    }
+
+    /// Vector text: a proportional font through Parley and `glyph_run`, not the bitmap one.
+    #[cfg(feature = "inter")]
+    mod vector {
+        use super::*;
+        use fusuma_render::{Font, Probe, TextStyle};
+
+        fn lit(r: &VelloCpu, w: i32, h: i32) -> usize {
+            (0..h)
+                .flat_map(|y| (0..w).map(move |x| (x, y)))
+                .filter(|&(x, y)| r.pixel(x, y) != Some(Color::BLACK))
+                .count()
+        }
+
+        fn paint(text: &str, style: TextStyle) -> VelloCpu {
+            let mut r = new(260, 60).unwrap();
+            r.clear(Color::BLACK).unwrap();
+            r.draw_text(text, Point::new(4, 4), &style).unwrap();
+            r
+        }
+
+        #[test]
+        fn the_default_font_is_proportional_and_the_bitmap_one_is_not() {
+            let sans = TextStyle::new(24, Color::WHITE);
+            let bitmap = sans.font(Font::Bitmap);
+            let r = new(8, 8).unwrap();
+            let (i, w) = (
+                r.measure_text("iiii", &sans).w,
+                r.measure_text("WWWW", &sans).w,
+            );
+            assert!(i < w, "Inter: an i is narrower than a W ({i} against {w})");
+            let (bi, bw) = (
+                r.measure_text("iiii", &bitmap).w,
+                r.measure_text("WWWW", &bitmap).w,
+            );
+            assert_eq!(bi, bw, "the bitmap font is monospace");
+        }
+
+        #[test]
+        fn vector_text_draws_anti_aliased_pixels_in_the_text_colour() {
+            let r = paint("Hello", TextStyle::new(24, Color::WHITE));
+            assert!(lit(&r, 260, 60) > 80, "something was drawn");
+            let mut partial = 0;
+            for y in 0..60 {
+                for x in 0..260 {
+                    let p = r.pixel(x, y).unwrap();
+                    if p != Color::BLACK && p != Color::WHITE {
+                        partial += 1;
+                    }
+                }
+            }
+            assert!(
+                partial > 20,
+                "edges are anti-aliased: {partial} grey pixels"
+            );
+            // Nothing is drawn above or left of where the text was put.
+            assert_eq!(lit(&r, 3, 60), 0);
+        }
+
+        #[test]
+        fn the_text_stays_inside_the_box_it_was_measured_for() {
+            let style = TextStyle::new(24, Color::WHITE);
+            let r = paint("Weather Ășț", style);
+            let size = r.measure_text("Weather Ășț", &style);
+            let (w, h) = (size.w as i32, size.h as i32);
+            for y in 0..60 {
+                for x in 0..260 {
+                    let inside = x >= 4 && x < 4 + w + 1 && y >= 4 && y < 4 + h + 1;
+                    if !inside {
+                        assert_eq!(
+                            r.pixel(x, y),
+                            Some(Color::BLACK),
+                            "({x}, {y}) is outside {w}x{h}"
+                        );
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn alignment_and_a_translation_move_the_text_as_they_do_for_the_bitmap_font() {
+            use fusuma_render::Align;
+            let style = TextStyle::new(24, Color::WHITE);
+            let centred = {
+                let mut r = new(260, 60).unwrap();
+                r.clear(Color::BLACK).unwrap();
+                r.draw_text("abc", Point::new(130, 4), &style.aligned(Align::Center))
+                    .unwrap();
+                r
+            };
+            let w = centred.measure_text("abc", &style).w as i32;
+            let (first, last) = (0..260)
+                .filter(|&x| (0..60).any(|y| centred.pixel(x, y) != Some(Color::BLACK)))
+                .fold((i32::MAX, i32::MIN), |(a, b), x| (a.min(x), b.max(x)));
+            assert!(
+                (first - (130 - w / 2)).abs() <= 3 && (last - (130 + w / 2)).abs() <= 3,
+                "{first}..{last} for width {w}"
+            );
+            let mut r = new(260, 60).unwrap();
+            r.clear(Color::BLACK).unwrap();
+            r.save().unwrap();
+            r.translate(100, 20).unwrap();
+            r.draw_text("abc", Point::new(0, 0), &style).unwrap();
+            r.restore().unwrap();
+            assert_eq!(lit(&r, 99, 60), 0, "left of the translation");
+            assert!((20..50).any(|y| (100..160).any(|x| r.pixel(x, y) != Some(Color::BLACK))));
+        }
+
+        #[test]
+        fn a_clip_cuts_the_glyphs_and_a_hidden_text_draws_nothing() {
+            let mut r = new(260, 60).unwrap();
+            r.clear(Color::BLACK).unwrap();
+            r.save().unwrap();
+            r.clip(Rect::new(0, 0, 30, 60)).unwrap();
+            r.draw_text(
+                "Hello world",
+                Point::new(4, 4),
+                &TextStyle::new(24, Color::WHITE),
+            )
+            .unwrap();
+            r.restore().unwrap();
+            assert_eq!(
+                lit(&r, 260, 60) - lit(&r, 30, 60),
+                0,
+                "nothing right of the clip"
+            );
+            assert!(lit(&r, 30, 60) > 10);
+            let mut g = new(60, 60).unwrap();
+            g.clear(Color::BLACK).unwrap();
+            g.draw_text("", Point::new(1, 1), &TextStyle::new(24, Color::WHITE))
+                .unwrap();
+            g.draw_text(
+                "x",
+                Point::new(1, 1),
+                &TextStyle::new(24, Color::rgba(255, 255, 255, 0)),
+            )
+            .unwrap();
+            assert_eq!(lit(&g, 60, 60), 0);
+        }
+
+        #[test]
+        fn extreme_positions_and_sizes_do_not_panic() {
+            let mut r = new(40, 40).unwrap();
+            for at in [
+                Point::new(i32::MAX, i32::MAX),
+                Point::new(i32::MIN, 0),
+                Point::new(0, i32::MIN),
+                Point::new(-5000, 5),
+            ] {
+                r.draw_text("far", at, &TextStyle::new(20, Color::WHITE))
+                    .unwrap();
+            }
+            for size in [0, 1, 7, 400, 100_000] {
+                let _ = r.measure_text("x", &TextStyle::new(size, Color::WHITE));
+                r.draw_text(
+                    "x",
+                    Point::new(0, 0),
+                    &TextStyle::new(size.min(2000), Color::WHITE),
+                )
+                .unwrap();
+            }
+        }
     }
 }

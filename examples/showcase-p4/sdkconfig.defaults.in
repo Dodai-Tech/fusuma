@@ -17,6 +17,9 @@ CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+# General-purpose allocations go to PSRAM above this size, so internal RAM stays free for stacks, DMA and radios.
+# (The default of 16384 sends nearly everything Parley allocates to internal RAM first.)
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512
 CONFIG_CACHE_L2_CACHE_256KB=y
 CONFIG_CACHE_L2_CACHE_LINE_128B=y
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
