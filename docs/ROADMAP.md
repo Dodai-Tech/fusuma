@@ -31,7 +31,7 @@ works and is tested.
   97 ms for the first frame, 7 ms a tap and 88 ms a scroll step or page; Vello with Inter 558, 47 and 311 ms. A
   board can still pin Vello in its `fusuma.toml` (link it with the `vello-cpu` and `fonts` features). The look that
   Vello gave those chips (smooth text and edges) moves into the integer renderer (see Order of work).
-  **`tiny-skia` is removed** (`fusuma-render-skia` deleted; the published 0.x stays on crates.io): it sat between
+  **`tiny-skia` is removed** (`fusuma-render-skia` deleted here and removed from crates.io by its owner): it sat between
   the two by memory and has no SIMD on a microcontroller either. A `fusuma.toml` that still says `backend = "skia"`
   gets an error naming the replacement. Earlier decisions this replaces: Vello only (reverted), then "the richest
   backend that fits in memory" with `tiny-skia` as the middle step.
@@ -93,7 +93,7 @@ works and is tested.
 - [x] `fusuma-render-embedded`: integer backend, runs on the ESP32-S3 (kept: the lightest backend, see Decisions)
 - [x] `fusuma-render-vello-cpu` on `vello_cpu`, passing the conformance suite and matching the integer backend pixel for pixel; fuzzed
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
-- [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
+- [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and `-skia`, since removed from crates.io)
 - [x] `fusuma-render-vello-common` and `-vello-cpu` published (0.2.0); `hibari-os` uses them
 - [x] `fusuma-render-vello` on `vello_gpu` and `wgpu` 30: headless device, renders into an `Rgba8Unorm` texture and reads it back; passes the conformance suite on a real GPU (AMD RX 7800 XT, Vulkan) and matches the CPU backend; tests skip on machines without a GPU. Images go to the GPU as external textures through a `Scene::image_source` hook
 - [ ] `fusuma-render-vello`: render into a host-owned texture or window surface with no read-back; `gpu_available()` is there for the toolkit's GPU-first choice
@@ -129,7 +129,7 @@ works and is tested.
 - [x] Measured `tiny-skia` on the ESP32-S3: 1883 ms for a full 410x502 frame, the slowest of the three
 - [x] **`tiny-skia`'s clip memory (the backend was removed after, see Decisions):** every `clip` made a surface-sized mask (1 byte a pixel) and every `save` copied it, so a UI frame (a clip per redrawn part, per scroll window and per label) held about three: some 7 bytes a pixel, not the 4 the chooser counted, which would have run a C6 at 172x320 out of its 320 KB heap (the C6 benchmark had no clips, so it did not show). Now a clip is kept as a rectangle, one mask is made only when a shape crosses a clip and is rewritten row by row when the clip changes, and rectangles and text never use it: 5 bytes a pixel, which `Backend::memory` now counts. Tested (no mask for shapes inside their clips, one reused mask for crossing ones, nested clips and restores), each test seen to fail against a broken copy. The new figure is worked out, not measured on a board. With it the C6's own 172x320 LCD gets the integer renderer and a 160x160 one gets `tiny-skia`
 - [ ] A conformance run of the renderers on the C6
-- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers; `fusuma-render-skia` is not in it: removed, its old 0.x stays on crates.io). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
+- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers; `fusuma-render-skia` is not in it: removed, here and from crates.io). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
 
 ### Scrolling, screen shape and responsive layout (done, measured on the S3 watch)
 
