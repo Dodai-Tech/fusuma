@@ -43,6 +43,17 @@ impl<const N: usize> Tree<N> {
         if let Some(old) = self.focus.and_then(|id| self.slot(id)) {
             self.request(old, Flags::PAINT);
         }
+        self.preedit = crate::textinput::InputText::EMPTY;
+        let is_text =
+            |nodes: &[crate::tree::Node], i: usize| matches!(nodes[i].kind, Kind::TextInput { .. });
+        let old_text = self
+            .focus
+            .and_then(|id| self.slot(id))
+            .filter(|&i| is_text(&self.nodes, i));
+        let new_text = target.filter(|&i| is_text(&self.nodes, i));
+        for i in old_text.into_iter().chain(new_text) {
+            self.request(i, Flags::LAYOUT | Flags::PAINT);
+        }
         self.focus = new;
         self.focus_visible = visible && new.is_some();
         if let Some(i) = target {
@@ -123,6 +134,9 @@ impl<const N: usize> Tree<N> {
                     self.set_focus(Some(i), true);
                     self.activate(i);
                 }
+            }
+            Key::Left | Key::Right if self.focused_input_public().is_some() => {
+                self.edit(crate::textinput::Edit::Left(false).towards(key == Key::Right));
             }
             Key::Left | Key::Right => {
                 if let Some(i) = self.focus.and_then(|id| self.slot(id))

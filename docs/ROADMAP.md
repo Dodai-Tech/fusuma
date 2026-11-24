@@ -183,11 +183,12 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree; layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
 - [x] Widgets in `fusuma-ui`: checkbox, radio, switch, slider, selectable list item, progress bar, with keyboard focus (Tab, arrows, Enter)
 - [x] Scroll container (`Tree::scroll`): clips its children, scrolls by touch drag (with a slop so a tap still clicks), mouse wheel (`Pointer::Wheel`) and by moving the focus to a hidden widget; hidden widgets cannot be hit; a scrollbar shows the position. Not yet: inertia after a drag, rubber-banding at the ends (`fusuma-anim` has both), horizontal scrolling
-- [ ] More widgets: multi-line text view, text input, dialog, tabs, menu, toast
+- [x] Text input (`Tree::text_input`): a single line of up to 64 bytes with cursor, selection, typing, edit commands, input-method composition and clipboard hooks; the desktop platform wires keys, IME and the system clipboard. Not yet: mouse-drag and word selection, caret blink, undo, longer text, a multi-line field
+- [ ] More widgets: multi-line text view, dialog, tabs, menu, toast
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [x] `fusuma` is a facade crate (`fusuma-ui` is the toolkit): `renderer-*` features link backends, `toml` reads settings, `fusuma-platform` chooses
 - [x] `fusuma::Shell`, `Input`, `TouchTracker`, `Clock`, `wheel_pixels` and `App::resized` in `fusuma-ui`: the frame step and input handling every platform shares; a CI rule keeps widgets and renderers out of `fusuma-platform-*`
-- [x] `fusuma-platform-desktop`: a winit window, mouse, touch, keyboard, wheel and resize into the shared `Shell`; GPU Vello when an adapter exists, CPU otherwise, with the same settings layers; the showcase runs in it (`just showcase-desktop`). Not yet: scaling the theme with the display scale, presenting straight from the GPU, text input, macOS and Windows checked
+- [x] `fusuma-platform-desktop`: a winit window, mouse, touch, keyboard, wheel and resize into the shared `Shell`; GPU Vello when an adapter exists, CPU otherwise, with the same settings layers; the showcase runs in it (`just showcase-desktop`). Theme scaling (`Theme::scaled`) and an idle loop that sleeps (312 wake-ups in 5 s became 0) are done. Not yet: presenting straight from the GPU, real fonts, macOS and Windows run by hand
 - [ ] Platform picked by target automatically (`fusuma-platform-desktop`, `-mobile`; the ESP one is a separate firmware-side crate)
 - [ ] A gesture recogniser (tap, long press, swipe, drag with `fusuma-anim`): Hibari OS has one in `hibari-hal` that moves here, since a desktop and a phone need it too
 - [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository

@@ -2,7 +2,7 @@
 //! Pure functions, so they are tested without a window.
 
 use fusuma::render::Point;
-use fusuma::{Key, Pointer};
+use fusuma::{Edit, Key, Pointer};
 use winit::dpi::PhysicalPosition;
 use winit::event::{MouseScrollDelta, TouchPhase};
 use winit::keyboard::{Key as WKey, NamedKey};
@@ -35,9 +35,60 @@ pub fn map_key(key: &WKey, shift: bool) -> Option<Key> {
         WKey::Named(NamedKey::ArrowUp) => Some(Key::Up),
         WKey::Named(NamedKey::ArrowLeft) => Some(Key::Left),
         WKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
-        WKey::Named(NamedKey::Enter | NamedKey::Space) => Some(Key::Activate),
+        // Space is text: a text field types it, anything else is pressed by it (the toolkit decides).
+        WKey::Named(NamedKey::Enter) => Some(Key::Activate),
         _ => None,
     }
+}
+
+/// The edit command a key means in a text field, if any. Shift extends the selection; Ctrl (or Cmd on a Mac)
+/// with `a` selects all.
+#[must_use]
+pub fn map_edit(key: &WKey, shift: bool, command: bool) -> Option<Edit> {
+    match key {
+        WKey::Named(NamedKey::Backspace) => Some(Edit::Backspace),
+        WKey::Named(NamedKey::Delete) => Some(Edit::Delete),
+        WKey::Named(NamedKey::ArrowLeft) => Some(Edit::Left(shift)),
+        WKey::Named(NamedKey::ArrowRight) => Some(Edit::Right(shift)),
+        WKey::Named(NamedKey::Home) => Some(Edit::Home(shift)),
+        WKey::Named(NamedKey::End) => Some(Edit::End(shift)),
+        WKey::Character(c) if command && c.eq_ignore_ascii_case("a") => Some(Edit::SelectAll),
+        _ => None,
+    }
+}
+
+/// A clipboard command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shortcut {
+    /// Copy the selection.
+    Copy,
+    /// Copy the selection, then delete it.
+    Cut,
+    /// Insert the clipboard's text.
+    Paste,
+}
+
+/// The clipboard command of Ctrl+C, Ctrl+X and Ctrl+V (Cmd on a Mac), if `key` is one.
+#[must_use]
+pub fn shortcut(key: &WKey, command: bool) -> Option<Shortcut> {
+    let WKey::Character(c) = key else { return None };
+    if !command {
+        return None;
+    }
+    match c.to_ascii_lowercase().as_str() {
+        "c" => Some(Shortcut::Copy),
+        "x" => Some(Shortcut::Cut),
+        "v" => Some(Shortcut::Paste),
+        _ => None,
+    }
+}
+
+/// The text a key event types, if it types any: printable text, not a command (Ctrl or Cmd held) and not a
+/// control character (Enter, Tab and Backspace come with text like `"\r"`, which the keys already cover).
+#[must_use]
+pub fn typed_text(text: Option<&str>, command: bool) -> Option<&str> {
+    let t = text?;
+    (!command && !t.is_empty() && t.chars().all(|c| !c.is_control())).then_some(t)
 }
 
 /// A wheel turn as the pixels [`Pointer::Wheel`] takes. winit counts a turn away from the user (content moves
@@ -110,7 +161,11 @@ mod tests {
             Some(Key::Right)
         );
         assert_eq!(map_key(&named(NamedKey::Enter), false), Some(Key::Activate));
-        assert_eq!(map_key(&named(NamedKey::Space), false), Some(Key::Activate));
+        assert_eq!(
+            map_key(&named(NamedKey::Space), false),
+            None,
+            "space is text"
+        );
         assert_eq!(map_key(&named(NamedKey::Escape), false), None);
         assert_eq!(map_key(&WKey::Character("a".into()), false), None);
     }
@@ -164,5 +219,71 @@ mod tests {
         assert_eq!(scale_percent(0.0), 100);
         assert_eq!(scale_percent(f64::NAN), 100);
         assert_eq!(scale_percent(-2.0), 100);
+    }
+
+    #[test]
+    fn edit_keys_follow_shift_and_select_all_follows_the_command_key() {
+        let named = WKey::Named;
+        assert_eq!(
+            map_edit(&named(NamedKey::Backspace), false, false),
+            Some(Edit::Backspace)
+        );
+        assert_eq!(
+            map_edit(&named(NamedKey::Delete), false, false),
+            Some(Edit::Delete)
+        );
+        assert_eq!(
+            map_edit(&named(NamedKey::ArrowLeft), true, false),
+            Some(Edit::Left(true))
+        );
+        assert_eq!(
+            map_edit(&named(NamedKey::ArrowRight), false, false),
+            Some(Edit::Right(false))
+        );
+        assert_eq!(
+            map_edit(&named(NamedKey::Home), true, false),
+            Some(Edit::Home(true))
+        );
+        assert_eq!(
+            map_edit(&named(NamedKey::End), false, false),
+            Some(Edit::End(false))
+        );
+        assert_eq!(
+            map_edit(&WKey::Character("a".into()), false, true),
+            Some(Edit::SelectAll)
+        );
+        assert_eq!(
+            map_edit(&WKey::Character("A".into()), false, true),
+            Some(Edit::SelectAll)
+        );
+        assert_eq!(
+            map_edit(&WKey::Character("a".into()), false, false),
+            None,
+            "a plain a is text"
+        );
+        assert_eq!(map_edit(&named(NamedKey::Tab), false, false), None);
+    }
+
+    #[test]
+    fn the_clipboard_shortcuts_need_the_command_key() {
+        let ch = |s: &str| WKey::Character(s.into());
+        assert_eq!(shortcut(&ch("c"), true), Some(Shortcut::Copy));
+        assert_eq!(shortcut(&ch("X"), true), Some(Shortcut::Cut));
+        assert_eq!(shortcut(&ch("v"), true), Some(Shortcut::Paste));
+        assert_eq!(shortcut(&ch("c"), false), None);
+        assert_eq!(shortcut(&ch("z"), true), None);
+        assert_eq!(shortcut(&WKey::Named(NamedKey::Enter), true), None);
+    }
+
+    #[test]
+    fn only_printable_text_without_a_command_is_typed() {
+        assert_eq!(typed_text(Some("a"), false), Some("a"));
+        assert_eq!(typed_text(Some(" "), false), Some(" "));
+        assert_eq!(typed_text(Some("é日"), false), Some("é日"));
+        assert_eq!(typed_text(Some("a"), true), None, "Ctrl+A is a command");
+        assert_eq!(typed_text(Some("\r"), false), None);
+        assert_eq!(typed_text(Some("\u{8}"), false), None);
+        assert_eq!(typed_text(Some(""), false), None);
+        assert_eq!(typed_text(None, false), None);
     }
 }

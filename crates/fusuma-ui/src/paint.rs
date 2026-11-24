@@ -231,7 +231,8 @@ impl<const N: usize> Tree<N> {
             | Kind::ListItem { .. }
             | Kind::Progress { .. }
             | Kind::Switch { .. }
-            | Kind::Slider { .. } => self.paint_widget(i, r, theme),
+            | Kind::Slider { .. }
+            | Kind::TextInput { .. } => self.paint_widget(i, r, theme),
             Kind::Label { text, role } => {
                 let style = theme.text_style(role);
                 let size = r.measure_text(text.as_str(), &style);

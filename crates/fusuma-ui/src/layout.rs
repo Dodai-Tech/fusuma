@@ -124,6 +124,8 @@ impl<const N: usize> Tree<N> {
                 self.place_all(root, bounds);
             }
         }
+        // The cursor of a text field a press landed on, and where the caret is.
+        self.resolve_input(renderer, theme);
         self.clear_flag(Flags::LAYOUT);
         // Things may have moved under the pointer.
         if let Some(p) = self.pointer {
@@ -167,7 +169,8 @@ impl<const N: usize> Tree<N> {
             | Kind::ListItem { .. }
             | Kind::Progress { .. }
             | Kind::Switch { .. }
-            | Kind::Slider { .. } => self.measure_widget(i, renderer, theme),
+            | Kind::Slider { .. }
+            | Kind::TextInput { .. } => self.measure_widget(i, renderer, theme),
             Kind::Stack(_) | Kind::Scroll { .. } => {
                 let axis = match n.kind {
                     Kind::Stack(axis) => axis,

@@ -16,6 +16,7 @@ categories = ["gui"]
 fusuma = { workspace = true, features = ["std", "toml", "renderer-vello-cpu", "renderer-vello-gpu"] }
 winit = "0.30"
 softbuffer = "0.4"
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 log = "0.4"
 anyhow = "1"
 

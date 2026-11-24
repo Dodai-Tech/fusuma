@@ -71,16 +71,19 @@ pub enum Page {
     Progress,
     /// A switch and a slider.
     Controls,
+    /// A text field.
+    Text,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Buttons,
         Self::Selection,
         Self::List,
         Self::Progress,
         Self::Controls,
+        Self::Text,
     ];
 
     /// The name in the sidebar.
@@ -92,6 +95,7 @@ impl Page {
             Self::List => "List",
             Self::Progress => "Progress",
             Self::Controls => "Controls",
+            Self::Text => "Text",
         }
     }
 }
@@ -145,6 +149,8 @@ struct Live {
     switch: Option<NodeId>,
     slider: Option<NodeId>,
     slider_label: Option<NodeId>,
+    field: Option<NodeId>,
+    echo: Option<NodeId>,
 }
 
 const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
@@ -163,7 +169,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 5],
+    sidebar: [Option<NodeId>; 6],
     body: Option<NodeId>,
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
@@ -173,6 +179,8 @@ pub struct Showcase {
     running: bool,
     fill_ms: u32,
     volume: u16,
+    /// What the text field holds, kept when the page is left.
+    typed: fusuma::InputText,
 }
 
 impl Showcase {
@@ -186,7 +194,7 @@ impl Showcase {
             dark: true,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
-            sidebar: [None; 5],
+            sidebar: [None; 6],
             body: None,
             content: None,
             theme_button: None,
@@ -196,6 +204,7 @@ impl Showcase {
             running: false,
             fill_ms: 0,
             volume: 500,
+            typed: fusuma::InputText::new("Hello"),
         };
         // The tree has room for all of it; a build failure would leave a smaller screen, not a crash.
         let _ = s.build();
@@ -258,6 +267,7 @@ impl Showcase {
             reset: self.live.reset,
             switch: self.live.switch,
             slider: self.live.slider,
+            field: self.live.field,
         }
     }
 
@@ -409,6 +419,19 @@ impl Showcase {
                     TextRole::Caption,
                 )?;
             }
+            Page::Text => {
+                t.label(Some(c), "Text", TextRole::Title)?;
+                let field = t.text_input(Some(c), self.typed.as_str())?;
+                live.field = Some(field);
+                let mut b = Buf::new();
+                let _ = write!(b, "You typed: {}", self.typed.as_str());
+                live.echo = Some(t.label(Some(c), b.text(), TextRole::Body)?);
+                t.label(
+                    Some(c),
+                    "Type, select with Shift+arrows, copy and paste, or use an input method. Enter submits.",
+                    TextRole::Caption,
+                )?;
+            }
             Page::Progress => {
                 t.label(Some(c), "Progress", TextRole::Title)?;
                 live.bar = Some(t.progress_bar(Some(c), permille)?);
@@ -461,7 +484,9 @@ impl Showcase {
             let mut b = Buf::new();
             match a.kind {
                 ActionKind::Clicked => {
-                    if id == self.theme_button {
+                    if id == self.live.field {
+                        let _ = write!(b, "Submitted: {}", self.typed.as_str());
+                    } else if id == self.theme_button {
                         self.set_dark(!self.dark);
                     } else if id == self.live.click_me {
                         self.clicks += 1;
@@ -485,6 +510,16 @@ impl Showcase {
                         if let Some(s) = self.live.start {
                             self.tree.set_text(s, "Start");
                         }
+                    }
+                }
+                ActionKind::TextChanged => {
+                    if let (true, Some(f)) = (id == self.live.field, self.live.field) {
+                        self.typed = fusuma::InputText::new(self.tree.text(f).unwrap_or(""));
+                        let _ = write!(b, "You typed: {}", self.typed.as_str());
+                        if let Some(l) = self.live.echo {
+                            self.tree.set_text(l, b.text());
+                        }
+                        b = Buf::new();
                     }
                 }
                 ActionKind::Changed(v) => {
@@ -623,6 +658,32 @@ impl App for Showcase {
         Self::tick(self, dt_ms)
     }
 
+    fn text(&mut self, text: &str) {
+        self.tree.type_text(text);
+        self.handle_actions();
+    }
+
+    fn edit(&mut self, edit: fusuma::Edit) {
+        self.tree.edit(edit);
+        self.handle_actions();
+    }
+
+    fn preedit(&mut self, text: &str) {
+        self.tree.set_preedit(text);
+    }
+
+    fn wants_text(&self) -> bool {
+        self.tree.wants_text()
+    }
+
+    fn text_cursor(&self) -> Option<Rect> {
+        self.tree.text_cursor()
+    }
+
+    fn selected_text(&self) -> Option<&str> {
+        self.tree.selected_text()
+    }
+
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
@@ -632,7 +693,7 @@ impl App for Showcase {
             self.theme = theme(self.dark).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();
-            self.sidebar = [None; 5];
+            self.sidebar = [None; 6];
             self.content = None;
             let _ = self.build();
         } else if bounds != self.bounds {
@@ -669,6 +730,8 @@ pub struct Widgets {
     pub switch: Option<NodeId>,
     /// The Controls page's slider.
     pub slider: Option<NodeId>,
+    /// The Text page's text field.
+    pub field: Option<NodeId>,
 }
 
 #[cfg(test)]
@@ -1006,6 +1069,44 @@ mod tests {
             s.theme().control_height,
             84,
             "switching the theme keeps the 150% scale (56 x 1.5)"
+        );
+    }
+
+    #[test]
+    fn the_text_page_edits_echoes_and_keeps_the_text_when_the_page_is_left() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Text);
+        s.frame(&mut r).unwrap();
+        let f = s.widgets().field.unwrap();
+        assert_eq!(s.tree().text(f), Some("Hello"));
+        tap(&mut s, f);
+        assert!(App::wants_text(&s), "the field has the focus");
+        App::text(&mut s, ", world");
+        assert_eq!(
+            s.tree().text(s.live.echo.unwrap()),
+            Some("You typed: Hello, world")
+        );
+        App::edit(&mut s, fusuma::Edit::Backspace);
+        assert_eq!(s.tree().text(f), Some("Hello, worl"));
+        App::edit(&mut s, fusuma::Edit::SelectAll);
+        assert_eq!(App::selected_text(&s), Some("Hello, worl"));
+        s.frame(&mut r).unwrap();
+        assert!(
+            App::text_cursor(&s).is_some(),
+            "the platform can place an input method"
+        );
+        s.key(Key::Activate);
+        assert_eq!(
+            s.tree().text(s.status.unwrap()),
+            Some("Submitted: Hello, worl")
+        );
+        go(&mut s, Page::Buttons);
+        assert!(!App::wants_text(&s));
+        go(&mut s, Page::Text);
+        assert_eq!(
+            s.tree().text(s.widgets().field.unwrap()),
+            Some("Hello, worl"),
+            "kept"
         );
     }
 }

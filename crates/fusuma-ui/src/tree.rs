@@ -5,6 +5,8 @@ use fusuma_render::{Point, Rect, Size};
 
 use crate::theme::{ButtonVariant, Round, Surface, TextRole};
 
+use crate::textinput::InputText;
+
 /// How many bytes of text a label or a button keeps.
 pub const TEXT_CAP: usize = 32;
 
@@ -230,6 +232,13 @@ pub(crate) enum Kind {
     Slider {
         permille: u16,
     },
+    /// A single-line text field: `text` is at most [`crate::INPUT_CAP`] bytes; the cursor and the other end of the
+    /// selection are byte offsets on character boundaries.
+    TextInput {
+        text: InputText,
+        cursor: u8,
+        anchor: u8,
+    },
     /// A column that shows a window onto content taller than itself: `offset` pixels scrolled, of
     /// `content` pixels of children.
     Scroll {
@@ -258,6 +267,7 @@ impl Kind {
                 | Self::ListItem { .. }
                 | Self::Switch { .. }
                 | Self::Slider { .. }
+                | Self::TextInput { .. }
         )
     }
 
@@ -376,6 +386,9 @@ impl Node {
 pub enum ActionKind {
     /// A button was pressed and released on itself (or activated from the keyboard).
     Clicked,
+    /// The text of a text field was changed by the user (typing, deleting, pasting, an input method). Read it
+    /// with [`Tree::text`]. Not sent for [`Tree::set_text`].
+    TextChanged,
     /// A checkbox or a switch was switched by the user; carries the new state.
     Toggled(bool),
     /// A slider was moved by the user; carries the new value in thousandths. Not sent for changes made
@@ -415,6 +428,12 @@ pub struct Tree<const N: usize> {
     pub(crate) drag: Option<Drag>,
     /// A widget to scroll into view at the next layout.
     pub(crate) pending_reveal: Option<NodeId>,
+    /// Where the next character of the focused text field will appear, as of the last layout.
+    pub(crate) caret: Option<Rect>,
+    /// What an input method is composing, shown at the cursor of the focused text field.
+    pub(crate) preedit: InputText,
+    /// A press on a text field, to put its cursor at the next layout (which has a renderer to measure with).
+    pub(crate) pending_click: Option<(NodeId, i32)>,
     pub(crate) hovered: Option<NodeId>,
     /// The widget the keyboard acts on.
     pub(crate) focus: Option<NodeId>,
@@ -448,6 +467,9 @@ impl<const N: usize> Tree<N> {
             captured: None,
             drag: None,
             pending_reveal: None,
+            caret: None,
+            preedit: InputText::EMPTY,
+            pending_click: None,
             hovered: None,
             focus: None,
             focus_visible: false,
@@ -759,6 +781,27 @@ impl<const N: usize> Tree<N> {
         )
     }
 
+    /// Adds a text field holding `text` (cut to [`crate::INPUT_CAP`] bytes), with the cursor at the end. It is
+    /// focusable; typing, the edit commands and an input method change it and send
+    /// [`ActionKind::TextChanged`]; Enter sends [`ActionKind::Clicked`] ("submit"). It is as wide as six
+    /// controls are high unless the style says otherwise.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn text_input(&mut self, parent: Option<NodeId>, text: &str) -> Result<NodeId, BuildError> {
+        let text = InputText::new(text);
+        let end = text.as_str().len() as u8;
+        self.add(
+            parent,
+            Kind::TextInput {
+                text,
+                cursor: end,
+                anchor: end,
+            },
+            Style::DEFAULT,
+        )
+    }
+
     /// Adds a switch (a toggle). Switching it by the user sends [`ActionKind::Toggled`].
     ///
     /// # Errors
@@ -931,10 +974,11 @@ impl<const N: usize> Tree<N> {
     /// The text of a label, a button, a checkbox, a radio button or a list item.
     #[must_use]
     pub fn text(&self, id: NodeId) -> Option<&str> {
-        self.nodes[self.slot(id)?]
-            .kind
-            .text()
-            .map(SmallText::as_str)
+        let kind = &self.nodes[self.slot(id)?].kind;
+        match kind {
+            Kind::TextInput { text, .. } => Some(text.as_str()),
+            _ => kind.text().map(SmallText::as_str),
+        }
     }
 
     /// Whether the pointer is over `id`.
@@ -959,6 +1003,21 @@ impl<const N: usize> Tree<N> {
     /// redone.
     pub fn set_text(&mut self, id: NodeId, text: &str) {
         let Some(i) = self.slot(id) else { return };
+        if let Kind::TextInput {
+            text: t,
+            cursor,
+            anchor,
+        } = &mut self.nodes[i].kind
+        {
+            if t.as_str() != InputText::new(text).as_str() {
+                t.set(text);
+                // The cursor goes to the end, like a field filled in by the program.
+                let end = t.as_str().len() as u8;
+                (*cursor, *anchor) = (end, end);
+                self.request(i, Flags::LAYOUT | Flags::PAINT);
+            }
+            return;
+        }
         if let Some(t) = self.nodes[i].kind.text_mut()
             && t.as_str() != SmallText::new(text).as_str()
         {

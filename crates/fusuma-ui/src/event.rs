@@ -120,6 +120,9 @@ impl<const N: usize> Tree<N> {
                 if let (Some(p), true) = (self.pointer, self.is_slider(i)) {
                     self.slider_to_x(i, p.x);
                 }
+                if let Some(p) = self.pointer {
+                    self.input_press(i, p.x);
+                }
                 true
             }
             Phase::Up { inside } => {
@@ -127,7 +130,11 @@ impl<const N: usize> Tree<N> {
                     return false;
                 }
                 self.set_active(i, false);
-                if inside && !self.nodes[i].disabled_eff && !self.is_slider(i) {
+                if inside
+                    && !self.nodes[i].disabled_eff
+                    && !self.is_slider(i)
+                    && !matches!(self.nodes[i].kind, Kind::TextInput { .. })
+                {
                     self.activate(i);
                 }
                 true

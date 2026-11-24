@@ -49,11 +49,11 @@ fuzz_target!(|data: &[u8]| {
     while let (Some(op), Some(a), Some(b)) = (it.next(), it.next(), it.next()) {
         let pick = |ids: &[NodeId], k: u8| ids.get(usize::from(k) % ids.len().max(1)).copied();
         let point = Point::new(i32::from(a) * 3 - 30, i32::from(b) * 3 - 30);
-        match op % 18 {
+        match op % 19 {
             0..=4 => {
                 // The parent is sometimes none, sometimes stale, sometimes a leaf.
                 let parent = if a % 5 == 0 { None } else { pick(&ids, a) };
-                let added: Result<NodeId, BuildError> = match op % 18 {
+                let added: Result<NodeId, BuildError> = match op % 19 {
                     0 => tree.column(parent, style(a, b)),
                     1 => tree.row(parent, style(b, a)),
                     2 => tree.label(parent, &"éa".repeat(usize::from(b % 30)), [TextRole::Title, TextRole::Body, TextRole::Caption][usize::from(a) % 3]),
@@ -121,6 +121,7 @@ fuzz_target!(|data: &[u8]| {
                     2 => tree.switch(parent, "s", a % 2 == 0),
                     3 => tree.slider(parent, u16::from(a) * 7),
                     4 => tree.list_item(parent, "l", a % 2 == 0),
+                    5 if a % 3 == 0 => tree.text_input(parent, "héllo wörld"),
                     _ => tree.radio(parent, "r", a % 2 == 0),
                 };
                 if let Ok(id) = added {
@@ -140,6 +141,32 @@ fuzz_target!(|data: &[u8]| {
                     let _ = tree.focus(id);
                 }
                 tree.key([Key::Next, Key::Prev, Key::Up, Key::Down, Key::Activate, Key::Left, Key::Right][usize::from(a) % 7]);
+            }
+            18 => {
+                // Typing, edit commands, an input method and a clipboard read, on whatever has the focus.
+                let words = ["", "a", "é", "日本語", "x\ny\tz", " ", "héllo wörld, a longer piece of text to fill the field up"];
+                if let Some(id) = pick(&ids, b) {
+                    let _ = tree.focus(id);
+                    tree.set_input_cursor(id, usize::from(a));
+                    let _ = tree.input_cursor(id);
+                }
+                match a % 5 {
+                    0 => tree.type_text(words[usize::from(b) % words.len()]),
+                    1 => tree.set_preedit(words[usize::from(b) % words.len()]),
+                    2 => {
+                        use fusuma_ui::Edit::{Backspace, Delete, End, Home, Left, Right, SelectAll};
+                        let all = [Backspace, Delete, Left(true), Left(false), Right(true), Right(false), Home(true), End(false), SelectAll];
+                        tree.edit(all[usize::from(b) % all.len()]);
+                    }
+                    3 => {
+                        let _ = (tree.selected_text(), tree.text_cursor(), tree.wants_text(), tree.preedit().len());
+                    }
+                    _ => {
+                        if let Some(id) = pick(&ids, a) {
+                            tree.set_text(id, words[usize::from(b) % words.len()]);
+                        }
+                    }
+                }
             }
             _ => {
                 if let Some(id) = pick(&ids, a) {

@@ -22,7 +22,11 @@ texture back), so one path presents either; drawing straight from the GPU to the
 | left mouse button, cursor | `Pointer::Down`, `Up`, `Move`, `Leave` |
 | touch | `Pointer::Down`, `Move`, `Up` then `Leave` |
 | wheel (lines or pixels, sign flipped) | `Pointer::Wheel` (a line is 40 px) |
-| Tab, Shift+Tab, arrows, Enter, Space | `Key::Next`, `Prev`, `Up`, `Down`, `Left`, `Right`, `Activate` |
+| Tab, Shift+Tab, arrows, Enter | `Key::Next`, `Prev`, `Up`, `Down`, `Left`, `Right`, `Activate` |
+| printable keys, Space | `Input::Text` (a text field types it; elsewhere a space presses the focused widget) |
+| Backspace, Delete, arrows, Home, End (Shift extends), Ctrl or Cmd+A | `Input::Edit` while a text field has the focus |
+| Ctrl or Cmd+C, X, V | copy, cut, paste through the system clipboard (arboard) |
+| input method (IME) | `Input::Preedit` while composing, `Input::Text` on commit; the candidate window is placed at the caret |
 | resize, scale factor | `Input::Resize { width, height, scale_percent }` |
 
 ## Scale and idle
@@ -36,7 +40,11 @@ reports an animation.
 ## Limits
 
 - Text is the bitmap fonts (up to 10x20) until `fusuma-text` exists.
-- No text input, IME, clipboard or window decorations of its own.
+- Text input is a single line of at most 64 bytes, with no mouse-drag selection, no double-click word selection, no
+  caret blink and no undo.
+- Typing, edit keys, IME and clipboard are tested through the translation functions and the app, not with real
+  keystrokes in a window: I could not drive the window's keyboard here. Try the Text page of the showcase.
+- On Wayland the clipboard needs a compositor with a data-control protocol or falls back to X11.
 
 ## What this crate does not contain
 

@@ -12,6 +12,7 @@ mod paint;
 #[cfg(test)]
 mod scroll;
 mod shell;
+mod textinput;
 mod theme;
 mod tree;
 mod widgets;
@@ -19,7 +20,8 @@ mod widgets;
 pub use app::App;
 pub use event::Pointer;
 pub use focus::Key;
-pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, wheel_pixels};
+pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
+pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{
     ButtonState, ButtonStyle, ButtonVariant, Colors, MotionTimes, Radii, Round, Spacing, Surface,
     TextRole, TextSizes, Theme,

@@ -40,6 +40,8 @@ impl<const N: usize> Tree<N> {
                 self.set_flag(i, !on);
                 Some(ActionKind::Toggled(!on))
             }
+            // Enter in a text field submits it.
+            Kind::TextInput { .. } => Some(ActionKind::Clicked),
             Kind::Radio { checked, .. } if !checked => {
                 self.choose(i);
                 Some(ActionKind::Selected)
@@ -306,6 +308,9 @@ impl<const N: usize> Tree<N> {
                 )
             }
             Kind::Progress { .. } => Size::new(0, theme.track_height),
+            Kind::TextInput { .. } => {
+                Size::new(theme.control_height.saturating_mul(6), theme.control_height)
+            }
             Kind::Slider { .. } => Size::new(
                 theme.indicator.saturating_mul(6),
                 theme.indicator.max(theme.track_height),
@@ -466,6 +471,7 @@ impl<const N: usize> Tree<N> {
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
                 self.ring(i, r, theme, theme.radii.sm)
             }
+            Kind::TextInput { .. } => self.paint_text_input(i, r, theme),
             Kind::Slider { permille } => {
                 let thumb = rect.h.min(rect.w);
                 let span = rect.w.saturating_sub(thumb);

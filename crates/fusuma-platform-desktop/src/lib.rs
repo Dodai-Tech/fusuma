@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod canvas;
+mod clip;
 mod input;
 mod plan;
 
@@ -12,12 +13,13 @@ pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
 use fusuma::platform::{Plan, Render};
 use fusuma::{App, Input, Pointer, Shell};
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::event::{ElementState, Ime, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 pub use canvas::{Canvas, blit};
+pub use clip::{Clipboard, SystemClipboard, run_shortcut};
 pub use plan::{LINKED, hardware, plan_for};
 
 /// What the application chooses about the window and the renderer. The default is the best choice.
@@ -94,6 +96,12 @@ struct State<A> {
     started: Instant,
     cursor: Option<fusuma::render::Point>,
     shift: bool,
+    /// Ctrl, or Cmd on a Mac: the key of shortcuts.
+    command: bool,
+    clipboard: SystemClipboard,
+    /// Whether an input method is on, and where its candidate window was last put.
+    ime_on: bool,
+    ime_area: Option<fusuma::render::Rect>,
     /// The window must be shown again even if nothing was redrawn (it was exposed, or resized).
     show: bool,
     /// The loop was asleep: the time asleep is not time the app lived through.
@@ -161,6 +169,10 @@ impl<A: App> Handler<A> {
             started: Instant::now(),
             cursor: None,
             shift: false,
+            command: false,
+            clipboard: SystemClipboard::new(),
+            ime_on: false,
+            ime_area: None,
             show: true,
             idle: false,
         })
@@ -175,6 +187,63 @@ impl<A: App> Handler<A> {
 impl<A: App> State<A> {
     fn pointer(&mut self, p: Pointer) {
         self.shell.input(Input::Pointer(p));
+    }
+
+    /// Keeps the input method in step with the app: on while a text field has the focus, with its candidate
+    /// window next to the caret.
+    fn sync_ime(&mut self) {
+        let wants = self.shell.app.wants_text();
+        if wants != self.ime_on {
+            self.window.set_ime_allowed(wants);
+            self.ime_on = wants;
+            self.ime_area = None;
+        }
+        if wants
+            && let Some(c) = self.shell.app.text_cursor()
+            && self.ime_area != Some(c)
+        {
+            self.window.set_ime_cursor_area(
+                PhysicalPosition::new(c.x, c.y),
+                PhysicalSize::new(c.w.max(1), c.h.max(1)),
+            );
+            self.ime_area = Some(c);
+        }
+    }
+
+    /// A key press: a clipboard shortcut, an edit command or typed text when a text field has the focus, a
+    /// toolkit key otherwise.
+    fn key(&mut self, event: &winit::event::KeyEvent) {
+        let wants = self.shell.app.wants_text();
+        if let Some(s) = input::shortcut(&event.logical_key, self.command) {
+            clip::run_shortcut(s, &mut self.shell, &mut self.clipboard);
+            return;
+        }
+        if wants && let Some(e) = input::map_edit(&event.logical_key, self.shift, self.command) {
+            self.shell.input(Input::Edit(e));
+            return;
+        }
+        if let Some(text) = input::typed_text(event.text.as_deref(), self.command) {
+            self.shell.inputs(fusuma::text_inputs(text));
+            return;
+        }
+        if let Some(k) = input::map_key(&event.logical_key, self.shift) {
+            self.shell.input(Input::Key(k));
+        }
+    }
+
+    /// An input method event: a composition in progress, or text it commits.
+    fn ime(&mut self, ime: Ime) {
+        let clear = Input::Preedit(fusuma::InputText::EMPTY);
+        match ime {
+            Ime::Preedit(text, _) => self
+                .shell
+                .input(Input::Preedit(fusuma::InputText::new(&text))),
+            Ime::Commit(text) => {
+                self.shell.input(clear);
+                self.shell.inputs(fusuma::text_inputs(&text));
+            }
+            Ime::Enabled | Ime::Disabled => self.shell.input(clear),
+        }
     }
 
     /// The window changed size: a new surface of that size, and the app lays itself out again.
@@ -214,6 +283,7 @@ impl<A: App> State<A> {
             return Ok(());
         }
         self.show = false;
+        self.sync_ime();
         let (w, h) = self.canvas.size();
         let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
             return Ok(());
@@ -292,11 +362,13 @@ impl<A: App> ApplicationHandler for Handler<A> {
                     st.pointer(e);
                 }
             }
-            WindowEvent::ModifiersChanged(m) => st.shift = m.state().shift_key(),
+            WindowEvent::ModifiersChanged(m) => {
+                st.shift = m.state().shift_key();
+                st.command = m.state().control_key() || m.state().super_key();
+            }
+            WindowEvent::Ime(ime) => st.ime(ime),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                if let Some(k) = input::map_key(&event.logical_key, st.shift) {
-                    st.shell.input(Input::Key(k));
-                }
+                st.key(&event);
             }
             WindowEvent::RedrawRequested => {
                 if let Err(e) = st.step(true) {

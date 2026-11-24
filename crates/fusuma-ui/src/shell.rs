@@ -5,7 +5,7 @@
 
 use fusuma_render::{Point, Rect, Renderer};
 
-use crate::{App, Key, Pointer};
+use crate::{App, Edit, InputText, Key, Pointer};
 
 /// One thing a platform tells an app.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +14,13 @@ pub enum Input {
     Pointer(Pointer),
     /// A key.
     Key(Key),
+    /// Text typed, pasted or committed by an input method (at most [`crate::INPUT_CAP`] bytes at a time; a
+    /// platform sends longer text in pieces).
+    Text(InputText),
+    /// An input method is composing this text; empty ends it.
+    Preedit(InputText),
+    /// An edit command for a text field.
+    Edit(Edit),
     /// The drawing area changed size, or the display's scale did.
     Resize {
         /// Width in pixels.
@@ -25,11 +32,32 @@ pub enum Input {
     },
 }
 
+/// Text of any length as inputs of at most [`crate::INPUT_CAP`] bytes each, cut at character boundaries, for a
+/// platform that has pasted text to send.
+pub fn text_inputs(text: &str) -> impl Iterator<Item = Input> + '_ {
+    let mut rest = text;
+    core::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let mut end = rest.len().min(crate::INPUT_CAP);
+        while !rest.is_char_boundary(end) {
+            end -= 1;
+        }
+        let (head, tail) = rest.split_at(end);
+        rest = tail;
+        Some(Input::Text(InputText::new(head)))
+    })
+}
+
 /// Hands `input` to `app`.
 pub fn deliver<A: App>(app: &mut A, input: Input) {
     match input {
         Input::Pointer(p) => app.pointer(p),
         Input::Key(k) => app.key(k),
+        Input::Text(t) => app.text(t.as_str()),
+        Input::Preedit(t) => app.preedit(t.as_str()),
+        Input::Edit(e) => app.edit(e),
         Input::Resize {
             width,
             height,
@@ -504,6 +532,65 @@ mod tests {
         assert!(
             shell.wants_frame(),
             "a frame that drew something is followed by another to be sure"
+        );
+    }
+
+    #[test]
+    fn long_text_is_sent_in_pieces_that_rejoin_to_the_original() {
+        let text = "é".repeat(100) + "tail";
+        let pieces: Vec<Input> = text_inputs(&text).collect();
+        assert!(pieces.len() >= 4);
+        let joined: String = pieces
+            .iter()
+            .map(|p| match p {
+                Input::Text(t) => t.as_str().to_owned(),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(joined, text);
+        assert!(text_inputs("").next().is_none());
+        assert_eq!(text_inputs("hi").count(), 1);
+    }
+
+    #[test]
+    fn text_edits_and_preedit_reach_the_app_through_the_shell() {
+        struct Typist {
+            seen: Vec<String>,
+        }
+        impl App for Typist {
+            fn pointer(&mut self, _: Pointer) {}
+            fn key(&mut self, _: Key) {}
+            fn tick(&mut self, _: u32) -> bool {
+                false
+            }
+            fn frame<R: Renderer>(&mut self, _: &mut R) -> Result<Option<Rect>, R::Error> {
+                Ok(None)
+            }
+            fn text(&mut self, t: &str) {
+                self.seen.push(format!("text {t}"));
+            }
+            fn edit(&mut self, e: Edit) {
+                self.seen.push(format!("edit {e:?}"));
+            }
+            fn preedit(&mut self, t: &str) {
+                self.seen.push(format!("preedit {t}"));
+            }
+        }
+        let mut shell = Shell::new(Typist { seen: Vec::new() });
+        shell.inputs([
+            Input::Text(InputText::new("ab")),
+            Input::Preedit(InputText::new("に")),
+            Input::Edit(Edit::Backspace),
+        ]);
+        assert_eq!(shell.app.seen, ["text ab", "preedit に", "edit Backspace"]);
+        assert!(
+            shell.wants_frame(),
+            "text wakes a sleeping platform like any input"
+        );
+        assert!(
+            !shell.app.wants_text()
+                && shell.app.selected_text().is_none()
+                && shell.app.text_cursor().is_none()
         );
     }
 }

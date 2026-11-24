@@ -22,6 +22,12 @@ can tell from the top whether anything below needs it.
 | animation | `advance(theme, dt_ms)` | steps only the widgets that asked for frames; says whether to keep drawing |
 | paint | `paint(renderer, theme)` or `take_damage_in(screen)` then `paint_region(renderer, theme, area)` | draws through `fusuma_render::Renderer` on any backend; the second redraws only what changed |
 
+**Text fields.** `text_input(parent, text)` is a single-line field of at most 64 bytes (`INPUT_CAP`) with a cursor and
+a selection. A platform sends `Input::Text` for typed, pasted or committed text, `Input::Edit(Edit::...)` for Backspace
+and cursor moves, and `Input::Preedit` while an input method composes; the app answers `wants_text` (turn the input
+method on), `text_cursor` (where to put its window) and `selected_text` (what a copy takes). Changes send
+`ActionKind::TextChanged`, Enter sends `Clicked`.
+
 **Scrolling.** `scroll(parent, style)` is a column that clips its children and shows a window onto them; give it a
 height. A drag scrolls it (a press that moves less than 8 px is still a click), `Pointer::Wheel(point, dy)` scrolls the
 container under the point, and moving the focus with the keys scrolls the widget into view. `scroll_to`, `scroll_offset`
