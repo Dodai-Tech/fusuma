@@ -58,9 +58,50 @@ const fn scaled(v: u32, percent: u32) -> u32 {
     }
 }
 
-/// Screens narrower than this (in logical pixels) get the compact layout: no sidebar, a Previous and Next row
-/// instead, and pages in one column. The 7-inch board and a desktop window are wider; a watch is not.
-pub const COMPACT_BELOW: u32 = 640;
+/// Screens narrower than this, in logical pixels, are a watch: a grid of big tiles, one small page at a time.
+pub const WATCH_BELOW: u32 = 480;
+
+/// Screens narrower than this are a phone: no sidebar, a Previous and Next row, pages in one column.
+pub const PHONE_BELOW: u32 = 640;
+
+/// Screens narrower than this are a tablet (the 7-inch board): a sidebar and one page. Wider is a desktop window.
+pub const TABLET_BELOW: u32 = 1100;
+
+/// The class of screen, by logical width, which decides the layout. Differences between devices are layout, never
+/// different widgets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Class {
+    /// A watch: a grid of tiles, then one small page with a back button.
+    Watch,
+    /// A phone or a narrow window: a Previous and Next row.
+    Phone,
+    /// A tablet or a small window: a sidebar.
+    Tablet,
+    /// A desktop window: a sidebar and room.
+    Desktop,
+}
+
+impl Class {
+    /// The class of a screen `logical_width` pixels wide.
+    #[must_use]
+    pub const fn of(logical_width: u32) -> Self {
+        if logical_width < WATCH_BELOW {
+            Self::Watch
+        } else if logical_width < PHONE_BELOW {
+            Self::Phone
+        } else if logical_width < TABLET_BELOW {
+            Self::Tablet
+        } else {
+            Self::Desktop
+        }
+    }
+
+    /// Whether the screen is too small for a sidebar.
+    #[must_use]
+    pub const fn is_compact(self) -> bool {
+        matches!(self, Self::Watch | Self::Phone)
+    }
+}
 
 /// The text of the theme button: short in the compact layout.
 const fn theme_button_text(dark: bool, compact: bool) -> &'static str {
@@ -190,8 +231,13 @@ pub struct Showcase {
     sidebar: [Option<NodeId>; 7],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
-    /// Whether the tree was built in the compact layout.
-    compact: bool,
+    /// The class of screen the tree was built for.
+    class: Class,
+    /// Watch only: a page is open (otherwise the tile grid shows).
+    open: bool,
+    /// Watch only: the tile of each page, and the back button.
+    tiles: [Option<NodeId>; 7],
+    back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
@@ -218,7 +264,10 @@ impl Showcase {
             page: Page::Buttons,
             sidebar: [None; 7],
             nav: [None; 3],
-            compact: width < COMPACT_BELOW,
+            class: Class::of(width),
+            open: false,
+            tiles: [None; 7],
+            back: None,
             body: None,
             content: None,
             theme_button: None,
@@ -280,10 +329,34 @@ impl Showcase {
         }
     }
 
-    /// Whether the compact layout (a small screen) is on.
+    /// Whether the compact layout (a watch or a phone) is on.
     #[must_use]
     pub const fn is_compact(&self) -> bool {
-        self.compact
+        self.class.is_compact()
+    }
+
+    /// The class of screen the layout was built for.
+    #[must_use]
+    pub const fn class(&self) -> Class {
+        self.class
+    }
+
+    /// Watch: the tile that opens `page`; `None` when the grid is not showing.
+    #[must_use]
+    pub fn tile(&self, page: Page) -> Option<NodeId> {
+        self.tiles[Page::ALL.iter().position(|&p| p == page)?]
+    }
+
+    /// Watch: the back button of an open page.
+    #[must_use]
+    pub const fn back_button(&self) -> Option<NodeId> {
+        self.back
+    }
+
+    /// Watch: whether a page is open (else the tile grid shows).
+    #[must_use]
+    pub const fn is_open(&self) -> bool {
+        self.open
     }
 
     /// The button that switches the theme.
@@ -338,16 +411,22 @@ impl Showcase {
                 .gap(self.theme.spacing.md)
                 .align(CrossAlign::Center),
         )?;
-        let compact = self.compact;
-        t.label(
-            Some(header),
-            if compact {
-                "Fusuma"
-            } else {
-                "Fusuma components"
-            },
-            TextRole::Title,
-        )?;
+        let class = self.class;
+        let compact = class.is_compact();
+        if class == Class::Watch && self.open {
+            self.back = Some(t.button(Some(header), "<", ButtonVariant::Secondary)?);
+            t.label(Some(header), self.page.name(), TextRole::Title)?;
+        } else {
+            t.label(
+                Some(header),
+                if compact {
+                    "Fusuma"
+                } else {
+                    "Fusuma components"
+                },
+                TextRole::Title,
+            )?;
+        }
         t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
         self.theme_button = Some(t.button(
             Some(header),
@@ -358,6 +437,45 @@ impl Showcase {
             .height(Length::Fill(1))
             .gap(self.theme.spacing.md)
             .align(CrossAlign::Stretch);
+        if class == Class::Watch {
+            let body = t.column(Some(root), body_style)?;
+            self.body = Some(body);
+            if self.open {
+                return self.build_page();
+            }
+            // The home screen: big tiles, two to a row, in a window that scrolls.
+            let sp = self.theme.spacing;
+            let grid = t.scroll(
+                Some(body),
+                Style::new()
+                    .width(Length::Fill(1))
+                    .height(Length::Fill(1))
+                    .gap(sp.md)
+                    .align(CrossAlign::Stretch),
+            )?;
+            self.content = Some(grid);
+            let tile_h = self.theme.control_height.saturating_mul(3) / 2;
+            for (r, pair) in Page::ALL.chunks(2).enumerate() {
+                let row = t.row(
+                    Some(grid),
+                    Style::new().gap(sp.md).align(CrossAlign::Stretch),
+                )?;
+                for (k, page) in pair.iter().enumerate() {
+                    let id = t.button(Some(row), page.name(), ButtonVariant::Secondary)?;
+                    t.set_style(
+                        id,
+                        Style::new()
+                            .width(Length::Fill(1))
+                            .height(Length::Fixed(tile_h)),
+                    );
+                    self.tiles[r * 2 + k] = Some(id);
+                }
+                if pair.len() == 1 {
+                    t.spacer(Some(row), Style::new().width(Length::Fill(1)))?;
+                }
+            }
+            return Ok(());
+        }
         if compact {
             let body = t.column(Some(root), body_style)?;
             self.body = Some(body);
@@ -403,7 +521,10 @@ impl Showcase {
         let body = self.body;
         let permille = self.permille();
         let scale = self.scale;
-        let compact = self.compact;
+        let class = self.class;
+        let compact = class.is_compact();
+        // A watch shows a few things at a time: the header names the page, and the extras are left out.
+        let lite = class == Class::Watch;
         let t = &mut self.tree;
         let style = Style::new()
             .width(Length::Fill(1))
@@ -423,34 +544,44 @@ impl Showcase {
         let live = &mut self.live;
         match self.page {
             Page::Buttons => {
-                t.label(Some(c), "Buttons", TextRole::Title)?;
+                if !lite {
+                    t.label(Some(c), "Buttons", TextRole::Title)?;
+                }
                 let row = t.row(Some(c), Style::new().gap(sp.md))?;
                 live.click_me = Some(t.button(Some(row), "Click me", ButtonVariant::Primary)?);
-                t.button(Some(row), "Secondary", ButtonVariant::Secondary)?;
-                let off = t.button(Some(row), "Disabled", ButtonVariant::Primary)?;
-                t.set_enabled(off, false);
+                if !lite {
+                    t.button(Some(row), "Secondary", ButtonVariant::Secondary)?;
+                    let off = t.button(Some(row), "Disabled", ButtonVariant::Primary)?;
+                    t.set_enabled(off, false);
+                }
                 let mut b = Buf::new();
                 let _ = write!(b, "Clicked {} times", self.clicks);
                 live.counter = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                t.label(
-                    Some(c),
-                    "Hover or press to see the fade. Tab and Enter work too.",
-                    TextRole::Caption,
-                )?;
+                if !lite {
+                    t.label(
+                        Some(c),
+                        "Hover or press to see the fade. Tab and Enter work too.",
+                        TextRole::Caption,
+                    )?;
+                }
             }
             Page::Selection => {
-                t.label(Some(c), "Selection", TextRole::Title)?;
+                if !lite {
+                    t.label(Some(c), "Selection", TextRole::Title)?;
+                }
                 let cols = if compact {
                     t.column(Some(c), Style::new().gap(sp.md))?
                 } else {
                     t.row(Some(c), Style::new().gap(sp.lg))?
                 };
                 let checks = t.column(Some(cols), Style::new().gap(sp.xs))?;
-                for (slot, (name, on)) in live.checks.iter_mut().zip([
-                    ("Notifications", true),
-                    ("Location", false),
-                    ("Analytics", false),
-                ]) {
+                for (slot, (name, on)) in
+                    live.checks.iter_mut().take(if lite { 2 } else { 3 }).zip([
+                        ("Notifications", true),
+                        ("Location", false),
+                        ("Analytics", false),
+                    ])
+                {
                     *slot = Some(t.checkbox(Some(checks), name, on)?);
                 }
                 if let Some(last) = live.checks[2] {
@@ -463,7 +594,9 @@ impl Showcase {
                 live.radio_label = Some(t.label(Some(c), "Size: Medium", TextRole::Body)?);
             }
             Page::List => {
-                t.label(Some(c), "List", TextRole::Title)?;
+                if !lite {
+                    t.label(Some(c), "List", TextRole::Title)?;
+                }
                 // A window onto twelve rows: drag it, turn the wheel, or move the focus with the keys.
                 let list = t.scroll(
                     Some(c),
@@ -473,7 +606,7 @@ impl Showcase {
                         } else {
                             Length::Fixed(scaled(360, scale))
                         })
-                        .height(Length::Fixed(scaled(260, scale)))
+                        .height(Length::Fixed(scaled(if lite { 150 } else { 260 }, scale)))
                         .gap(sp.xs)
                         .align(CrossAlign::Stretch),
                 )?;
@@ -484,26 +617,34 @@ impl Showcase {
                 live.list_label = Some(t.label(Some(c), "Chosen: Aurora", TextRole::Body)?);
             }
             Page::Controls => {
-                t.label(Some(c), "Controls", TextRole::Title)?;
+                if !lite {
+                    t.label(Some(c), "Controls", TextRole::Title)?;
+                }
                 live.switch = Some(t.switch(Some(c), "Wi-Fi", true)?);
                 let mut b = Buf::new();
                 let _ = write!(b, "Volume: {}%", self.volume / 10);
                 live.slider_label = Some(t.label(Some(c), b.text(), TextRole::Body)?);
                 let slider = t.slider(Some(c), self.volume)?;
                 live.slider = Some(slider);
-                t.label(
-                    Some(c),
-                    "Drag the slider, or focus it and use Left and Right.",
-                    TextRole::Caption,
-                )?;
+                if !lite {
+                    t.label(
+                        Some(c),
+                        "Drag the slider, or focus it and use Left and Right.",
+                        TextRole::Caption,
+                    )?;
+                }
             }
             Page::Typography => {
-                t.label(Some(c), "Typography", TextRole::Title)?;
-                t.label(
-                    Some(c),
-                    "Inter Bold, for titles and emphasis",
-                    TextRole::Title,
-                )?;
+                if !lite {
+                    t.label(Some(c), "Typography", TextRole::Title)?;
+                }
+                if !lite {
+                    t.label(
+                        Some(c),
+                        "Inter Bold, for titles and emphasis",
+                        TextRole::Title,
+                    )?;
+                }
                 t.label(
                     Some(c),
                     "Inter Regular: the quick brown fox jumps over the lazy dog.",
@@ -519,27 +660,31 @@ impl Showcase {
                     "let x = 42; // JetBrains Mono, fixed width",
                     TextRole::Code,
                 )?;
-                t.label(
-                    Some(c),
-                    "With no font bundled, text is the bitmap font.",
-                    TextRole::Caption,
-                )?;
+                if !lite {
+                    t.label(
+                        Some(c),
+                        "With no font bundled, text is the bitmap font.",
+                        TextRole::Caption,
+                    )?;
+                }
             }
             Page::Text => {
-                t.label(Some(c), "Text", TextRole::Title)?;
+                if !lite {
+                    t.label(Some(c), "Text", TextRole::Title)?;
+                }
                 let field = t.text_input(Some(c), self.typed.as_str())?;
                 live.field = Some(field);
                 let mut b = Buf::new();
                 let _ = write!(b, "You typed: {}", self.typed.as_str());
                 live.echo = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                t.label(
-                    Some(c),
-                    "Type, select with Shift+arrows, copy and paste, or use an input method. Enter submits.",
-                    TextRole::Caption,
-                )?;
+                if !lite {
+                    t.label(Some(c), "Type, select with Shift+arrows, copy and paste, or use an input method. Enter submits.", TextRole::Caption)?;
+                }
             }
             Page::Progress => {
-                t.label(Some(c), "Progress", TextRole::Title)?;
+                if !lite {
+                    t.label(Some(c), "Progress", TextRole::Title)?;
+                }
                 live.bar = Some(t.progress_bar(Some(c), permille)?);
                 let mut b = Buf::new();
                 let _ = write!(b, "{}%", permille / 10);
@@ -554,6 +699,17 @@ impl Showcase {
             }
         }
         Ok(())
+    }
+
+    /// Builds the whole tree again, for a change of screen: the pages' state lives in the app, not in the tree.
+    fn rebuild(&mut self) {
+        self.tree.clear();
+        self.sidebar = [None; 7];
+        self.nav = [None; 3];
+        self.tiles = [None; 7];
+        self.back = None;
+        self.content = None;
+        let _ = self.build();
     }
 
     fn permille(&self) -> u16 {
@@ -580,7 +736,8 @@ impl Showcase {
         self.dark = dark;
         self.theme = theme(dark).scaled(self.scale);
         if let Some(b) = self.theme_button {
-            self.tree.set_text(b, theme_button_text(dark, self.compact));
+            self.tree
+                .set_text(b, theme_button_text(dark, self.class.is_compact()));
         }
         self.tree.invalidate();
     }
@@ -592,7 +749,14 @@ impl Showcase {
             let mut b = Buf::new();
             match a.kind {
                 ActionKind::Clicked => {
-                    if id.is_some() && (id == self.nav[0] || id == self.nav[2]) {
+                    if let Some(i) = self.tiles.iter().position(|&t| t.is_some() && t == id) {
+                        self.open = true;
+                        self.page = Page::ALL[i];
+                        self.rebuild();
+                    } else if id.is_some() && id == self.back {
+                        self.open = false;
+                        self.rebuild();
+                    } else if id.is_some() && (id == self.nav[0] || id == self.nav[2]) {
                         let n = Page::ALL.len();
                         let at = Page::ALL.iter().position(|&p| p == self.page).unwrap_or(0);
                         let to = if id == self.nav[2] {
@@ -805,16 +969,19 @@ impl App for Showcase {
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
-        let compact = width.saturating_mul(100) / scale < COMPACT_BELOW;
-        if scale != self.scale || compact != self.compact {
+        let class = Class::of(width.saturating_mul(100) / scale);
+        if scale != self.scale || class != self.class {
             // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
             self.scale = scale;
-            self.compact = compact;
+            self.class = class;
+            self.open = false;
             self.theme = theme(self.dark).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();
             self.sidebar = [None; 7];
             self.nav = [None; 3];
+            self.tiles = [None; 7];
+            self.back = None;
             self.content = None;
             let _ = self.build();
         } else if bounds != self.bounds {
@@ -1231,16 +1398,16 @@ mod tests {
         );
     }
 
-    fn watch() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
-        let mut s = Showcase::new(410, 502);
-        let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+    fn phone() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
+        let mut s = Showcase::new(600, 800);
+        let mut r = fusuma::renderers::vello_cpu::new(600, 800).unwrap();
         s.frame(&mut r).unwrap();
         (s, r)
     }
 
     #[test]
-    fn a_small_screen_gets_no_sidebar_and_a_previous_and_next_row() {
-        let (s, _) = watch();
+    fn a_phone_gets_no_sidebar_and_a_previous_and_next_row() {
+        let (s, _) = phone();
         assert!(s.is_compact() && s.sidebar_item(Page::Buttons).is_none());
         let (prev, next) = s.nav_buttons().unwrap();
         assert_ne!(prev, next);
@@ -1250,7 +1417,7 @@ mod tests {
 
     #[test]
     fn next_and_previous_walk_the_pages_and_wrap_round() {
-        let (mut s, mut r) = watch();
+        let (mut s, mut r) = phone();
         let (prev, next) = s.nav_buttons().unwrap();
         for want in &Page::ALL[1..] {
             tap(&mut s, next);
@@ -1269,9 +1436,9 @@ mod tests {
     }
 
     #[test]
-    fn every_page_fits_the_watch_screen_in_both_themes() {
+    fn every_page_fits_the_phone_screen_in_both_themes() {
         for dark in [true, false] {
-            let (mut s, mut r) = watch();
+            let (mut s, mut r) = phone();
             if !dark {
                 let b = s.theme_button().unwrap();
                 tap(&mut s, b);
@@ -1281,7 +1448,7 @@ mod tests {
                 s.frame(&mut r).unwrap();
                 let tree = s.tree();
                 let root = tree.rect(tree.root().unwrap()).unwrap();
-                assert_eq!(root, Rect::new(0, 0, 410, 502));
+                assert_eq!(root, Rect::new(0, 0, 600, 800));
                 for id in s
                     .widgets()
                     .checks
@@ -1291,16 +1458,16 @@ mod tests {
                 {
                     let rc = s.rect_of(*id).unwrap();
                     // Taller than the screen is fine (the page scrolls); wider is not.
-                    assert!(rc.right() <= 410, "{:?}: {rc:?}", s.page());
+                    assert!(rc.right() <= 600, "{:?}: {rc:?}", s.page());
                 }
                 if let Some(rc) = s.widgets().slider.and_then(|i| s.rect_of(i)) {
-                    assert!(rc.right() <= 410, "{rc:?}");
+                    assert!(rc.right() <= 600, "{rc:?}");
                 }
                 if let Some(rc) = s.widgets().field.and_then(|i| s.rect_of(i)) {
-                    assert!(rc.right() <= 410, "the text field fits: {rc:?}");
+                    assert!(rc.right() <= 600, "the text field fits: {rc:?}");
                 }
                 if let Some(rc) = s.widgets().list.and_then(|i| s.rect_of(i)) {
-                    assert!(rc.right() <= 410 && rc.bottom() <= 502, "{rc:?}");
+                    assert!(rc.right() <= 600 && rc.bottom() <= 800, "{rc:?}");
                 }
                 tap(&mut s, next);
             }
@@ -1313,10 +1480,10 @@ mod tests {
         go(&mut s, Page::Controls);
         let b = s.theme_button().unwrap();
         tap(&mut s, b);
-        App::resized(&mut s, 410, 502, 100);
+        App::resized(&mut s, 600, 800, 100);
         assert!(s.is_compact());
         assert_eq!((s.page(), s.is_dark()), (Page::Controls, false));
-        let mut small = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+        let mut small = fusuma::renderers::vello_cpu::new(600, 800).unwrap();
         s.frame(&mut small).unwrap();
         assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Dark"));
         App::resized(&mut s, 1024, 600, 100);
@@ -1331,20 +1498,210 @@ mod tests {
     }
 
     #[test]
+    fn the_phone_pictures_are_written_when_asked() {
+        let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") else {
+            return;
+        };
+        let (mut s, mut r) = phone();
+        let (_, next) = s.nav_buttons().unwrap();
+        for p in Page::ALL {
+            s.frame(&mut r).unwrap();
+            std::fs::write(
+                std::format!("{dir}/phone-{}.png", p.name()),
+                fusuma::renderers::vello_cpu::png(&r).unwrap(),
+            )
+            .unwrap();
+            tap(&mut s, next);
+        }
+    }
+
+    fn watch() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
+        let mut s = Showcase::new(410, 502);
+        let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+        s.frame(&mut r).unwrap();
+        (s, r)
+    }
+
+    fn open(s: &mut Showcase, p: Page) {
+        let id = s.tile(p).unwrap();
+        // A tile below the window is scrolled to first, as a keyboard user would by tabbing to it.
+        s.tree.focus(id);
+        tap(s, id);
+    }
+
+    fn close(s: &mut Showcase) {
+        let id = s.back_button().unwrap();
+        tap(s, id);
+    }
+
+    fn toggle_theme(s: &mut Showcase) {
+        let id = s.theme_button().unwrap();
+        tap(s, id);
+    }
+
+    #[test]
+    fn the_class_follows_the_logical_width() {
+        for (w, c) in [
+            (0, Class::Watch),
+            (410, Class::Watch),
+            (479, Class::Watch),
+            (480, Class::Phone),
+            (639, Class::Phone),
+            (640, Class::Tablet),
+            (1024, Class::Tablet),
+            (1099, Class::Tablet),
+            (1100, Class::Desktop),
+            (u32::MAX, Class::Desktop),
+        ] {
+            assert_eq!(Class::of(w), c, "{w}");
+        }
+        assert!(Class::Watch.is_compact() && Class::Phone.is_compact());
+        assert!(!Class::Tablet.is_compact() && !Class::Desktop.is_compact());
+    }
+
+    #[test]
+    fn a_watch_starts_on_a_grid_of_tiles_and_a_tile_opens_its_page_with_a_back_button() {
+        let (mut s, mut r) = watch();
+        assert_eq!(s.class(), Class::Watch);
+        assert!(!s.is_open() && s.back_button().is_none() && s.nav_buttons().is_none());
+        for p in Page::ALL {
+            assert!(s.tile(p).is_some(), "{p:?}");
+        }
+        open(&mut s, Page::Controls);
+        assert!(s.is_open() && s.page() == Page::Controls);
+        assert!(s.tile(Page::Controls).is_none(), "the grid is gone");
+        s.frame(&mut r).unwrap();
+        assert!(s.widgets().switch.is_some() && s.widgets().slider.is_some());
+        let back = s.back_button().unwrap();
+        tap(&mut s, back);
+        assert!(!s.is_open() && s.tile(Page::Controls).is_some());
+    }
+
+    #[test]
+    fn the_watch_shows_fewer_components_than_the_tablet() {
+        let (mut s, _) = watch();
+        open(&mut s, Page::Selection);
+        let w = s.widgets();
+        assert!(w.checks[2].is_none(), "the third checkbox is left out");
+        let small = s.tree().len();
+        let (mut big, _) = app();
+        go(&mut big, Page::Selection);
+        assert!(
+            small + 6 < big.tree().len(),
+            "{small} against {}",
+            big.tree().len()
+        );
+        let (mut s, _) = watch();
+        open(&mut s, Page::Buttons);
+        assert!(
+            s.tree().len() < 14,
+            "the Buttons page is a button and a counter: {}",
+            s.tree().len()
+        );
+    }
+
+    #[test]
+    fn state_survives_opening_and_closing_pages_on_the_watch() {
+        let (mut s, mut r) = watch();
+        open(&mut s, Page::Buttons);
+        s.frame(&mut r).unwrap();
+        let b = s.widgets().click_me.unwrap();
+        tap(&mut s, b);
+        tap(&mut s, b);
+        close(&mut s);
+        open(&mut s, Page::Buttons);
+        assert_eq!(s.clicks(), 2);
+        assert!(
+            s.tree()
+                .text(s.live.counter.unwrap())
+                .unwrap()
+                .contains('2')
+        );
+        close(&mut s);
+        open(&mut s, Page::Controls);
+        s.frame(&mut r).unwrap();
+        let sl = s.rect_of(s.widgets().slider.unwrap()).unwrap();
+        let y = sl.y + (sl.h / 2) as i32;
+        s.pointer(Pointer::Down(Point::new(sl.right() - 2, y)));
+        s.pointer(Pointer::Up(Point::new(sl.right() - 2, y)));
+        close(&mut s);
+        open(&mut s, Page::Controls);
+        assert_eq!(
+            s.tree().slider_value(s.widgets().slider.unwrap()),
+            Some(1000)
+        );
+    }
+
+    #[test]
+    fn every_watch_page_fits_the_screen_and_a_change_of_size_changes_the_layout() {
+        for dark in [true, false] {
+            let (mut s, mut r) = watch();
+            if !dark {
+                toggle_theme(&mut s);
+            }
+            for p in Page::ALL {
+                open(&mut s, p);
+                s.frame(&mut r).unwrap();
+                let w = s.widgets();
+                let ids = w
+                    .checks
+                    .iter()
+                    .chain(&w.radios)
+                    .chain(&w.items)
+                    .chain([
+                        &w.click_me,
+                        &w.bar,
+                        &w.start,
+                        &w.reset,
+                        &w.switch,
+                        &w.slider,
+                        &w.field,
+                        &w.list,
+                    ])
+                    .flatten();
+                for id in ids {
+                    let rect = s.rect_of(*id).unwrap();
+                    assert!(
+                        rect.right() <= 410,
+                        "{p:?}: {rect:?} is wider than the watch"
+                    );
+                }
+
+                close(&mut s);
+                s.frame(&mut r).unwrap();
+            }
+        }
+        let (mut s, _) = watch();
+        open(&mut s, Page::List);
+        App::resized(&mut s, 1024, 600, 100);
+        assert_eq!((s.class(), s.is_open()), (Class::Tablet, false));
+        assert!(s.sidebar_item(Page::List).is_some());
+        App::resized(&mut s, 300, 300, 100);
+        assert_eq!(s.class(), Class::Watch);
+        assert!(s.tile(Page::List).is_some());
+    }
+
+    #[test]
     fn the_watch_pictures_are_written_when_asked() {
         let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") else {
             return;
         };
         let (mut s, mut r) = watch();
-        let (_, next) = s.nav_buttons().unwrap();
+        std::fs::write(
+            std::format!("{dir}/watch-Home.png"),
+            fusuma::renderers::vello_cpu::png(&r).unwrap(),
+        )
+        .unwrap();
         for p in Page::ALL {
+            open(&mut s, p);
             s.frame(&mut r).unwrap();
             std::fs::write(
                 std::format!("{dir}/watch-{}.png", p.name()),
                 fusuma::renderers::vello_cpu::png(&r).unwrap(),
             )
             .unwrap();
-            tap(&mut s, next);
+            close(&mut s);
+            s.frame(&mut r).unwrap();
         }
     }
 }
