@@ -97,7 +97,14 @@ impl Surface {
             Self::Vello(r, _) => {
                 // The scene forgets what it drew before; this frame redraws only the damaged part.
                 r.with_scene(fusuma::renderers::vello_cpu::Scene::reset);
-                shell.frame(now_ms, &mut **r).map_err(|e| err(&e))
+                let drawn = shell.frame(now_ms, &mut **r).map_err(|e| err(&e))?;
+                // Only what changed has to be rasterised: a hover is a few hundred pixels, not the screen.
+                if let Some(d) = drawn {
+                    r.with_scene(|s| {
+                        fusuma::renderers::vello_cpu::Scene::set_damage(s, (d.x, d.y, d.w, d.h))
+                    });
+                }
+                Ok(drawn)
             }
         }
     }

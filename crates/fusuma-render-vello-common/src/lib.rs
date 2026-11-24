@@ -116,6 +116,15 @@ pub trait Scene {
         false
     }
 
+    /// Says that only `region` (x, y, width, height) of the next frame matters: a frame that redraws one button does
+    /// not need the rest of the surface rasterised. A scene that can render a part of itself then does only that, and
+    /// [`pixels`](Self::pixels) is valid inside the region (what is outside it is left as the last frame had it, or
+    /// empty if it never was drawn). The hint lasts for one frame: [`reset`](Self::reset) forgets it. The default
+    /// ignores it, which is always correct, only slower.
+    fn set_damage(&mut self, region: (i32, i32, u32, u32)) {
+        let _ = region;
+    }
+
     /// The whole surface as premultiplied RGBA, 4 bytes per pixel, row by row, rendering first if
     /// anything changed since the last call.
     fn pixels(&mut self) -> &[u8];

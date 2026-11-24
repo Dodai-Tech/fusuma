@@ -25,6 +25,8 @@ pub struct CpuScene {
     target: Pixmap,
     size: (u16, u16),
     dirty: bool,
+    /// The part of the next frame that matters, from [`Scene::set_damage`].
+    damage: Option<(i32, i32, u32, u32)>,
 }
 
 impl CpuScene {
@@ -42,7 +44,44 @@ impl CpuScene {
             target: Pixmap::new(w, h),
             size: (w, h),
             dirty: true,
+            damage: None,
         })
+    }
+
+    /// `region` cut to the surface, as (x, y, width, height) in pixels; `None` when it is empty or is the whole
+    /// surface (a full render is then the same work, without the copy).
+    fn clip_damage(&self, region: (i32, i32, u32, u32)) -> Option<(u16, u16, u16, u16)> {
+        let (w, h) = (i64::from(self.size.0), i64::from(self.size.1));
+        let (x0, y0) = (
+            i64::from(region.0).clamp(0, w),
+            i64::from(region.1).clamp(0, h),
+        );
+        let x1 = (i64::from(region.0) + i64::from(region.2)).clamp(0, w);
+        let y1 = (i64::from(region.1) + i64::from(region.3)).clamp(0, h);
+        if x1 <= x0 || y1 <= y0 || (x0, y0, x1, y1) == (0, 0, w, h) {
+            return None;
+        }
+        Some((x0 as u16, y0 as u16, (x1 - x0) as u16, (y1 - y0) as u16))
+    }
+
+    /// Rasterises only `region` of the scene, into a pixmap of that size, and copies it into the picture: the cost
+    /// follows the area that changed, not the surface.
+    fn render_region(&mut self, (x, y, w, h): (u16, u16, u16, u16)) {
+        let mut part = Pixmap::new(w, h);
+        let settings = vello_cpu::RasterizerSettings {
+            offset: (-i32::from(x), -i32::from(y)),
+            ..vello_cpu::RasterizerSettings::default()
+        };
+        self.ctx
+            .render_with(&mut part, &mut self.resources, settings);
+        let stride = usize::from(self.size.0) * 4;
+        let row = usize::from(w) * 4;
+        let src = part.data_as_u8_slice();
+        let dst = self.target.data_as_u8_slice_mut();
+        for r in 0..usize::from(h) {
+            let at = (usize::from(y) + r) * stride + usize::from(x) * 4;
+            dst[at..at + row].copy_from_slice(&src[r * row..(r + 1) * row]);
+        }
     }
 
     /// The context, for what Vello offers beyond Fusuma's trait (layers, filters, blurs).
@@ -61,6 +100,11 @@ impl Scene for CpuScene {
     fn reset(&mut self) {
         self.ctx.reset();
         self.dirty = true;
+        self.damage = None;
+    }
+
+    fn set_damage(&mut self, region: (i32, i32, u32, u32)) {
+        self.damage = Some(region);
     }
 
     fn set_translation(&mut self, dx: f64, dy: f64) {
@@ -137,9 +181,14 @@ impl Scene for CpuScene {
     fn pixels(&mut self) -> &[u8] {
         if self.dirty {
             self.ctx.flush();
-            // The scene is drawn from nothing every time, so what was there is cleared first.
-            self.target.data_as_u8_slice_mut().fill(0);
-            self.ctx.render(&mut self.target, &mut self.resources);
+            match self.damage.take().and_then(|r| self.clip_damage(r)) {
+                Some(region) => self.render_region(region),
+                None => {
+                    // The scene is drawn from nothing every time, so what was there is cleared first.
+                    self.target.data_as_u8_slice_mut().fill(0);
+                    self.ctx.render(&mut self.target, &mut self.resources);
+                }
+            }
             self.dirty = false;
         }
         self.target.data_as_u8_slice()
@@ -564,5 +613,105 @@ mod tests {
                 .unwrap();
             }
         }
+    }
+
+    /// A scene with shapes, text and a clip, drawn the same way on two surfaces.
+    fn busy(r: &mut VelloCpu) {
+        use fusuma_render::{Align, TextStyle};
+        r.clear(Color::rgb(20, 24, 30)).unwrap();
+        r.fill_rect(Rect::new(10, 12, 90, 40), 8, Color::rgb(200, 60, 60))
+            .unwrap();
+        r.fill_circle(Point::new(120, 70), 30, Color::rgba(60, 160, 220, 200))
+            .unwrap();
+        r.draw_text(
+            "Hello",
+            Point::new(14, 20),
+            &TextStyle::new(20, Color::WHITE),
+        )
+        .unwrap();
+        r.draw_text(
+            "right",
+            Point::new(190, 90),
+            &TextStyle::new(14, Color::WHITE).aligned(Align::Right),
+        )
+        .unwrap();
+        r.save().unwrap();
+        r.clip(Rect::new(40, 80, 60, 30)).unwrap();
+        r.fill_rect(Rect::new(0, 0, 200, 200), 0, Color::rgb(30, 200, 90))
+            .unwrap();
+        r.restore().unwrap();
+    }
+
+    #[test]
+    fn a_damage_region_renders_exactly_what_a_full_render_has_inside_it() {
+        use fusuma_render::Probe;
+        let mut full = new(200, 120).unwrap();
+        busy(&mut full);
+        for region in [
+            (0, 0, 50, 30),
+            (10, 12, 90, 40),
+            (95, 60, 105, 60),
+            (150, 100, 50, 20),
+            (60, 85, 3, 3),
+            (199, 119, 1, 1),
+        ] {
+            let mut part = new(200, 120).unwrap();
+            busy(&mut part);
+            part.with_scene(|s| s.set_damage((region.0, region.1, region.2, region.3)));
+            for y in region.1..region.1 + region.3 as i32 {
+                for x in region.0..region.0 + region.2 as i32 {
+                    assert_eq!(
+                        part.pixel(x, y),
+                        full.pixel(x, y),
+                        "region {region:?} at ({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn what_is_outside_the_damage_region_is_left_as_the_last_frame_had_it() {
+        use fusuma_render::Probe;
+        let mut r = new(40, 40).unwrap();
+        r.clear(Color::rgb(255, 0, 0)).unwrap();
+        assert_eq!(r.pixel(30, 30), Some(Color::rgb(255, 0, 0)));
+        r.with_scene(Scene::reset);
+        r.fill_rect(Rect::new(0, 0, 10, 10), 0, Color::rgb(0, 0, 255))
+            .unwrap();
+        r.with_scene(|s| s.set_damage((0, 0, 10, 10)));
+        assert_eq!(r.pixel(5, 5), Some(Color::rgb(0, 0, 255)));
+        assert_eq!(
+            r.pixel(30, 30),
+            Some(Color::rgb(255, 0, 0)),
+            "not rendered again, not cleared"
+        );
+    }
+
+    #[test]
+    fn odd_damage_regions_are_harmless_and_the_hint_lasts_one_frame() {
+        use fusuma_render::Probe;
+        let mut r = new(30, 30).unwrap();
+        for region in [
+            (0, 0, 0, 0),
+            (-50, -50, 10, 10),
+            (100, 100, 5, 5),
+            (0, 0, 30, 30),
+            (-5, -5, 100, 100),
+            (i32::MAX, 0, 9, 9),
+            (i32::MIN, 0, u32::MAX, 5),
+            (5, 5, u32::MAX, u32::MAX),
+        ] {
+            r.with_scene(Scene::reset);
+            r.fill_rect(Rect::new(0, 0, 30, 30), 0, Color::rgb(9, 9, 9))
+                .unwrap();
+            r.with_scene(|s| s.set_damage(region));
+            let _ = r.pixel(1, 1);
+        }
+        // A frame after a hinted one is a full render again.
+        r.with_scene(Scene::reset);
+        r.fill_rect(Rect::new(0, 0, 30, 30), 0, Color::rgb(7, 7, 7))
+            .unwrap();
+        assert_eq!(r.pixel(29, 29), Some(Color::rgb(7, 7, 7)));
     }
 }

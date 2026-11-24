@@ -77,7 +77,11 @@ impl Canvas {
                 let r: &mut VelloCpu = r;
                 r.with_scene(vello_cpu::Scene::reset);
                 let region = log_err(shell.frame(now_ms, r))?;
-                r.with_scene(|s| blit(s.pixels(), width, region, frame));
+                // Only what changed is rasterised.
+                r.with_scene(|s| {
+                    vello_cpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
+                    blit(s.pixels(), width, region, frame);
+                });
                 Some(region)
             }
             Surface::Gpu(r) => {
