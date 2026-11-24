@@ -9,9 +9,17 @@ impl<const N: usize> Tree<N> {
     /// Steps every animation by `dt_ms` milliseconds. Returns true while something is still
     /// moving, so the caller keeps drawing frames; a tree at rest costs nothing.
     ///
-    /// Today the only animated widget is the button, which fades between its rest look and its
-    /// hovered look over [`MotionTimes::fast_ms`](crate::theme::MotionTimes).
+    /// A button fades between its rest look and its hovered look over
+    /// [`MotionTimes::fast_ms`](crate::theme::MotionTimes); a scroll container goes on after a flick and springs back
+    /// from an end.
     pub fn advance(&mut self, theme: &Theme, dt_ms: u32) -> bool {
+        // Scroll containers fling and bounce; a finger dragging one needs frames too.
+        let scrolling = self.advance_scroll(dt_ms);
+        let fading = self.advance_buttons(theme, dt_ms);
+        scrolling || fading
+    }
+
+    fn advance_buttons(&mut self, theme: &Theme, dt_ms: u32) -> bool {
         let Some(root) = self.root.map(usize::from) else {
             return false;
         };

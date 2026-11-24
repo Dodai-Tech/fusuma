@@ -125,6 +125,20 @@ pub trait Scene {
         let _ = region;
     }
 
+    /// Adds `region` to the parts of the next frame that matter (see [`set_damage`](Self::set_damage), which only
+    /// applies when nothing was added). The default ignores it.
+    fn add_damage(&mut self, region: (i32, i32, u32, u32)) {
+        let _ = region;
+    }
+
+    /// Moves the picture already rendered inside `region` down by `dy` rows before this frame's damage is
+    /// rendered, and returns true; false when the scene cannot, and then nothing was changed. It is only valid
+    /// together with [`add_damage`](Self::add_damage) for the parts that moved in, so the default cannot.
+    fn shift(&mut self, region: (i32, i32, u32, u32), dy: i32) -> bool {
+        let _ = (region, dy);
+        false
+    }
+
     /// The whole surface as premultiplied RGBA, 4 bytes per pixel, row by row, rendering first if
     /// anything changed since the last call.
     fn pixels(&mut self) -> &[u8];
@@ -397,6 +411,25 @@ impl<S: Scene> Renderer for Backend<S> {
             i.state.clip = Rect::new(i.state.clip.x, i.state.clip.y, 0, 0);
         }
         Ok(())
+    }
+
+    fn shift_area(&mut self, rect: Rect, dy: i32) -> bool {
+        let i = self.inner.get_mut();
+        let device = rect.translate(i.state.tx, i.state.ty);
+        // Only a rectangle wholly inside the surface can be shifted as asked.
+        let surface = Rect::new(0, 0, i.size.w, i.size.h);
+        if device.is_empty() || device.intersect(&surface) != device {
+            return false;
+        }
+        i.scene.shift((device.x, device.y, device.w, device.h), dy)
+    }
+
+    fn will_draw(&mut self, rect: Rect) {
+        let i = self.inner.get_mut();
+        let device = rect
+            .translate(i.state.tx, i.state.ty)
+            .intersect(&Rect::new(0, 0, i.size.w, i.size.h));
+        i.scene.add_damage((device.x, device.y, device.w, device.h));
     }
 
     fn translate(&mut self, dx: i32, dy: i32) -> Res {

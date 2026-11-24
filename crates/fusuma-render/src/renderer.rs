@@ -69,6 +69,22 @@ pub trait Renderer {
     /// Returns the backend's error.
     fn clip(&mut self, rect: Rect) -> Result<(), Self::Error>;
 
+    /// Moves the pixels already drawn inside `rect` (in the current space) down by `dy` rows (up when negative), the
+    /// way a scroll does, and returns true. What comes into view at the top or bottom edge is left unspecified: the
+    /// caller draws it. Returns false, and changes nothing, when this backend cannot (the default), and then the
+    /// caller redraws the whole area instead. It ignores the clip, and `rect` must lie inside the surface.
+    fn shift_area(&mut self, rect: Rect, dy: i32) -> bool {
+        let _ = (rect, dy);
+        false
+    }
+
+    /// Says that this frame will draw only inside `rect` (in the current space), so a backend that renders lazily
+    /// can rasterise just that. Call it once for each area, before drawing in it. It is a hint: ignoring it is always
+    /// correct, and the default does.
+    fn will_draw(&mut self, rect: Rect) {
+        let _ = rect;
+    }
+
     /// Moves the origin by `(dx, dy)`.
     ///
     /// # Errors

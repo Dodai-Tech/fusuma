@@ -200,12 +200,16 @@ impl<const N: usize> Tree<N> {
 
     /// Scrolls container `i` to `to` pixels (cut to what the content allows); the layout is redone.
     pub(crate) fn set_scroll(&mut self, i: usize, to: i32) {
+        // Code, the wheel and the keyboard take the scroll over from a fling or a bounce.
+        self.cancel_motion(i);
         let to = to.clamp(0, self.scroll_max_at(i));
-        if let Kind::Scroll { offset, .. } = &mut self.nodes[i].kind
-            && *offset != to
+        if let Kind::Scroll { offset, over, .. } = &mut self.nodes[i].kind
+            && (*offset != to || *over != 0)
         {
+            let before = *offset + *over;
             *offset = to;
-            self.request(i, Flags::LAYOUT | Flags::PAINT);
+            *over = 0;
+            self.note_scroll(i, before);
         }
     }
 
@@ -237,8 +241,11 @@ impl<const N: usize> Tree<N> {
             }
         }
         if d.moving {
-            let to = i64::from(d.offset0) - (i64::from(p.y) - i64::from(d.start_y));
-            self.set_scroll(s, to.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32);
+            let raw = i64::from(d.offset0) - (i64::from(p.y) - i64::from(d.start_y));
+            d.raw = raw.clamp(-30_000, 30_000) as i32;
+            // Past an end the content resists, like a rubber band, instead of stopping dead.
+            let (offset, over) = self.rubber(s, d.raw);
+            self.set_motion_offset(s, offset, over);
         }
         self.drag = Some(d);
     }

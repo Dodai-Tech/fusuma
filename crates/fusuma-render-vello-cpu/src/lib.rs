@@ -17,6 +17,9 @@ use vello_cpu::{Pixmap, RenderContext, Resources};
 /// whatever the size of the region (a 410-pixel-wide band of 78 rows).
 pub const SCRATCH_BYTES: usize = 128 * 1024;
 
+/// The most picture moves one frame may ask for.
+const MAX_SHIFTS: usize = 4;
+
 /// The Fusuma renderer on `vello_cpu`.
 pub type VelloCpu = Backend<CpuScene>;
 
@@ -28,8 +31,10 @@ pub struct CpuScene {
     target: Pixmap,
     size: (u16, u16),
     dirty: bool,
-    /// The part of the next frame that matters, from [`Scene::set_damage`].
-    damage: Option<(i32, i32, u32, u32)>,
+    /// The parts of the next frame that matter, from [`Scene::add_damage`] and [`Scene::set_damage`].
+    damage: alloc::vec::Vec<(i32, i32, u32, u32)>,
+    /// Moves of the picture to make before the damage is rendered, from [`Scene::shift`].
+    shifts: alloc::vec::Vec<((i32, i32, u32, u32), i32)>,
     /// The reused buffer a damaged region is rasterised through, in bands.
     scratch: alloc::vec::Vec<u8>,
 }
@@ -49,14 +54,99 @@ impl CpuScene {
             target: Pixmap::new(w, h),
             size: (w, h),
             dirty: true,
-            damage: None,
+            damage: alloc::vec::Vec::new(),
+            shifts: alloc::vec::Vec::new(),
             scratch: alloc::vec::Vec::new(),
         })
+    }
+
+    /// Brings the picture up to date: the moves of what was drawn before, then the parts that changed. With no part
+    /// named the whole scene is rendered; with some named, only those.
+    fn render_frame(&mut self) {
+        let damage = core::mem::take(&mut self.damage);
+        let shifts = core::mem::take(&mut self.shifts);
+        let whole = (0, 0, self.size.0, self.size.1);
+        let mut parts: alloc::vec::Vec<(u16, u16, u16, u16)> = alloc::vec::Vec::new();
+        let mut full = damage.is_empty() && shifts.is_empty();
+        for r in damage {
+            match self.clip_damage(r) {
+                Some(p) if (p.0, p.1, p.2, p.3) == (0, 0, whole.2, whole.3) => full = true,
+                Some(p) => parts.push(p),
+                None => {
+                    // Empty, or the whole surface: told apart here.
+                    if r.2 > 0 && r.3 > 0 && self.covers_surface(r) {
+                        full = true;
+                    }
+                }
+            }
+        }
+        if full {
+            // The scene is drawn from nothing every time, so what was there is cleared first.
+            self.target.data_as_u8_slice_mut().fill(0);
+            self.ctx.render(&mut self.target, &mut self.resources);
+            return;
+        }
+        for (region, dy) in shifts {
+            self.shift_picture(region, dy);
+        }
+        for p in parts {
+            self.render_region(p);
+        }
+    }
+
+    /// Whether `region` covers the whole surface.
+    fn covers_surface(&self, r: (i32, i32, u32, u32)) -> bool {
+        let (w, h) = (i64::from(self.size.0), i64::from(self.size.1));
+        i64::from(r.0) <= 0
+            && i64::from(r.1) <= 0
+            && i64::from(r.0) + i64::from(r.2) >= w
+            && i64::from(r.1) + i64::from(r.3) >= h
+    }
+
+    /// Moves the rows of `region` down by `dy` (up when negative) in the picture. What comes in at an edge is left
+    /// as it was; the frame renders it.
+    fn shift_picture(&mut self, region: (i32, i32, u32, u32), dy: i32) {
+        let Some((x, y, w, h)) = self.clip_rect(region) else {
+            return;
+        };
+        let (x, y, w, h) = (
+            usize::from(x),
+            usize::from(y),
+            usize::from(w),
+            usize::from(h),
+        );
+        let by = usize::try_from(dy.unsigned_abs()).unwrap_or(usize::MAX);
+        if by == 0 || by >= h {
+            return;
+        }
+        let (stride, row) = (usize::from(self.size.0) * 4, w * 4);
+        let data = self.target.data_as_u8_slice_mut();
+        let copy = |data: &mut [u8], from: usize, to: usize| {
+            let (a, b) = (from * stride + x * 4, to * stride + x * 4);
+            data.copy_within(a..a + row, b);
+        };
+        if dy > 0 {
+            // Down: the bottom rows first, so a row is not overwritten before it has moved.
+            for to in (y + by..y + h).rev() {
+                copy(data, to - by, to);
+            }
+        } else {
+            for to in y..y + h - by {
+                copy(data, to + by, to);
+            }
+        }
     }
 
     /// `region` cut to the surface, as (x, y, width, height) in pixels; `None` when it is empty or is the whole
     /// surface (a full render is then the same work, without the copy).
     fn clip_damage(&self, region: (i32, i32, u32, u32)) -> Option<(u16, u16, u16, u16)> {
+        let p = self.clip_rect(region)?;
+        let whole = (0, 0, self.size.0, self.size.1);
+        ((p.0, p.1, p.2, p.3) != whole).then_some(p)
+    }
+
+    /// `region` cut to the surface; `None` when nothing is left.
+    fn clip_rect(&self, region: (i32, i32, u32, u32)) -> Option<(u16, u16, u16, u16)> {
         let (w, h) = (i64::from(self.size.0), i64::from(self.size.1));
         let (x0, y0) = (
             i64::from(region.0).clamp(0, w),
@@ -64,7 +154,7 @@ impl CpuScene {
         );
         let x1 = (i64::from(region.0) + i64::from(region.2)).clamp(0, w);
         let y1 = (i64::from(region.1) + i64::from(region.3)).clamp(0, h);
-        if x1 <= x0 || y1 <= y0 || (x0, y0, x1, y1) == (0, 0, w, h) {
+        if x1 <= x0 || y1 <= y0 {
             return None;
         }
         Some((x0 as u16, y0 as u16, (x1 - x0) as u16, (y1 - y0) as u16))
@@ -119,11 +209,28 @@ impl Scene for CpuScene {
     fn reset(&mut self) {
         self.ctx.reset();
         self.dirty = true;
-        self.damage = None;
+        self.damage.clear();
+        self.shifts.clear();
     }
 
     fn set_damage(&mut self, region: (i32, i32, u32, u32)) {
-        self.damage = Some(region);
+        // A frame that said which parts it draws (`add_damage`) knows better than a platform's bounding box.
+        if self.damage.is_empty() {
+            self.damage.push(region);
+        }
+    }
+
+    fn add_damage(&mut self, region: (i32, i32, u32, u32)) {
+        self.damage.push(region);
+    }
+
+    fn shift(&mut self, region: (i32, i32, u32, u32), dy: i32) -> bool {
+        // More than a few moves in one frame is not a scroll: let the caller redraw.
+        if self.shifts.len() >= MAX_SHIFTS {
+            return false;
+        }
+        self.shifts.push((region, dy));
+        true
     }
 
     fn set_translation(&mut self, dx: f64, dy: f64) {
@@ -200,14 +307,7 @@ impl Scene for CpuScene {
     fn pixels(&mut self) -> &[u8] {
         if self.dirty {
             self.ctx.flush();
-            match self.damage.take().and_then(|r| self.clip_damage(r)) {
-                Some(region) => self.render_region(region),
-                None => {
-                    // The scene is drawn from nothing every time, so what was there is cleared first.
-                    self.target.data_as_u8_slice_mut().fill(0);
-                    self.ctx.render(&mut self.target, &mut self.resources);
-                }
-            }
+            self.render_frame();
             self.dirty = false;
         }
         self.target.data_as_u8_slice()
@@ -790,5 +890,110 @@ mod tests {
         r.with_scene(|s| s.set_damage((7, 0, 1, 600)));
         use fusuma_render::Probe;
         assert_eq!(r.pixel(7, 599), Some(Color::rgb(1, 2, 3)));
+    }
+
+    /// A picture with a vertical gradient of distinct rows and some text, so a wrong move shows.
+    fn rows(r: &mut VelloCpu) {
+        r.clear(Color::rgb(0, 0, 0)).unwrap();
+        for y in 0..80 {
+            r.fill_rect(
+                Rect::new(0, y, 100, 1),
+                0,
+                Color::rgb(y as u8 * 3, 255 - y as u8 * 3, 40),
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn shifting_moves_the_picture_and_the_frame_renders_what_came_in() {
+        use fusuma_render::Probe;
+        for dy in [-7, -1, 1, 7, -40, 33] {
+            let mut r = new(100, 80).unwrap();
+            rows(&mut r);
+            assert_eq!(
+                r.pixel(0, 0),
+                Some(Color::rgb(0, 255, 40)),
+                "the first frame is drawn"
+            );
+            // The next frame: move rows 10..70 by dy, and say what is drawn anew (the strip that came in).
+            r.with_scene(Scene::reset);
+            assert!(r.shift_area(Rect::new(0, 10, 100, 60), dy));
+            let strip = if dy > 0 {
+                Rect::new(0, 10, 100, dy as u32)
+            } else {
+                Rect::new(0, 70 + dy, 100, dy.unsigned_abs())
+            };
+            r.will_draw(strip);
+            r.fill_rect(strip, 0, Color::rgb(250, 0, 250)).unwrap();
+            for y in 0..80 {
+                let want = if !(10..70).contains(&y) {
+                    Color::rgb(y as u8 * 3, 255 - y as u8 * 3, 40)
+                } else if (strip.y..strip.bottom()).contains(&y) {
+                    Color::rgb(250, 0, 250)
+                } else {
+                    let from = y - dy;
+                    Color::rgb(from as u8 * 3, 255 - from as u8 * 3, 40)
+                };
+                assert_eq!(r.pixel(50, y), Some(want), "dy {dy}, row {y}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_shift_of_nothing_or_of_the_whole_height_changes_no_pixel() {
+        use fusuma_render::Probe;
+        let mut r = new(100, 80).unwrap();
+        rows(&mut r);
+        let before: Vec<_> = (0..80).map(|y| r.pixel(50, y)).collect();
+        for dy in [0, 60, -60, 500] {
+            r.with_scene(Scene::reset);
+            assert!(r.shift_area(Rect::new(0, 10, 100, 60), dy));
+            r.will_draw(Rect::new(0, 0, 1, 1));
+            r.fill_rect(Rect::new(0, 0, 1, 1), 0, Color::rgb(0, 0, 0))
+                .unwrap();
+            let after: Vec<_> = (0..80).map(|y| r.pixel(50, y)).collect();
+            assert_eq!(after, before, "dy {dy}");
+        }
+    }
+
+    #[test]
+    fn shift_areas_that_do_not_fit_the_surface_are_refused_and_too_many_moves_are_too() {
+        let mut r = new(100, 80).unwrap();
+        assert!(
+            !r.shift_area(Rect::new(0, 0, 200, 10), 1),
+            "wider than the surface"
+        );
+        assert!(
+            !r.shift_area(Rect::new(0, 70, 100, 20), 1),
+            "past the bottom"
+        );
+        assert!(!r.shift_area(Rect::new(0, 0, 0, 0), 1), "empty");
+        r.with_scene(Scene::reset);
+        assert!((0..4).all(|_| r.shift_area(Rect::new(0, 0, 10, 10), 1)));
+        assert!(
+            !r.shift_area(Rect::new(0, 0, 10, 10), 1),
+            "the fifth in one frame"
+        );
+    }
+
+    #[test]
+    fn several_damage_areas_are_each_rendered_and_nothing_between_them_is() {
+        use fusuma_render::Probe;
+        let mut r = new(100, 80).unwrap();
+        r.clear(Color::rgb(9, 9, 9)).unwrap();
+        assert_eq!(r.pixel(50, 40), Some(Color::rgb(9, 9, 9)));
+        r.with_scene(Scene::reset);
+        for rect in [Rect::new(0, 0, 10, 10), Rect::new(90, 70, 10, 10)] {
+            r.will_draw(rect);
+            r.fill_rect(rect, 0, Color::rgb(1, 2, 3)).unwrap();
+        }
+        assert_eq!(r.pixel(5, 5), Some(Color::rgb(1, 2, 3)));
+        assert_eq!(r.pixel(95, 75), Some(Color::rgb(1, 2, 3)));
+        assert_eq!(
+            r.pixel(50, 40),
+            Some(Color::rgb(9, 9, 9)),
+            "the middle was not rendered, so it is as it was"
+        );
     }
 }

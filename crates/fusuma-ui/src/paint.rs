@@ -53,9 +53,12 @@ impl<const N: usize> Tree<N> {
         let Some(root) = self.root.map(usize::from) else {
             return Ok(());
         };
+        // Everything is drawn: nothing is left of a shift to make.
+        self.shift = None;
         self.paint_walk(root, renderer, theme, None)?;
         self.clear_flag(Flags::PAINT);
         self.damage = None;
+        self.rest = None;
         Ok(())
     }
 
@@ -120,7 +123,10 @@ impl<const N: usize> Tree<N> {
     fn end_scroll<R: Renderer>(&self, i: usize, r: &mut R, theme: &Theme) -> Result<(), R::Error> {
         let n = &self.nodes[i];
         let mut result = Ok(());
-        if let Kind::Scroll { offset, content } = n.kind {
+        if let Kind::Scroll {
+            offset, content, ..
+        } = n.kind
+        {
             let view = n.rect.inset(n.style.padding).h;
             if content > view && view > 0 {
                 let track = n.rect;
@@ -184,6 +190,7 @@ impl<const N: usize> Tree<N> {
         if covered {
             self.clear_flag(Flags::PAINT);
             self.damage = None;
+            self.rest = None;
         }
         Ok(())
     }

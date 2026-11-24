@@ -11,6 +11,8 @@ mod layout;
 mod paint;
 #[cfg(test)]
 mod scroll;
+mod scrollphys;
+mod scrollshift;
 mod shell;
 mod textinput;
 mod theme;

@@ -244,6 +244,8 @@ pub(crate) enum Kind {
     Scroll {
         offset: i32,
         content: u32,
+        /// How far the content is pulled past an end (negative above the top), by a drag or a bounce. 0 at rest.
+        over: i32,
     },
 }
 
@@ -254,6 +256,11 @@ pub(crate) struct Drag {
     pub start_y: i32,
     pub offset0: i32,
     pub moving: bool,
+    /// Where the finger would have the content, unclamped, in pixels.
+    pub raw: i32,
+    /// `raw` at the last frame, and the speed of the content in pixels a second, to start a fling with.
+    pub last_raw: i32,
+    pub vel: i32,
 }
 
 impl Kind {
@@ -426,6 +433,10 @@ pub struct Tree<const N: usize> {
     pub(crate) captured: Option<NodeId>,
     /// A press inside a scroll container, which becomes a scroll when dragged far enough.
     pub(crate) drag: Option<Drag>,
+    /// What a scroll container is doing after a finger let go: a fling, or a bounce back from an end.
+    pub(crate) motion: Option<crate::scrollphys::Motion>,
+    /// A press stopped a moving scroll: the lift after it is not a click.
+    pub(crate) caught: bool,
     /// A widget to scroll into view at the next layout.
     pub(crate) pending_reveal: Option<NodeId>,
     /// Where the next character of the focused text field will appear, as of the last layout.
@@ -443,6 +454,12 @@ pub struct Tree<const N: usize> {
     pub(crate) disabled_dirty: bool,
     /// The area that needs painting again: everything that changed, as one bounding rectangle.
     pub(crate) damage: Option<Rect>,
+    /// The part of the damage that is a change and not the move of a scroll (see `scrollshift`).
+    pub(crate) rest: Option<Rect>,
+    /// A scroll container whose pixels are moved instead of redrawn.
+    pub(crate) shift: Option<crate::scrollshift::ShiftState>,
+    /// Whether the layout has run since the shift began: damage after that is in the positions the rows will be drawn.
+    pub(crate) shift_laid: bool,
     actions: [Option<Action>; ACTION_QUEUE],
     action_head: usize,
     action_len: usize,
@@ -466,6 +483,8 @@ impl<const N: usize> Tree<N> {
             pointer: None,
             captured: None,
             drag: None,
+            motion: None,
+            caught: false,
             pending_reveal: None,
             caret: None,
             preedit: InputText::EMPTY,
@@ -476,6 +495,9 @@ impl<const N: usize> Tree<N> {
             bounds: None,
             disabled_dirty: false,
             damage: None,
+            rest: None,
+            shift: None,
+            shift_laid: false,
             actions: [None; ACTION_QUEUE],
             action_head: 0,
             action_len: 0,
@@ -571,7 +593,26 @@ impl<const N: usize> Tree<N> {
         if rect.is_empty() {
             return;
         }
+        // A change that reaches into a shifting window means its moved pixels cannot be trusted: redraw all of it.
+        let hits = self
+            .shift
+            .and_then(|s| self.slot(s.scroll))
+            .is_some_and(|i| {
+                let o = self.nodes[i].rect.intersect(&rect);
+                o.w > 0 && o.h > 0
+            });
+        if hits && !self.shift_laid {
+            self.cancel_shift();
+        }
         self.damage = Some(self.damage.map_or(rect, |d| d.union(&rect)));
+        self.rest = Some(self.rest.map_or(rect, |d| d.union(&rect)));
+    }
+
+    /// Damage that the screen has to be sent but that needs no drawing: pixels that were moved.
+    pub(crate) fn add_present_damage(&mut self, rect: Rect) {
+        if !rect.is_empty() {
+            self.damage = Some(self.damage.map_or(rect, |d| d.union(&rect)));
+        }
     }
 
     /// Moves a node to `rect`; if that changes where it is, both the old and the new place need
@@ -583,8 +624,11 @@ impl<const N: usize> Tree<N> {
                 self.clip_to_viewports(i, old),
                 self.clip_to_viewports(i, rect),
             );
-            self.add_damage(old_seen);
-            self.add_damage(new_seen);
+            // Rows moved by a scroll are not changes: the shift accounts for them.
+            if !self.in_shift(i) {
+                self.add_damage(old_seen);
+                self.add_damage(new_seen);
+            }
             self.nodes[i].rect = rect;
         }
     }
@@ -789,6 +833,7 @@ impl<const N: usize> Tree<N> {
             Kind::Scroll {
                 offset: 0,
                 content: 0,
+                over: 0,
             },
             style,
         )
@@ -1100,6 +1145,8 @@ impl<const N: usize> Tree<N> {
     /// since the last paint, in tree coordinates. Taking it clears it; pair it with
     /// [`paint_region`](Self::paint_region) to redraw only that part of the screen.
     pub fn take_damage(&mut self) -> Option<Rect> {
+        self.cancel_shift();
+        self.rest = None;
         self.damage.take()
     }
 
@@ -1107,6 +1154,8 @@ impl<const N: usize> Tree<N> {
     /// node bigger than the screen does not make the area bigger than the screen. Damage entirely
     /// outside `limit` is no damage.
     pub fn take_damage_in(&mut self, limit: Rect) -> Option<Rect> {
+        self.cancel_shift();
+        self.rest = None;
         let clipped = self.damage.take()?.intersect(&limit);
         (!clipped.is_empty()).then_some(clipped)
     }

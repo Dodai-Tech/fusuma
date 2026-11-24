@@ -168,16 +168,28 @@ impl<const N: usize> Tree<N> {
                 {
                     self.slider_to_x(held, p.x);
                 }
-                let h = self.hit(p);
-                self.set_hover(h);
+                // While a scroll waits to be laid out the rows are not where they will be: the hover is worked out
+                // after the layout, in `update`.
+                if self.shift.is_none() {
+                    let h = self.hit(p);
+                    self.set_hover(h);
+                }
             }
             Pointer::Down(p) => {
                 self.pointer = Some(p);
-                self.drag = self.scroll_at(p).map(|s| Drag {
-                    scroll: self.id_of(s),
-                    start_y: p.y,
-                    offset0: self.scroll_offset_at(s),
-                    moving: false,
+                // A press on a container that is flinging or bouncing stops it, and the lift is not a click.
+                self.caught = self.catch_motion();
+                self.drag = self.scroll_at(p).map(|s| {
+                    let at = self.scroll_offset_at(s);
+                    Drag {
+                        scroll: self.id_of(s),
+                        start_y: p.y,
+                        offset0: at,
+                        moving: false,
+                        raw: at,
+                        last_raw: at,
+                        vel: 0,
+                    }
                 });
                 let h = self.hit(p);
                 self.set_hover(h);
@@ -190,24 +202,34 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Up(p) => {
                 self.pointer = Some(p);
-                self.drag = None;
+                let released = self.drag.take();
                 let h = self.hit(p);
+                let caught = core::mem::take(&mut self.caught);
                 if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {
                     self.dispatch(
                         held,
                         Phase::Up {
-                            inside: h == Some(held),
+                            inside: h == Some(held) && !caught,
                         },
                     );
                 }
-                self.set_hover(h);
+                if self.shift.is_none() {
+                    self.set_hover(h);
+                }
+                // A scroll that was dragged goes on by itself, or bounces back from an end.
+                if let Some(d) = released.filter(|d| d.moving) {
+                    self.release_scroll(d);
+                }
             }
             Pointer::Wheel(p, dy) => {
                 if let Some(s) = self.scroll_at(p) {
+                    self.cancel_motion(s);
                     let to = self.scroll_offset_at(s).saturating_add(dy);
                     self.set_scroll(s, to);
-                    let h = self.hit(p);
-                    self.set_hover(h);
+                    if self.shift.is_none() {
+                        let h = self.hit(p);
+                        self.set_hover(h);
+                    }
                 }
             }
             Pointer::Leave => {

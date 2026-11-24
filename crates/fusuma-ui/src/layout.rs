@@ -127,10 +127,20 @@ impl<const N: usize> Tree<N> {
         // The cursor of a text field a press landed on, and where the caret is.
         self.resolve_input(renderer, theme);
         self.clear_flag(Flags::LAYOUT);
+        // From here the rows are where they will be drawn, so a change in the shifting window can be drawn over it.
+        self.shift_laid = self.shift.is_some();
         // Things may have moved under the pointer.
         if let Some(p) = self.pointer {
             let h = self.hit(p);
             self.set_hover(h);
+        }
+    }
+
+    /// Lays the tree out again at the same bounds, for a test that moves things between frames.
+    #[cfg(test)]
+    pub(crate) fn relayout<R: Renderer>(&mut self, renderer: &R, theme: &Theme) {
+        if let Some(b) = self.bounds {
+            self.update(renderer, theme, b);
         }
     }
 
@@ -237,10 +247,17 @@ impl<const N: usize> Tree<N> {
         if scrolls {
             let content = taken.saturating_add(gaps);
             let max = content.saturating_sub(inner.h);
-            if let Kind::Scroll { offset, content: c } = &mut self.nodes[i].kind {
+            if let Kind::Scroll {
+                offset,
+                content: c,
+                over,
+            } = &mut self.nodes[i].kind
+            {
                 *offset = (*offset).clamp(0, i32::try_from(max).unwrap_or(i32::MAX));
                 *c = content;
-                start = -i64::from(*offset);
+                let reach = i32::try_from(inner.h).unwrap_or(i32::MAX);
+                *over = (*over).clamp(-reach, reach);
+                start = -(i64::from(*offset) + i64::from(*over));
             }
         }
         let mut room = main_total.saturating_sub(gaps).saturating_sub(taken);
