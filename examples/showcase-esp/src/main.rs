@@ -2,7 +2,7 @@
 //!
 //! The app is `fusuma-showcase`, the same code the host tests draw. Everything else (display, touch, the
 //! frame loop and which renderer to draw with) is `fusuma-platform-esp`. The renderer is automatic; the
-//! project's `fusuma.toml` can pin one, and a cargo feature (`render-integer`, `render-skia`,
+//! project's `fusuma.toml` can pin one, and a cargo feature (`render-integer`,
 //! `render-vello-cpu`) overrides both.
 
 use fusuma_platform_esp::{Backend, BackendSetting, Options, RenderLayer, run};
@@ -12,8 +12,6 @@ use fusuma_showcase::Showcase;
 const fn requested() -> Option<Backend> {
     if cfg!(feature = "render-integer") {
         Some(Backend::Integer)
-    } else if cfg!(feature = "render-skia") {
-        Some(Backend::Skia)
     } else if cfg!(feature = "render-vello-cpu") {
         Some(Backend::VelloCpu)
     } else {

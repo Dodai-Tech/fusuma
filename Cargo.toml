@@ -14,7 +14,6 @@ members = [
     "crates/fusuma-cells",
     "crates/fusuma-platform-tui",
     "crates/fusuma-render-vello-common",
-    "crates/fusuma-render-skia",
     "crates/fusuma-render-vello-cpu",
     "crates/fusuma-render-vello",
     "examples/showcase",
@@ -38,7 +37,6 @@ categories = ["graphics", "embedded", "no-std", "rendering"]
 fusuma-render = { path = "crates/fusuma-render", version = "0.2.0" }
 fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.2.0" }
 embedded-graphics = "0.8.2"
-fusuma-render-skia = { path = "crates/fusuma-render-skia", version = "0.2.0", default-features = false }
 fusuma-render-vello = { path = "crates/fusuma-render-vello", version = "0.2.0" }
 fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "0.2.0", default-features = false }
 vello_gpu = { version = "0.4", default-features = false, features = ["wgpu", "wgpu_default", "full_image_support"] }
@@ -54,7 +52,6 @@ fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-cells = { path = "crates/fusuma-cells", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
 vello_common = { version = "0.4", default-features = false }
-tiny-skia = { version = "0.12", default-features = false }
 vello_cpu = { version = "0.4", default-features = false, features = ["u8_pipeline"] }
 
 [workspace.lints.rust]

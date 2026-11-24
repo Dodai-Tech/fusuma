@@ -22,9 +22,6 @@ pub mod renderers {
     /// The integer, `no_std` renderer for microcontroller displays (`renderer-integer`).
     #[cfg(feature = "renderer-integer")]
     pub use fusuma_render_embedded as embedded;
-    /// The `tiny-skia` renderer (`renderer-skia`).
-    #[cfg(feature = "renderer-skia")]
-    pub use fusuma_render_skia as skia;
     /// Vello on a GPU (`renderer-vello-gpu`).
     #[cfg(feature = "renderer-vello-gpu")]
     pub use fusuma_render_vello as vello_gpu;

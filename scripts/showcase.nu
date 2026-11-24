@@ -9,8 +9,8 @@
 # `otadata` entry selects it; `restore` erases `otadata` so the board boots its factory app again.
 #
 #   nu scripts/showcase.nu detect  [--port P]
-#   nu scripts/showcase.nu build   --board B [--features render-skia]
-#   nu scripts/showcase.nu install [--board B] [--slot ota_0] [--port /dev/ttyACM0] [--features render-skia]
+#   nu scripts/showcase.nu build   --board B [--features render-vello-cpu]
+#   nu scripts/showcase.nu install [--board B] [--slot ota_0] [--port /dev/ttyACM0] [--features render-vello-cpu]
 #   nu scripts/showcase.nu restore [--port P]
 #   nu scripts/showcase.nu monitor [--port P]
 # ──────────────────────────────────────────────────────────────────────────────

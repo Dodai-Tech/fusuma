@@ -18,11 +18,11 @@ def "test layers: crates are told apart by name" [] {
     assert (is_toolkit "fusuma")
     assert (is_toolkit "fusuma-renderer-ui")
     assert (not (is_toolkit "fusuma-render-embedded"))
-    assert (not (is_toolkit "tiny-skia"))
+    assert (not (is_toolkit "vello_cpu"))
 }
 
 def "test layers: a renderer crate that depends on the toolkit is reported" [] {
-    let bad = violations [(pkg fusuma-render-vello-cpu [tiny-skia fusuma]) (pkg fusuma-render [])]
+    let bad = violations [(pkg fusuma-render-vello-cpu [vello_cpu fusuma]) (pkg fusuma-render [])]
     assert equal $bad [{ from: fusuma-render-vello-cpu, to: fusuma }]
 }
 

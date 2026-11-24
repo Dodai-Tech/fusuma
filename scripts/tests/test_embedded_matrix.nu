@@ -6,8 +6,10 @@ use runner.nu *
 use ../ci/embedded_matrix.nu [MATRIX build_args missing_targets]
 
 def "test embedded matrix: one cargo build per entry, for the right package target and features" [] {
-    let a = build_args { target: "thumbv6m-none-eabi", features: "skia" }
-    assert equal $a ["build" "-p" "fusuma-platform-embedded" "--features" "skia" "--target" "thumbv6m-none-eabi"]
+    let a = build_args { target: "thumbv7em-none-eabihf", features: "vello-cpu,libm" }
+    assert equal $a ["build" "-p" "fusuma-platform-embedded" "--features" "vello-cpu,libm" "--target" "thumbv7em-none-eabihf"]
+    let i = build_args { target: "thumbv6m-none-eabi", features: "" }
+    assert equal $i ["build" "-p" "fusuma-platform-embedded" "--target" "thumbv6m-none-eabi"]
     let c = build_args { target: "thumbv6m-none-eabi", features: "", package: "fusuma-cells" }
     assert equal $c ["build" "-p" "fusuma-cells" "--target" "thumbv6m-none-eabi"]
 }

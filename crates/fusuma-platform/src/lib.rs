@@ -22,12 +22,10 @@ pub struct Machine {
 /// A renderer backend. Each is a crate of Fusuma and passes the same conformance suite.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Backend {
-    /// `fusuma-render-embedded`: integer drawing on `embedded-graphics`; the lightest and fastest, no
-    /// anti-aliasing and no alpha.
+    /// `fusuma-render-embedded`: integer drawing straight into RGB565; the lightest and fastest, and the one for
+    /// chips where Vello has no SIMD (every microcontroller).
     Integer,
-    /// `fusuma-render-skia`: `tiny-skia`; anti-aliased, 5 bytes per pixel (pixmap and one clip mask).
-    Skia,
-    /// `fusuma-render-vello-cpu`: the richest CPU backend, and the heaviest.
+    /// `fusuma-render-vello-cpu`: the richest CPU backend, for machines where Vello has SIMD.
     VelloCpu,
     /// `fusuma-render-vello`: Vello on a GPU through `wgpu`.
     VelloGpu,
@@ -35,14 +33,13 @@ pub enum Backend {
 
 impl Backend {
     /// Every backend, lightest first.
-    pub const ALL: [Self; 4] = [Self::Integer, Self::Skia, Self::VelloCpu, Self::VelloGpu];
+    pub const ALL: [Self; 3] = [Self::Integer, Self::VelloCpu, Self::VelloGpu];
 
     /// The name used in device files and on command lines.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Integer => "integer",
-            Self::Skia => "skia",
             Self::VelloCpu => "vello-cpu",
             Self::VelloGpu => "vello-gpu",
         }
@@ -59,7 +56,6 @@ impl Backend {
     pub const fn variant(self) -> &'static str {
         match self {
             Self::Integer => "Integer",
-            Self::Skia => "Skia",
             Self::VelloCpu => "VelloCpu",
             Self::VelloGpu => "VelloGpu",
         }
@@ -70,7 +66,6 @@ impl Backend {
     pub const fn crate_name(self) -> &'static str {
         match self {
             Self::Integer => "fusuma-render-embedded",
-            Self::Skia => "fusuma-render-skia",
             Self::VelloCpu => "fusuma-render-vello-cpu",
             Self::VelloGpu => "fusuma-render-vello",
         }
@@ -81,24 +76,20 @@ impl Backend {
     pub const fn lighter(self) -> Option<Self> {
         match self {
             Self::Integer => None,
-            Self::Skia => Some(Self::Integer),
-            Self::VelloCpu => Some(Self::Skia),
+            Self::VelloCpu => Some(Self::Integer),
             Self::VelloGpu => Some(Self::VelloCpu),
         }
     }
 
     /// RAM the backend needs for a surface of `width` x `height`, in bytes. Measured on an ESP32-C6
-    /// and an ESP32-S3 (`tools/bench-c6/RESULT.md`, `tools/bench-s3/RESULT.md`): the integer
-    /// renderer's frame is 2 bytes per pixel, `tiny-skia` 5 (its pixmap of 4, measured, plus the one clip mask of
-    /// 1 that `fusuma-render-skia` makes when a shape crosses a clip, which a UI always does), `vello_cpu` about
-    /// 4.8 with its working buffers. The GPU backend keeps its pixels in video memory, so it needs none here.
+    /// and an ESP32-S3 (`tools/bench-c6/RESULT.md`, `tools/bench-s3/RESULT.md` in Hibari): the integer
+    /// renderer's frame is 2 bytes per pixel, `vello_cpu` about 4.8 with its working buffers. The GPU backend keeps its pixels in video memory, so it needs none here.
     #[must_use]
     pub const fn memory(self, width: u32, height: u32) -> u64 {
         // u32 x u32 fits in a u64, but the bytes per pixel may not: saturate.
         let pixels = width as u64 * height as u64;
         match self {
             Self::Integer => pixels.saturating_mul(2),
-            Self::Skia => pixels.saturating_mul(5),
             Self::VelloCpu => pixels.saturating_mul(48) / 10,
             Self::VelloGpu => 0,
         }
@@ -114,6 +105,10 @@ pub struct Hardware {
     pub psram_kb: u32,
     /// Whether the chip has a floating-point unit.
     pub fpu: bool,
+    /// Whether Vello can use SIMD here: x86 and x86_64 (SSE, AVX), aarch64 (NEON) and WebAssembly (`simd128`),
+    /// the levels `fearless_simd` has. Every microcontroller runs Vello's scalar fallback, several times slower
+    /// (an ESP32-S3 has SIMD of its own, which Vello does not use).
+    pub simd: bool,
     /// Whether there is a GPU that `wgpu` can use.
     pub gpu: bool,
 }
@@ -281,8 +276,10 @@ pub const fn fits(backend: Backend, width: u32, height: u32, budget_bytes: u64) 
     backend.memory(width, height) <= budget_bytes
 }
 
-/// The automatic rule: the richest backend that fits, with a reason. `None` for a device without a
-/// screen.
+/// The automatic rule, with a reason: Vello on the GPU when there is one; Vello on the CPU where it has SIMD and
+/// its frame fits; else the integer renderer, which is several times faster than Vello's scalar fallback
+/// (measured on the S3 watch: a tap 7 ms against 47, a first frame 97 ms against 558). `None` for a device without
+/// a screen.
 #[must_use]
 pub fn automatic(machine: &Machine) -> Option<Choice> {
     let (w, h) = machine.screen?;
@@ -301,19 +298,23 @@ pub fn automatic(machine: &Machine) -> Option<Choice> {
     if hw.gpu {
         return auto(Backend::VelloGpu, "the device has a GPU");
     }
-    // PSRAM holds a Vello frame with room to spare: the richest CPU backend.
-    if u64::from(hw.psram_kb) * 1024 >= 2 * Backend::VelloCpu.memory(w, h) {
-        return auto(Backend::VelloCpu, "PSRAM holds a Vello frame twice over");
-    }
-    if fits(Backend::Skia, w, h, budget(&hw, machine.render.min_free_kb)) {
+    if !hw.simd {
         return auto(
-            Backend::Skia,
-            "an anti-aliased frame fits in the memory left after the free minimum",
+            Backend::Integer,
+            "Vello has no SIMD on this chip, so the integer renderer is several times faster",
         );
+    }
+    if fits(
+        Backend::VelloCpu,
+        w,
+        h,
+        budget(&hw, machine.render.min_free_kb),
+    ) {
+        return auto(Backend::VelloCpu, "Vello has SIMD here and its frame fits");
     }
     auto(
         Backend::Integer,
-        "only the 2 bytes per pixel of the integer renderer fit in the memory left after the free minimum",
+        "Vello's frame does not fit the memory left after the free minimum",
     )
 }
 
@@ -482,6 +483,7 @@ mod tests {
         ram_kb: 512,
         psram_kb: 8192,
         fpu: true,
+        simd: false,
         gpu: false,
     };
     // The heap the C6 benchmark had: 320 KB of its 512 KB.
@@ -489,14 +491,18 @@ mod tests {
         ram_kb: 320,
         psram_kb: 0,
         fpu: false,
+        simd: false,
         gpu: false,
     };
     const PC: Hardware = Hardware {
         ram_kb: 16_000_000,
         psram_kb: 0,
         fpu: true,
+        simd: true,
         gpu: true,
     };
+    /// A computer or a single-board one with SIMD and no GPU that `wgpu` can use.
+    const NO_GPU: Hardware = Hardware { gpu: false, ..PC };
 
     fn pick(w: u32, h: u32, hw: Hardware) -> Backend {
         choose(&device(w, h, Some(hw), Render::default()), None)
@@ -510,7 +516,7 @@ mod tests {
             assert_eq!(Backend::from_name(b.name()), Some(b));
             assert!(b.crate_name().starts_with("fusuma-render"));
         }
-        assert_eq!(Backend::from_name("Skia"), None);
+        assert_eq!(Backend::from_name("skia"), None, "tiny-skia was removed");
         assert_eq!(Backend::from_name("vello"), None);
         assert_eq!(Backend::Integer.lighter(), None);
         assert_eq!(Backend::VelloGpu.lighter(), Some(Backend::VelloCpu));
@@ -522,11 +528,6 @@ mod tests {
             Backend::Integer.memory(172, 320),
             110_080,
             "measured: 110080 bytes"
-        );
-        assert_eq!(
-            Backend::Skia.memory(240, 320),
-            307_200 + 76_800,
-            "measured: a 307200-byte pixmap, plus the clip mask of 1 byte a pixel"
         );
         // Vello measured 264764 bytes at 172x320; the rule says 264192: within 0.3 percent.
         let v = Backend::VelloCpu.memory(172, 320);
@@ -543,46 +544,53 @@ mod tests {
     fn the_rule_matches_what_was_measured_on_real_boards() {
         assert_eq!(
             pick(410, 502, S3),
-            Backend::VelloCpu,
-            "the S3 watch: PSRAM holds a Vello frame"
-        );
-        assert_eq!(
-            pick(160, 160, C6),
-            Backend::Skia,
-            "a small C6 display: 125 KB (pixmap and clip mask) leaves 195 KB free"
-        );
-        assert_eq!(
-            pick(172, 320, C6),
             Backend::Integer,
-            "the C6's own LCD: skia's 269 KB would leave 51 KB of the 320 KB, under the 100 KB minimum"
+            "the S3 watch: Vello has no SIMD there; measured, a tap takes 7 ms against Vello's 47"
         );
-        assert_eq!(pick(240, 320, C6), Backend::Integer);
+        assert_eq!(
+            pick(1024, 600, S3),
+            Backend::Integer,
+            "the P4 likewise (RISC-V)"
+        );
+        for (w, h) in [(160, 160), (172, 320), (240, 320)] {
+            assert_eq!(pick(w, h, C6), Backend::Integer, "a C6 at {w}x{h}");
+        }
         assert_eq!(pick(1920, 1080, PC), Backend::VelloGpu);
-        // A PSRAM too small for a Vello frame falls to the next backend.
-        // 410x502: integer 402 KB, skia 1005 KB, vello 988 KB. Budget = the PSRAM (1 MB).
-        let one_mb = Hardware {
-            psram_kb: 1024,
-            ..S3
-        };
         assert_eq!(
-            pick(410, 502, one_mb),
-            Backend::Skia,
-            "1 MB holds skia's 1005 KB, but not twice Vello's 988 KB"
+            pick(1920, 1080, NO_GPU),
+            Backend::VelloCpu,
+            "SIMD and room: Vello"
         );
-        let half_mb = Hardware {
-            psram_kb: 512,
-            ..S3
+    }
+
+    #[test]
+    fn vello_needs_simd_and_room_and_says_why_it_was_not_picked() {
+        let why = |hw: Hardware| match automatic(&device(800, 480, Some(hw), Render::default())) {
+            Some(Choice {
+                backend,
+                reason: Reason::Automatic(r),
+            }) => (backend, r),
+            other => panic!("{other:?}"),
         };
+        let (b, r) = why(Hardware {
+            simd: false,
+            ..NO_GPU
+        });
+        assert_eq!(b, Backend::Integer);
+        assert!(r.contains("no SIMD"), "{r}");
+        // SIMD, but a frame of 800x480 (about 1.8 MB for Vello) in 1 MB.
+        let (b, r) = why(Hardware {
+            ram_kb: 1024,
+            psram_kb: 0,
+            ..NO_GPU
+        });
+        assert_eq!(b, Backend::Integer);
+        assert!(r.contains("does not fit"), "{r}");
+        assert_eq!(why(NO_GPU).0, Backend::VelloCpu);
         assert_eq!(
-            pick(410, 502, half_mb),
-            Backend::Integer,
-            "512 KB holds the integer frame, not skia's 1005 KB"
-        );
-        let none = Hardware { psram_kb: 0, ..S3 };
-        assert_eq!(
-            pick(410, 502, none),
-            Backend::Integer,
-            "205 KB holds neither: the integer renderer is the floor"
+            why(Hardware { simd: false, ..PC }).0,
+            Backend::VelloGpu,
+            "a GPU needs no SIMD"
         );
     }
 
@@ -590,7 +598,7 @@ mod tests {
     fn no_screen_means_no_renderer_and_no_facts_means_the_lightest() {
         let mut p = device(10, 10, Some(S3), Render::default());
         p.screen = None;
-        assert_eq!(choose(&p, Some(Backend::Skia)), None);
+        assert_eq!(choose(&p, Some(Backend::VelloCpu)), None);
         assert_eq!(automatic(&p), None);
         let blind = device(410, 502, None, Render::default());
         let c = choose(&blind, None).unwrap();
@@ -601,7 +609,7 @@ mod tests {
     #[test]
     fn the_layers_override_in_order_and_say_why() {
         let board_says = Render {
-            backend: Some(Backend::Skia),
+            backend: Some(Backend::VelloCpu),
             fallback: false,
             ..Render::default()
         };
@@ -609,7 +617,7 @@ mod tests {
         assert_eq!(
             choose(&p, None),
             Some(Choice {
-                backend: Backend::Skia,
+                backend: Backend::VelloCpu,
                 reason: Reason::Board
             })
         );
@@ -640,6 +648,12 @@ mod tests {
         for hw in [
             S3,
             C6,
+            NO_GPU,
+            Hardware {
+                ram_kb: 4096,
+                psram_kb: 0,
+                ..NO_GPU
+            },
             Hardware {
                 ram_kb: 256,
                 psram_kb: 0,
@@ -705,7 +719,7 @@ mod tests {
                 from: Backend::VelloCpu,
                 to: Backend::Integer
             },
-            "skia's 375 KB does not fit 220 KB either"
+            "Vello's 360 KB does not fit 220 KB"
         );
         assert_eq!(
             (c.backend, c.reason),
@@ -717,12 +731,16 @@ mod tests {
             502,
             Some(S3),
             Render {
-                backend: Some(Backend::Skia),
+                backend: Some(Backend::VelloCpu),
                 fallback: true,
                 ..Render::default()
             },
         );
-        assert_eq!(check(&s3, choose(&s3, None).unwrap()).1, Fit::Fits);
+        assert_eq!(
+            check(&s3, choose(&s3, None).unwrap()).1,
+            Fit::Fits,
+            "a board may pin Vello where it fits, SIMD or not"
+        );
         // The floor: nothing lighter than the integer renderer, so it stays and warns.
         let tiny = device(
             4000,
@@ -801,30 +819,29 @@ mod tests {
 
     #[test]
     fn a_backend_that_is_not_built_in_is_replaced_by_the_nearest_lighter_one() {
-        use Backend::{Integer, Skia, VelloCpu, VelloGpu};
+        use Backend::{Integer, VelloCpu, VelloGpu};
         assert_eq!(
-            nearest(Skia, &[Integer, VelloCpu]),
+            nearest(VelloCpu, &[Integer, VelloGpu]),
             Some(Integer),
             "down first, it is the safe direction"
         );
         assert_eq!(nearest(VelloGpu, &[Integer, VelloCpu]), Some(VelloCpu));
         assert_eq!(
-            nearest(VelloCpu, &[Integer, Skia, VelloCpu]),
+            nearest(VelloCpu, &[Integer, VelloCpu]),
             Some(VelloCpu),
             "built in: as asked"
         );
         assert_eq!(
-            nearest(Integer, &[Skia]),
-            Some(Skia),
+            nearest(Integer, &[VelloGpu, VelloCpu]),
+            Some(VelloCpu),
             "nothing lighter: the lightest heavier one"
         );
-        assert_eq!(nearest(Integer, &[VelloCpu, Skia]), Some(Skia));
-        assert_eq!(nearest(Skia, &[]), None);
+        assert_eq!(nearest(VelloCpu, &[]), None);
     }
 
     #[test]
     fn a_plan_combines_the_layers_the_memory_check_and_what_is_built_in() {
-        let s3 = device(410, 502, Some(S3), Render::default());
+        let s3 = device(410, 502, Some(NO_GPU), Render::default());
         let all = Backend::ALL;
         let p = plan(&s3, None, &all).unwrap();
         assert_eq!(
@@ -833,7 +850,7 @@ mod tests {
         );
         assert_eq!(
             std::string::ToString::to_string(&p),
-            "vello-cpu (automatic: PSRAM holds a Vello frame twice over)"
+            "vello-cpu (automatic: Vello has SIMD here and its frame fits)"
         );
         let integer_only = plan(&s3, None, &[Backend::Integer]).unwrap();
         assert_eq!(
@@ -892,12 +909,17 @@ mod tests {
 
     #[test]
     fn a_larger_free_minimum_steps_the_choice_down() {
-        let c6 = Hardware { ram_kb: 320, ..C6 };
+        // A single-board computer with SIMD and 2 MB to spare: Vello's 800x480 frame needs about 1.8 MB.
+        let board = Hardware {
+            ram_kb: 2048,
+            psram_kb: 0,
+            ..NO_GPU
+        };
         let with = |min_free_kb| {
             let m = device(
-                172,
-                320,
-                Some(c6),
+                800,
+                480,
+                Some(board),
                 Render {
                     min_free_kb,
                     ..Render::default()
@@ -906,15 +928,15 @@ mod tests {
             let (c, fit) = check(&m, choose(&m, None).unwrap());
             (c.backend, fit)
         };
-        assert_eq!(with(0).0, Backend::Skia, "everything fits");
-        assert_eq!(with(50).0, Backend::Skia, "skia's 269 KB of 270 KB");
+        assert_eq!(with(0).0, Backend::VelloCpu, "everything fits");
+        assert_eq!(with(100).0, Backend::VelloCpu, "1.8 MB of 1.9 MB");
         assert_eq!(
-            with(100).0,
+            with(300).0,
             Backend::Integer,
             "a bigger reserve leaves room for the lighter one only"
         );
         assert!(matches!(
-            with(300),
+            with(5000),
             (Backend::Integer, Fit::Fits | Fit::TooBig { .. })
         ));
     }
@@ -933,7 +955,7 @@ mod tests {
     #[test]
     fn layers_combine_weakest_first_and_the_last_to_speak_wins() {
         let project = RenderLayer {
-            backend: Some(BackendSetting::Fixed(Backend::Skia)),
+            backend: Some(BackendSetting::Fixed(Backend::Integer)),
             fallback: Some(false),
             min_free_kb: Some(150),
         };
@@ -949,11 +971,11 @@ mod tests {
         assert_eq!(r.backend, Some(Backend::VelloCpu));
         assert!(r.fallback, "the user layer beat the project");
         assert_eq!(r.min_free_kb, 150, "nobody stronger said anything");
-        assert_eq!(Render::layered(&[project]).backend, Some(Backend::Skia));
+        assert_eq!(Render::layered(&[project]).backend, Some(Backend::Integer));
         // Order matters: the same layers the other way round.
         assert_eq!(
             Render::layered(&[build, project]).backend,
-            Some(Backend::Skia)
+            Some(Backend::Integer)
         );
     }
 

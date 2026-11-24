@@ -11,4 +11,4 @@ mod target;
 pub use board::{Board, Pixels, aligned, band_rows, rgb565};
 pub use driver::{Driver, DriverError, Step};
 pub use surface::{DrawError, LINKED, Surface};
-pub use target::{Arch, Chip, esp_hardware, hardware, has_fpu, has_simd};
+pub use target::{Arch, Chip, esp_hardware, hardware, has_fpu, has_simd, vello_has_simd};

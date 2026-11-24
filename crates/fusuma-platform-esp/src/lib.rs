@@ -15,8 +15,6 @@ use fusuma_platform_embedded::{Driver, DriverError};
 /// The backends linked into this program: the integer one always, the others by cargo feature.
 pub const LINKED: &[Backend] = &[
     Backend::Integer,
-    #[cfg(feature = "skia")]
-    Backend::Skia,
     #[cfg(feature = "vello-cpu")]
     Backend::VelloCpu,
 ];
@@ -62,6 +60,8 @@ fn hardware() -> Hardware {
         ram_kb: u32::try_from(ram / 1024).unwrap_or(u32::MAX),
         psram_kb: u32::try_from(psram / 1024).unwrap_or(u32::MAX),
         fpu: board::FPU,
+        // Vello has no SIMD code for Xtensa or RISC-V: it runs its scalar fallback here.
+        simd: fusuma_platform_embedded::vello_has_simd(),
         gpu: false,
     }
 }

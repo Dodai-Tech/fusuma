@@ -98,6 +98,19 @@ pub const fn has_simd() -> bool {
     ))
 }
 
+/// Whether Vello can use SIMD in this build: the targets `fearless_simd` has code for (x86 and x86_64, aarch64,
+/// WebAssembly with `simd128`). Narrower than [`has_simd`]: a RISC-V vector extension or Xtensa's SIMD is not used
+/// by Vello, which then runs its scalar fallback.
+#[must_use]
+pub const fn vello_has_simd() -> bool {
+    cfg!(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        all(target_arch = "wasm32", target_feature = "simd128"),
+    ))
+}
+
 /// The facts the renderer choice needs for this build: the floating-point unit from the compiler, and the memory
 /// from the caller (a runtime's heap probe, or a board file), since no chip name says it.
 #[must_use]
@@ -106,6 +119,7 @@ pub const fn hardware(ram_kb: u32, psram_kb: u32) -> Hardware {
         ram_kb,
         psram_kb,
         fpu: has_fpu(),
+        simd: vello_has_simd(),
         gpu: false,
     }
 }
@@ -208,6 +222,8 @@ pub const fn esp_hardware(chip: Chip, psram_kb: u32) -> Hardware {
         ram_kb: chip.ram_kb(),
         psram_kb: if chip.psram_capable() { psram_kb } else { 0 },
         fpu: chip.fpu(),
+        // No ESP chip is one Vello has SIMD code for.
+        simd: false,
         gpu: false,
     }
 }
@@ -232,8 +248,17 @@ mod tests {
         }
         let h = hardware(300, 0);
         assert_eq!(
-            (h.ram_kb, h.psram_kb, h.fpu, h.gpu),
-            (300, 0, has_fpu(), false)
+            (h.ram_kb, h.psram_kb, h.fpu, h.simd, h.gpu),
+            (300, 0, has_fpu(), vello_has_simd(), false)
+        );
+        assert_eq!(
+            vello_has_simd(),
+            cfg!(any(
+                target_arch = "x86_64",
+                target_arch = "aarch64",
+                target_arch = "x86"
+            )),
+            "a desktop host: Vello has SIMD"
         );
     }
 
@@ -276,25 +301,18 @@ mod tests {
     /// the rule or to the estimates shows up here.
     #[test]
     fn each_chip_gets_the_renderer_that_fits_its_class_of_screen() {
+        // No ESP chip gives Vello SIMD: each gets the integer renderer, whatever its memory.
         assert_eq!(
             pick(Chip::Esp32P4, 32768, 1024, 600),
-            (Backend::VelloCpu, true)
+            (Backend::Integer, true)
         );
         assert_eq!(
             pick(Chip::Esp32S3, 8192, 410, 502),
-            (Backend::VelloCpu, true),
-            "the S3 watch"
-        );
-        assert_eq!(
-            pick(Chip::Esp32C6, 0, 172, 320),
             (Backend::Integer, true),
-            "the C6's own LCD: tiny-skia's pixmap and clip mask (269 KB) leave less than 100 KB free"
+            "the S3 watch: measured, a tap 7 ms on integer against 47 on Vello"
         );
-        assert_eq!(
-            pick(Chip::Esp32C6, 0, 160, 160),
-            (Backend::Skia, true),
-            "a smaller C6 display gets anti-aliasing"
-        );
+        assert_eq!(pick(Chip::Esp32C6, 0, 172, 320), (Backend::Integer, true));
+        assert_eq!(pick(Chip::Esp32C6, 0, 160, 160), (Backend::Integer, true));
         assert_eq!(pick(Chip::Esp32C6, 0, 240, 320), (Backend::Integer, true));
         assert_eq!(pick(Chip::Esp32C3, 0, 240, 240), (Backend::Integer, true));
         assert!(pick(Chip::Esp32C2, 0, 128, 160).1, "whatever it picks fits");

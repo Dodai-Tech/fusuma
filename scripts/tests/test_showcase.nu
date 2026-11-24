@@ -69,7 +69,7 @@ def "test showcase: the port is passed only when given" [] {
 
 def "test showcase: cargo features are passed through, in any list format" [] {
     assert equal (feature_args "") []
-    assert equal (feature_args "render-skia") ["--features" "render-skia"]
+    assert equal (feature_args "render-vello-cpu") ["--features" "render-vello-cpu"]
     assert equal (feature_args "a b , c") ["--features" "a,b,c"]
 }
 
@@ -134,8 +134,8 @@ def "test showcase: the espup exports become the environment, its PATH in front"
 }
 
 def "test showcase: a board builds with its toolchain, target, directory and feature" [] {
-    let a = build_args (board_named "s3-amoled-206") "render-skia, fonts" "/t/s3"
-    assert equal $a ["+esp" "build" "--release" "--target" "xtensa-esp32s3-espidf" "--target-dir" "/t/s3" "--features" "board-s3-amoled-206,render-skia,fonts"]
+    let a = build_args (board_named "s3-amoled-206") "render-vello-cpu, fonts" "/t/s3"
+    assert equal $a ["+esp" "build" "--release" "--target" "xtensa-esp32s3-espidf" "--target-dir" "/t/s3" "--features" "board-s3-amoled-206,render-vello-cpu,fonts"]
     let p = build_args (board_named "p4-7in") "" "/t/p4"
     assert equal ($p | last 2) ["--features" "board-p4-7in"]
     assert equal $p.0 "+nightly-2026-09-15"

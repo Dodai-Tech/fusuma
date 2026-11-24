@@ -12,12 +12,10 @@
 # `package`. Vello needs atomics a Cortex-M0+ lacks, so it is left out there; `libm` is software floating point, which
 # `no_std` Vello needs. `fusuma-cells` (the text UI's cells) needs no allocator, so it is built on the smallest chips.
 export const MATRIX = [
-    { target: "riscv32imac-unknown-none-elf", features: "skia" }
+    { target: "riscv32imac-unknown-none-elf", features: "" }
     { target: "riscv32imac-unknown-none-elf", features: "vello-cpu,libm" }
-    { target: "thumbv7em-none-eabihf", features: "skia" }
     { target: "thumbv7em-none-eabihf", features: "vello-cpu,libm" }
-    { target: "thumbv6m-none-eabi", features: "skia" }
-    { target: "aarch64-unknown-none", features: "skia" }
+    { target: "thumbv6m-none-eabi", features: "" }
     { target: "aarch64-unknown-none", features: "vello-cpu,libm" }
     { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-cells" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-cells" }

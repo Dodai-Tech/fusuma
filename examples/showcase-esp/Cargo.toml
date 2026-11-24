@@ -24,7 +24,7 @@ debug = true
 opt-level = "s"
 
 [dependencies]
-fusuma-showcase = { path = "../showcase" }
+fusuma-showcase = { path = "../showcase", default-features = false }
 fusuma-platform-esp = { path = "../../crates/fusuma-platform-esp" }
 anyhow = "1"
 # Direct, so the build script sees esp-idf-sys and passes the linker arguments on.
@@ -37,8 +37,8 @@ board-s3-amoled-206 = ["fusuma-platform-esp/board-s3-amoled-206"]
 # Ask the build for a renderer (the strongest layer of the choice). With none, the board's hardware decides.
 # If several are on, the lightest wins.
 render-integer = []
-render-skia = []
-render-vello-cpu = []
+# Vello and its fonts are linked only for this one: the automatic choice is the integer renderer on every ESP chip.
+render-vello-cpu = ["fusuma-platform-esp/vello-cpu", "fusuma-platform-esp/fonts", "fusuma-showcase/fonts"]
 
 [build-dependencies]
 embuild = "0.33"

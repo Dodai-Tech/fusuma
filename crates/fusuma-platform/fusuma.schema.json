@@ -11,7 +11,7 @@
       "properties": {
         "backend": {
           "description": "auto (the default) picks by hardware; or name a backend.",
-          "enum": ["auto", "integer", "skia", "vello-cpu", "vello-gpu"]
+          "enum": ["auto", "integer", "vello-cpu", "vello-gpu"]
         },
         "fallback": {
           "type": "boolean",

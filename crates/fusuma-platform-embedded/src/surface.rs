@@ -13,14 +13,12 @@ use fusuma::renderers::embedded::{Embedded, Frame};
 use fusuma::{App, Shell};
 
 use crate::board::Pixels;
-#[cfg(any(feature = "skia", feature = "vello-cpu"))]
+#[cfg(feature = "vello-cpu")]
 use crate::board::rgb565;
 
 /// The backends linked into this build: the integer one always, the others by cargo feature.
 pub const LINKED: &[Backend] = &[
     Backend::Integer,
-    #[cfg(feature = "skia")]
-    Backend::Skia,
     #[cfg(feature = "vello-cpu")]
     Backend::VelloCpu,
 ];
@@ -33,9 +31,6 @@ pub struct DrawError(pub String);
 pub enum Surface {
     /// The integer renderer on an RGB565 frame.
     Integer(Box<Embedded<Frame<Vec<u16>>>>, u32),
-    /// `tiny-skia`.
-    #[cfg(feature = "skia")]
-    Skia(Box<fusuma::renderers::skia::Skia>, u32),
     /// Vello on the CPU.
     #[cfg(feature = "vello-cpu")]
     Vello(Box<fusuma::renderers::vello_cpu::VelloCpu>, u32),
@@ -45,8 +40,6 @@ impl core::fmt::Debug for Surface {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::Integer(..) => "Surface::Integer",
-            #[cfg(feature = "skia")]
-            Self::Skia(..) => "Surface::Skia",
             #[cfg(feature = "vello-cpu")]
             Self::Vello(..) => "Surface::Vello",
         })
@@ -69,9 +62,6 @@ impl Surface {
                 )?;
                 Some(Self::Integer(Box::new(Embedded::new(frame)), width))
             }
-            #[cfg(feature = "skia")]
-            Backend::Skia => fusuma::renderers::skia::Skia::new(width, height)
-                .map(|s| Self::Skia(Box::new(s), width)),
             #[cfg(feature = "vello-cpu")]
             Backend::VelloCpu => fusuma::renderers::vello_cpu::new(width, height)
                 .map(|s| Self::Vello(Box::new(s), width)),
@@ -91,8 +81,6 @@ impl Surface {
         let err = |e: &dyn core::fmt::Debug| DrawError(format!("{e:?}"));
         match self {
             Self::Integer(r, _) => shell.frame(now_ms, &mut **r).map_err(|e| err(&e)),
-            #[cfg(feature = "skia")]
-            Self::Skia(r, _) => shell.frame(now_ms, &mut **r).map_err(|e| err(&e)),
             #[cfg(feature = "vello-cpu")]
             Self::Vello(r, _) => {
                 // The scene forgets what it drew before; this frame redraws only the damaged part.
@@ -120,8 +108,6 @@ impl Pixels for Surface {
                 let src = r.target().pixels();
                 copy_row(src, *w, y, x, out);
             }
-            #[cfg(feature = "skia")]
-            Self::Skia(r, w) => rgba_row(r.pixmap().data(), *w, y, x, out),
             #[cfg(feature = "vello-cpu")]
             Self::Vello(r, w) => {
                 let w = *w;
@@ -154,7 +140,7 @@ fn copy_row(src: &[u16], w: u32, y: u32, x: u32, out: &mut [u16]) {
 }
 
 /// Converts part of row `y` of a `w` wide RGBA8 picture to RGB565.
-#[cfg(any(feature = "skia", feature = "vello-cpu"))]
+#[cfg(feature = "vello-cpu")]
 fn rgba_row(rgba: &[u8], w: u32, y: u32, x: u32, out: &mut [u16]) {
     let (w, y, x) = (w as usize, y as usize, x as usize);
     if x >= w {

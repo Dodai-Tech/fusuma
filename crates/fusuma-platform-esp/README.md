@@ -16,7 +16,7 @@ fusuma_platform_esp::run(|w, h| MyApp::new(w, h), fusuma_platform_esp::Options::
 Overrides, strongest first: `Options::build` (a cargo feature or the program), the project's `fusuma.toml`
 (`Options::settings`, embedded with `include_str!`), then the automatic rule; see `fusuma-platform` for the keys.
 With `fallback` (on by default) an explicit choice that does not fit in memory steps down to a lighter one. Cargo features
-`skia` and `vello-cpu` (on by default) link those renderers next to the integer one; turn both off for the
+`vello-cpu` and `fonts` (off by default) link Vello and its fonts next to the integer one, for a board that pins Vello; leave them off for the
 smallest firmware, and the choice is made among what is linked.
 
 It supports two boards, one per build, chosen by a cargo feature:

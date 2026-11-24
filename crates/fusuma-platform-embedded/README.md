@@ -10,7 +10,7 @@ no whole-frame buffer is needed on the chip side. Everything else is shared:
 - **`Driver`**: one `step(now_ms)` reads touch, turns it into pointer events (`fusuma::TouchTracker`), runs a frame of
   the app (`fusuma::Shell`) and shows only the part that changed. It says whether the app wants another frame, so a
   runtime can sleep. A failing touch panel counts as a lifted finger.
-- **`Surface`**: the renderer, whichever was chosen: the integer one always, `tiny-skia` (feature `skia`) and Vello on
+- **`Surface`**: the renderer, whichever was chosen: the integer one always, and Vello on
   the CPU (`vello-cpu`) by cargo feature. The choice is `fusuma::platform`'s, from the board's memory.
 - **`Arch`, `has_fpu()`, `has_simd()`**: what the compiler knows about the target. Memory it cannot know: a runtime
   probes its heap or a board file says. `Chip` and `esp_hardware` are ESP presets (RAM is **measured** for the C6 and

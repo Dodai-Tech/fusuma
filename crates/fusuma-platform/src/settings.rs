@@ -2,7 +2,7 @@
 //!
 //! ```toml
 //! [render]
-//! backend = "auto"      # auto (the default), integer, skia, vello-cpu or vello-gpu
+//! backend = "auto"      # auto (the default), integer, vello-cpu or vello-gpu
 //! fallback = true       # step down to a lighter backend if the chosen one does not fit; default true
 //! min_free_kb = 100     # internal RAM that must stay free after the frame; default 100 (a guess)
 //! ```
@@ -51,6 +51,12 @@ impl RawRender {
         let backend = match self.backend.as_deref() {
             None => None,
             Some("auto") => Some(BackendSetting::Auto),
+            Some("skia") => {
+                return Err(SettingsError(std::string::String::from(
+                    "render backend 'skia' was removed (tiny-skia, Fusuma 0.3); use 'integer' on a microcontroller \
+                     or 'vello-cpu', or 'auto'",
+                )));
+            }
             Some(name) => Some(BackendSetting::Fixed(Backend::from_name(name).ok_or_else(
                 || {
                     let known: std::vec::Vec<&str> =
@@ -97,10 +103,10 @@ mod tests {
     #[test]
     fn a_full_table_is_read() {
         let l = RenderLayer::from_toml(
-            "[render]\nbackend = \"skia\"\nfallback = false\nmin_free_kb = 64\n",
+            "[render]\nbackend = \"vello-cpu\"\nfallback = false\nmin_free_kb = 64\n",
         )
         .unwrap();
-        assert_eq!(l.backend, Some(BackendSetting::Fixed(Backend::Skia)));
+        assert_eq!(l.backend, Some(BackendSetting::Fixed(Backend::VelloCpu)));
         assert_eq!((l.fallback, l.min_free_kb), (Some(false), Some(64)));
     }
 
@@ -136,8 +142,13 @@ mod tests {
         assert!(err("[render]\nbackend = \"vello\"\n").contains("unknown render backend 'vello'"));
         assert!(err("[render]\nbackend = \"vello\"\n").contains("auto, "));
         assert!(err("[render]\nbogus = 1\n").contains("bogus"));
+        let skia = err("[render]\nbackend = \"skia\"\n");
         assert!(
-            err("[rendr]\nbackend = \"skia\"\n").contains("rendr"),
+            skia.contains("was removed") && skia.contains("integer"),
+            "{skia}"
+        );
+        assert!(
+            err("[rendr]\nbackend = \"integer\"\n").contains("rendr"),
             "a typo in the table name"
         );
         assert!(

@@ -1,7 +1,7 @@
 # Fusuma settings for this firmware. Every key is optional: what is left out is decided automatically
-# (the best renderer for the hardware). A cargo feature (render-skia, ...) overrides this file.
+# (the best renderer for the hardware). A cargo feature (render-integer, render-vello-cpu) overrides this file.
 
 [render]
-# backend = "auto"      # auto, integer, skia, vello-cpu or vello-gpu
+# backend = "auto"      # auto, integer, vello-cpu or vello-gpu
 # fallback = true       # step down to a lighter backend if the chosen one does not fit in memory
 # min_free_kb = 100     # internal RAM kept free after the frame (a conservative guess, not measured)

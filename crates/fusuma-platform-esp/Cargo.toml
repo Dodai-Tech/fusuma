@@ -15,17 +15,17 @@ publish = false
 [workspace]
 
 [features]
-default = ["skia", "vello-cpu", "fonts"]
+# The integer renderer only: what the automatic choice picks on every ESP chip (Vello has no SIMD there), and the
+# smallest firmware. `vello-cpu` and `fonts` link Vello for a board that pins it in its `fusuma.toml`.
+default = []
 # The board, exactly one. Its C shim (components/<board>) must be listed in the firmware's
 # `package.metadata.esp-idf-sys.extra_components`; see examples/showcase-esp.
 board-p4-7in = []
 board-s3-amoled-206 = []
-# Link the `tiny-skia` and the `vello_cpu` renderers next to the integer one, which is always there.
-# Leaving both off links the integer renderer only (the smallest firmware).
-skia = ["fusuma/renderer-skia", "fusuma-platform-embedded/skia"]
+# Link the `vello_cpu` renderer next to the integer one, which is always there.
 vello-cpu = ["fusuma/renderer-vello-cpu", "fusuma-platform-embedded/vello-cpu"]
 # Vector fonts (Inter, Inter Bold, JetBrains Mono: about 215 KB of flash) for the Vello renderers. Without it text is
-# the bitmap font. The integer and `tiny-skia` renderers always draw the bitmap font.
+# the bitmap font. The integer renderer draws the bitmap font (until its glyph atlas, see the roadmap).
 fonts = ["fusuma/font-inter", "fusuma/font-inter-bold", "fusuma/font-jetbrains-mono"]
 
 [dependencies]

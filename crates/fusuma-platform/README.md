@@ -1,9 +1,15 @@
 # fusuma-platform
 
-The out-of-the-box renderer choice of Fusuma. Given a `Machine` (screen size, RAM, PSRAM, FPU, GPU and what the
-settings say) it picks the backend a device should draw with, and says why: the build beats the settings,
+The out-of-the-box renderer choice of Fusuma. Given a `Machine` (screen size, RAM, PSRAM, FPU, SIMD, GPU and what
+the settings say) it picks the backend a device should draw with, and says why: the build beats the settings,
 which beat an automatic rule; a memory check keeps or steps down an explicit choice; and a choice that is not
-linked is replaced by the nearest lighter one. `no_std`, no dependencies, so a platform crate, a build
+linked is replaced by the nearest lighter one.
+
+The automatic rule: **Vello on the GPU** when there is one (the desktop falls back to Vello on the CPU if the GPU
+fails at run time); **Vello on the CPU** where Vello has SIMD (x86, x86_64, aarch64, WebAssembly) and its frame
+fits; else the **integer renderer**, which is several times faster than Vello's scalar fallback on a microcontroller
+(on the S3 watch a tap takes 7 ms against 47). The anti-aliased look on those chips comes from the integer renderer
+itself as it grows (see the roadmap), not from Vello. `no_std`, no dependencies, so a platform crate, a build
 script and a flashing wizard share one answer.
 
 ## Settings
@@ -14,7 +20,7 @@ says nothing, so the layer below decides; `backend = "auto"` written out undoes 
 
 ```toml
 [render]
-backend = "auto"      # auto (the default), integer, skia, vello-cpu or vello-gpu
+backend = "auto"      # auto (the default), integer, vello-cpu or vello-gpu
 fallback = true       # step down to a lighter backend if the chosen one does not fit; default true
 min_free_kb = 100     # internal RAM that must stay free after the frame; default 100
 ```

@@ -23,24 +23,18 @@ works and is tested.
   widgets crate); the backend is chosen by target and, on a desktop, at run time (GPU first, CPU if
   there is no usable adapter). The renderer crates stay separate: each is useful alone, and a firmware
   that only draws must not pull in a toolkit.
-* **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
-  one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). On a chip, Vello
-  whenever a frame fits (see the next two items); `tiny-skia` and the integer renderer are for chips where it does not.
-* **Several renderers, one trait, a default by hardware.** The integer renderer (`fusuma-render-embedded`),
-  `tiny-skia` (`fusuma-render-skia`), `vello_cpu` and the Vello GPU backend all pass the same conformance suite.
-  A device uses the default that fits it and the others stay available: the GPU backend when there is a usable
-  GPU, `vello_cpu` on a chip with PSRAM, `tiny-skia` or the integer renderer on a chip without. This replaces an
-  earlier decision to use Vello only and to delete the integer renderer: the ESP32-C6 measurements
-  (`tools/bench-c6` in `hibari-os`) showed `tiny-skia` 3 to 4 times faster and lighter than `vello_cpu` there, and
-  the integer renderer another 3 to 4 times faster, with half the memory per pixel. On the ESP32-S3 `vello_cpu` is
-  about 4 times slower than the integer renderer for a full frame but felt richer with partial redraws.
-* **The automatic choice ranks by memory, not by speed, on purpose: the richest backend that fits.** Vello is the
-  preferred look because it draws real typography (Inter and JetBrains Mono through Parley, shaped, with
-  diacritics), which `tiny-skia` and the integer renderer cannot (they have only the ASCII bitmap fonts). So the rule
-  is: the GPU, then `vello_cpu` when PSRAM holds a Vello frame twice over, then `tiny-skia` when its frame fits the
-  RAM left after `min_free_kb`, then the integer renderer. The cost is speed: on the S3 the integer renderer is about
-  4 times faster for a full frame. Where speed matters more, a board pins a backend in `fusuma.toml`; a
-  `prefer = speed | quality` setting is not built.
+* **Two renderers, chosen by whether Vello has SIMD (decided; replaces the memory ranking and `tiny-skia`).**
+  **Vello** where it has SIMD (x86, x86_64, aarch64, WebAssembly: the levels `fearless_simd` has): on the GPU when
+  there is one, falling back to `vello_cpu` if the GPU fails, and to the integer renderer if Vello's frame does not
+  fit. The **integer renderer** (`fusuma-render-embedded`) everywhere else, which is every microcontroller (S3, C6,
+  P4, Cortex-M): Vello runs a scalar fallback there. Measured on the S3 watch with the same showcase: integer takes
+  97 ms for the first frame, 7 ms a tap and 88 ms a scroll step or page; Vello with Inter 558, 47 and 311 ms. A
+  board can still pin Vello in its `fusuma.toml` (link it with the `vello-cpu` and `fonts` features). The look that
+  Vello gave those chips (smooth text and edges) moves into the integer renderer (see Order of work).
+  **`tiny-skia` is removed** (`fusuma-render-skia` deleted; the published 0.x stays on crates.io): it sat between
+  the two by memory and has no SIMD on a microcontroller either. A `fusuma.toml` that still says `backend = "skia"`
+  gets an error naming the replacement. Earlier decisions this replaces: Vello only (reverted), then "the richest
+  backend that fits in memory" with `tiny-skia` as the middle step.
 * **Fonts beyond Latin are tiered, not bundled everywhere.** Bundled: Latin subsets only (213 KB for three fonts).
   Desktop and phone get other scripts (Greek, Cyrillic, CJK, emoji) from system fonts through Fontique with
   fallback: Fusuma's job is to wire that up, never to bundle CJK. A chip with PSRAM may get Greek and Cyrillic as an
@@ -79,7 +73,6 @@ works and is tested.
 | Crate | What | `no_std` |
 |---|---|---|
 | `fusuma-render` | `Renderer` trait, geometry, colors, paths, conformance suite; later the optional `Effects` and shader contract (feature-gated, unstable) | yes |
-| `fusuma-render-skia` | `tiny-skia` backend, `no_std` with `alloc`; the automatic step between Vello and the integer renderer | partly |
 | `fusuma-render-vello-common` | the `Renderer` on a Vello scene, generic over CPU and GPU (internal) | with `libm` |
 | `fusuma-render-vello-cpu` | `vello_cpu` backend | with `libm` |
 | `fusuma-render-vello` | `vello_gpu` backend | no |
@@ -134,9 +127,9 @@ works and is tested.
 - [x] ~~Delete `fusuma-render-embedded`~~ cancelled: it stays, see Decisions
 - [x] A choice of default backend by hardware: `fusuma-platform` picks by hardware facts (GPU, then PSRAM, then memory) with layered overrides (`[render]` in `fusuma.toml`, a cargo feature) and a memory check; the P4 and desktop use it. **The rule ranks by memory, not speed**: on the S3 it picks Vello although the integer renderer is about 4x faster for a full frame. A speed-aware `prefer = smooth/quality` setting is not built
 - [x] Measured `tiny-skia` on the ESP32-S3: 1883 ms for a full 410x502 frame, the slowest of the three
-- [x] **`tiny-skia`'s clip memory:** every `clip` made a surface-sized mask (1 byte a pixel) and every `save` copied it, so a UI frame (a clip per redrawn part, per scroll window and per label) held about three: some 7 bytes a pixel, not the 4 the chooser counted, which would have run a C6 at 172x320 out of its 320 KB heap (the C6 benchmark had no clips, so it did not show). Now a clip is kept as a rectangle, one mask is made only when a shape crosses a clip and is rewritten row by row when the clip changes, and rectangles and text never use it: 5 bytes a pixel, which `Backend::memory` now counts. Tested (no mask for shapes inside their clips, one reused mask for crossing ones, nested clips and restores), each test seen to fail against a broken copy. The new figure is worked out, not measured on a board. With it the C6's own 172x320 LCD gets the integer renderer and a 160x160 one gets `tiny-skia`
+- [x] **`tiny-skia`'s clip memory (the backend was removed after, see Decisions):** every `clip` made a surface-sized mask (1 byte a pixel) and every `save` copied it, so a UI frame (a clip per redrawn part, per scroll window and per label) held about three: some 7 bytes a pixel, not the 4 the chooser counted, which would have run a C6 at 172x320 out of its 320 KB heap (the C6 benchmark had no clips, so it did not show). Now a clip is kept as a rectangle, one mask is made only when a shape crosses a clip and is rewritten row by row when the clip changes, and rectangles and text never use it: 5 bytes a pixel, which `Backend::memory` now counts. Tested (no mask for shapes inside their clips, one reused mask for crossing ones, nested clips and restores), each test seen to fail against a broken copy. The new figure is worked out, not measured on a board. With it the C6's own 172x320 LCD gets the integer renderer and a 160x160 one gets `tiny-skia`
 - [ ] A conformance run of the renderers on the C6
-- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers; `fusuma-render-skia` on crates.io is the old `std` 0.1.0). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
+- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers; `fusuma-render-skia` is not in it: removed, its old 0.x stays on crates.io). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
 
 ### Scrolling, screen shape and responsive layout (done, measured on the S3 watch)
 
@@ -201,7 +194,7 @@ Two tiers, because a microcontroller and a phone need different things.
 
 * **Microcontrollers keep the built-in bitmap fonts.** They need no allocator, no font files and no
   Unicode tables. Today these are three monospace sizes, and **ASCII only** (`embedded-graphics`' `ascii` sets): on
-  the integer and `tiny-skia` renderers `é` or `ș` draw as the replacement glyph, so "Romanian works" holds only on
+  the integer renderer `é` or `ș` draw as the replacement glyph, so "Romanian works" holds only on
   Vello with fonts. Latin-1 sets (`iso_8859_1`) would add `é` and `ü`; `ș` and `ț` need `iso_8859_2` or a font of our
   own; a proportional pixel font and a glyph atlas
   for a larger character set are the way to grow them.

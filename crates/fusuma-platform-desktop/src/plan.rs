@@ -12,6 +12,13 @@ pub fn hardware(gpu: bool) -> Hardware {
         ram_kb: u32::MAX / 2,
         psram_kb: 0,
         fpu: true,
+        // The targets `fearless_simd` has code for: on another one Vello runs its scalar fallback.
+        simd: cfg!(any(
+            target_arch = "x86",
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            all(target_arch = "wasm32", target_feature = "simd128"),
+        )),
         gpu,
     }
 }
@@ -75,14 +82,14 @@ mod tests {
 
     #[test]
     fn a_backend_the_desktop_does_not_link_is_replaced_and_the_plan_says_so() {
-        let p = plan_for(800, 600, true, &[pin(Backend::Skia)]).unwrap();
+        let p = plan_for(800, 600, true, &[pin(Backend::Integer)]).unwrap();
         assert_eq!(
             (p.choice.backend, p.uses),
-            (Backend::Skia, Backend::VelloCpu)
+            (Backend::Integer, Backend::VelloCpu)
         );
         assert!(
             p.to_string()
-                .contains("skia is not built in, using vello-cpu"),
+                .contains("integer is not built in, using vello-cpu"),
             "{p}"
         );
     }

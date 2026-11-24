@@ -16,18 +16,18 @@ categories = ["gui", "embedded", "no-std"]
 default = []
 # The standard library (a host test, ESP-IDF). Without it the crate is `no_std` with `alloc`.
 std = ["fusuma/std"]
-# Link the `tiny-skia` and `vello_cpu` renderers next to the integer one, which is always there. `vello-cpu`
-# on a chip without `std` needs `libm` as well.
 # Software floating point, needed by `vello-cpu` without `std`.
 libm = ["fusuma/libm"]
-skia = ["fusuma/renderer-skia"]
+# Link the `vello_cpu` renderer next to the integer one, which is always there. On a chip without `std` it needs
+# `libm` as well. The automatic choice does not pick it on a microcontroller (no SIMD for Vello there); a board file
+# can.
 vello-cpu = ["fusuma/renderer-vello-cpu"]
 
 [dependencies]
 fusuma = { workspace = true, features = ["renderer-integer"] }
 
 [dev-dependencies]
-fusuma = { workspace = true, features = ["std", "renderer-integer", "renderer-vello-cpu", "renderer-skia"] }
+fusuma = { workspace = true, features = ["std", "renderer-integer", "renderer-vello-cpu"] }
 fusuma-showcase = { path = "../../examples/showcase" }
 
 [lints]
