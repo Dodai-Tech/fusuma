@@ -4,6 +4,19 @@ Fusuma is a native Rust UI toolkit from microcontrollers to desktops and phones:
 HTML, no CSS. Status: `[x]` done, `[ ]` planned. Order matters: each phase leaves something that
 works and is tested.
 
+## Order of work (decided)
+
+1. **GUI renderers:** the hybrid renderer for small chips, so a board like the S3 watch gets the integer renderer's
+   speed with Vello's look. Steps: anti-aliased text from a glyph atlas baked at build time, blended into RGB565;
+   anti-aliased edges for rounded rectangles, circles and strokes (coverage on edge pixels only); Vello on small
+   tiles for whatever the fast path cannot draw; the faster RGB565 conversion. Each step measured on the watch and
+   tested pixel by pixel against Vello. Measured on the S3 watch with the same showcase, the target to reach: the
+   integer renderer takes 97 ms for the first frame, 7 ms for a tap and 88 ms for a scroll step or page; Vello with
+   Inter takes 558, 47 and 311 ms. Hibari's launcher is fast for the same reason: it draws with the integer renderer.
+2. **UI components and logic:** the missing widgets and behaviour (see Phase 4), each with a pixel look.
+3. **TUI:** the cells in the toolkit (`Measure`, `CellSink`, the cell theme), running apps, then the outputs (see
+   Phase 5). The `fusuma-cells` and `fusuma-platform-tui` scaffolds wait until then.
+
 ## Decisions
 
 * **One dependency for apps.** Apps use `fusuma` (the toolkit, one crate, no separate core or
