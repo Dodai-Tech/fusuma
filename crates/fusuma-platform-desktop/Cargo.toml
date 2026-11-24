@@ -1,0 +1,26 @@
+[package]
+name = "fusuma-platform-desktop"
+description = "Fusuma on Linux, macOS and Windows: a window with mouse, touch and keyboard, Vello on the GPU when there is one and on the CPU otherwise, chosen for you"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "window", "desktop", "vello"]
+categories = ["gui"]
+
+[dependencies]
+fusuma = { workspace = true, features = ["std", "toml", "renderer-vello-cpu", "renderer-vello-gpu"] }
+winit = "0.30"
+softbuffer = "0.4"
+log = "0.4"
+anyhow = "1"
+
+[dev-dependencies]
+fusuma-showcase = { path = "../../examples/showcase" }
+
+[lints]
+workspace = true

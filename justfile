@@ -315,3 +315,7 @@ showcase-p4-install port="" features="":
 # Boot the P4's factory app again
 showcase-p4-restore port="":
     nu scripts/showcase.nu restore --port "{{ port }}"
+
+# Run the components showcase in a window; the renderer is chosen for you, or: just showcase-desktop --renderer vello-cpu
+showcase-desktop *args:
+    cargo run -q -p fusuma-showcase-desktop -- {{ args }}

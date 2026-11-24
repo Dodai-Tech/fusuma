@@ -1,0 +1,19 @@
+[package]
+name = "fusuma-showcase-desktop"
+description = "The Fusuma components showcase in a desktop window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+fusuma-showcase = { path = "../showcase" }
+fusuma-platform-desktop = { path = "../../crates/fusuma-platform-desktop" }
+anyhow = "1"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+
+[lints]
+workspace = true

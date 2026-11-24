@@ -19,3 +19,6 @@ Measured on the board: the first frame (1024x600) takes about 210 ms (76 ms draw
 such as a hovered button about 60 ms, most of it converting the pixels and clearing the surface, not
 drawing. Text uses the three built-in bitmap fonts (up to 10x20), so it looks small on a 7" screen until
 `fusuma-text` exists.
+
+**`showcase-desktop/`** is the same app in a window on a computer: `just showcase-desktop` (or `just showcase-desktop
+--renderer vello-cpu` to force the CPU). It uses `fusuma-platform-desktop`, which picks Vello on the GPU when there is one.

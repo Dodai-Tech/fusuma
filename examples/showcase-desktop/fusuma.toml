@@ -1,0 +1,7 @@
+# Fusuma settings for this app. Every key is optional: what is left out is decided automatically
+# (the GPU if there is one, else the CPU). `--renderer` on the command line overrides this file.
+
+[render]
+# backend = "auto"      # auto, integer, skia, vello-cpu or vello-gpu
+# fallback = true
+# min_free_kb = 100

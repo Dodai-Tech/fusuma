@@ -4,6 +4,12 @@ all-features = true
 
 [advisories]
 yanked = "deny"
+ignore = [
+    # `ttf-parser` is unmaintained (not a vulnerability). It comes in through winit's Wayland title bars
+    # (winit -> sctk-adwaita -> ab_glyph -> ttf-parser), which GNOME on Wayland needs for a window frame.
+    # Remove this when winit or sctk-adwaita moves to `skrifa`.
+    { id = "RUSTSEC-2026-0192", reason = "unmaintained, used only for Wayland window decorations" },
+]
 
 [licenses]
 allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "MPL-2.0", "CC0-1.0", "BSL-1.0"]

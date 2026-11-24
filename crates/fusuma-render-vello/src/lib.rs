@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
+pub use fusuma_render_vello_common::Scene;
 use fusuma_render_vello_common::{
-    Backend, ImageSource, MAX_SIDE, Scene,
+    Backend, ImageSource, MAX_SIDE,
     kurbo::{Affine, BezPath, Rect as KRect},
     peniko::Fill,
     stroke,

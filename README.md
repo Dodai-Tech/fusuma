@@ -32,6 +32,7 @@ renderer crates stay separate, because each is useful alone.
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, an animator and drag helpers, in fixed point | yes | working (the animator and drag helpers are not in the published 0.2.0) |
 | [`fusuma-platform`](crates/fusuma-platform) | **the out-of-the-box renderer choice:** which backend a machine draws with, from its screen and hardware (RAM, PSRAM, FPU, GPU), with overrides, a memory check and a reason for the answer | yes | working |
 | `fusuma-platform-esp` | runs an `App` on an ESP-IDF board (display, touch, frame loop) and picks the renderer itself; today the Waveshare ESP32-P4 7" ([`crates/fusuma-platform-esp`](crates/fusuma-platform-esp)) | no | working |
+| [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | runs an `App` in a window on Linux, macOS and Windows (winit, softbuffer) with mouse, touch and keyboard, and picks the renderer itself: Vello on the GPU if there is one, else on the CPU | no | working on Linux; macOS and Windows not tried |
 | `fusuma-shaders` | shader contract and engine | no | planned |
 | `fusuma-text` | real text: fonts, shaping, line breaking (on Parley) for desktop and phone; the bitmap fonts stay for microcontrollers | no | planned |
 | `fusuma-platform-*` | microcontroller, desktop, Android, iOS, web, terminal | no | planned |
