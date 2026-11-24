@@ -185,6 +185,7 @@ desktop-sized trees use the same code with a bigger `N`.
 - [x] Widgets in `fusuma-ui`: checkbox, radio, switch, slider, selectable list item, progress bar, with keyboard focus (Tab, arrows, Enter)
 - [x] Scroll container (`Tree::scroll`): clips its children, scrolls by touch drag (with a slop so a tap still clicks), mouse wheel (`Pointer::Wheel`) and by moving the focus to a hidden widget; hidden widgets cannot be hit; a scrollbar shows the position. Not yet: inertia after a drag, rubber-banding at the ends (`fusuma-anim` has both), horizontal scrolling
 - [x] Text input (`Tree::text_input`): a single line of up to 64 bytes with cursor, selection, typing, edit commands, input-method composition and clipboard hooks; the desktop platform wires keys, IME and the system clipboard. Not yet: mouse-drag and word selection, caret blink, undo, longer text, a multi-line field
+- [x] Animation vocabulary in `fusuma-anim`: six spring tokens (spatial and effects, fast, default, slow) and a composable, allocation-free `Clip` with presets (fade, slide, pop, shake). Not yet wired into the toolkit: scroll fling and rubber band, animated node offset and opacity (`animate`, `enter`, `exit`), page transitions (`Push`, fade-through), and an animation budget per chip
 - [ ] More widgets: multi-line text view, dialog, tabs, menu, toast
 - [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
 - [x] `fusuma` is a facade crate (`fusuma-ui` is the toolkit): `renderer-*` features link backends, `toml` reads settings, `fusuma-platform` chooses

@@ -2,6 +2,7 @@
 #![no_std]
 
 mod animator;
+mod clip;
 mod decay;
 mod drag;
 mod easing;
@@ -11,6 +12,7 @@ mod spring;
 mod tween;
 
 pub use animator::{Animator, Full, Id};
+pub use clip::{Clip, MAX_SEGMENTS};
 pub use decay::Decay;
 pub use drag::{rubber_band, snap_page};
 pub use easing::{Bezier, Easing};

@@ -36,3 +36,17 @@ spring.set_target(Fx::from_int(100));
 while spring.step(16) {}
 assert_eq!(spring.position(), Fx::from_int(100));
 ```
+
+## Presets and clips
+
+- **Spring tokens** (`SpringConfig`): `SPATIAL_FAST`, `SPATIAL`, `SPATIAL_SLOW` for things that move or resize (a tiny
+  overshoot) and `EFFECTS_FAST`, `EFFECTS`, `EFFECTS_SLOW` for colour and opacity (never overshoot). Modelled on the
+  spring values of Material 3's motion scheme, written from memory and not copied from its source. Tests check that the
+  effects springs do not overshoot, that faster tokens settle sooner, and that a slow frame rate (120 ms steps, as on a
+  watch) still ends on the target.
+- **`Clip`**: a short timeline built by chaining `tween`, `segment` and `hold` with `then`, `delay`, `repeat`, `forever`,
+  `ping_pong`, `reverse`, `speed` and `stagger`. It is a `Copy` value of at most 8 pieces, with no allocation and no
+  closures, so it works on a chip. Presets: `fade`, `slide`, `pop` (overshoots) and `shake`. Read it with
+  `value(t_ms)` and `is_done(t_ms)`. A clip longer than 8 pieces drops the extras; to move two properties together,
+  read two clips at the same time. Arbitrary closures and `map`/`zip` are left out on purpose.
+

@@ -65,6 +65,45 @@ impl SpringConfig {
         mass: Fx::ONE,
     };
 
+    // The tokens below are modelled on the spring values of Material 3's motion scheme, written from memory
+    // (stiffness 300 to 3800, damping ratio 0.9 for things that move and 1 for effects), not copied from its source.
+    // Spatial springs may overshoot a hair; effects springs never do.
+    /// Small things that move or resize quickly (a switch thumb, a chip): a tiny overshoot.
+    pub const SPATIAL_FAST: Self = Self {
+        stiffness: Fx::from_int(1400),
+        damping: Fx::from_raw(4413839),
+        mass: Fx::ONE,
+    };
+    /// The default for things that move or change size (a sheet, a card, a page): a tiny overshoot.
+    pub const SPATIAL: Self = Self {
+        stiffness: Fx::from_int(700),
+        damping: Fx::from_raw(3121055),
+        mass: Fx::ONE,
+    };
+    /// Large things that move far (a full-screen change): a tiny overshoot.
+    pub const SPATIAL_SLOW: Self = Self {
+        stiffness: Fx::from_int(300),
+        damping: Fx::from_raw(2043210),
+        mass: Fx::ONE,
+    };
+    /// A quick change of colour or opacity (a press, a hover): never overshoots.
+    pub const EFFECTS_FAST: Self = Self {
+        stiffness: Fx::from_int(3800),
+        damping: Fx::from_raw(8079821),
+        mass: Fx::ONE,
+    };
+    /// The default for colour and opacity: never overshoots.
+    pub const EFFECTS: Self = Self {
+        stiffness: Fx::from_int(1600),
+        damping: Fx::from_raw(5242880),
+        mass: Fx::ONE,
+    };
+    /// A slow fade (a scrim, a hint appearing): never overshoots.
+    pub const EFFECTS_SLOW: Self = Self {
+        stiffness: Fx::from_int(800),
+        damping: Fx::from_raw(3707276),
+        mass: Fx::ONE,
+    };
     /// A spring from its parts. The values are limited to a range that stays stable: stiffness
     /// 0.1 to 20000, damping 0 to 2000 and mass 0.01 to 100.
     #[must_use]
@@ -432,5 +471,77 @@ mod tests {
             "an undamped spring keeps swinging: {}",
             peak_late.to_f32()
         );
+    }
+
+    /// Runs a spring from 0 to `to` in 8 ms steps; returns the farthest it went and the time it took to rest.
+    fn trial(cfg: SpringConfig, to: i32) -> (Fx, u32) {
+        let mut sp = Spring::new(cfg, Fx::ZERO);
+        sp.set_target(Fx::from_int(to));
+        let (mut far, mut t) = (Fx::ZERO, 0);
+        while sp.step(8) && t < 20_000 {
+            far = far.max(sp.position());
+            t += 8;
+        }
+        (far, t)
+    }
+
+    #[test]
+    fn effects_springs_never_overshoot_and_spatial_ones_only_a_hair() {
+        for cfg in [
+            SpringConfig::EFFECTS_FAST,
+            SpringConfig::EFFECTS,
+            SpringConfig::EFFECTS_SLOW,
+        ] {
+            let (far, _) = trial(cfg, 100);
+            assert!(
+                far <= Fx::from_int(100) + Fx::from_ratio(1, 2),
+                "{cfg:?} went to {}",
+                far.to_f32()
+            );
+        }
+        for cfg in [
+            SpringConfig::SPATIAL_FAST,
+            SpringConfig::SPATIAL,
+            SpringConfig::SPATIAL_SLOW,
+        ] {
+            let (far, _) = trial(cfg, 100);
+            assert!(far <= Fx::from_int(102), "{cfg:?} went to {}", far.to_f32());
+        }
+    }
+
+    #[test]
+    fn every_token_settles_and_faster_tokens_settle_sooner() {
+        let t = |c| trial(c, 100).1;
+        for c in [
+            SpringConfig::SPATIAL_FAST,
+            SpringConfig::SPATIAL,
+            SpringConfig::SPATIAL_SLOW,
+            SpringConfig::EFFECTS_FAST,
+            SpringConfig::EFFECTS,
+            SpringConfig::EFFECTS_SLOW,
+        ] {
+            assert!(t(c) > 0 && t(c) < 5_000, "{c:?} took {} ms", t(c));
+        }
+        assert!(
+            t(SpringConfig::SPATIAL_FAST) <= t(SpringConfig::SPATIAL)
+                && t(SpringConfig::SPATIAL) <= t(SpringConfig::SPATIAL_SLOW)
+        );
+        assert!(
+            t(SpringConfig::EFFECTS_FAST) <= t(SpringConfig::EFFECTS)
+                && t(SpringConfig::EFFECTS) <= t(SpringConfig::EFFECTS_SLOW)
+        );
+    }
+
+    #[test]
+    fn a_slow_frame_rate_does_not_change_where_a_token_ends_up() {
+        // A watch draws at 5 to 20 frames a second: big steps must still settle on the target.
+        for cfg in [SpringConfig::SPATIAL, SpringConfig::EFFECTS_FAST] {
+            let mut sp = Spring::new(cfg, Fx::ZERO);
+            sp.set_target(Fx::from_int(50));
+            for _ in 0..400 {
+                sp.step(120);
+            }
+            assert_eq!(sp.position().round(), 50, "{cfg:?}");
+        }
     }
 }
