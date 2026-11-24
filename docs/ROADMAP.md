@@ -71,7 +71,7 @@ works and is tested.
 - [x] Benchmark and a touch demo on the S3 (`tools/bench-s3`, `tools/vello-demo-s3` in `hibari-os`)
 - [x] **Tearing** was not a missing tearing-effect sync: the CO5300 needs an explicit memory-write command (0x2C) after each address window, and without it a partial update lands in the wrong place. Fixed in `hibari-drivers` with a regression test; update windows are also kept even-aligned
 - [x] **`no_std` backend:** `fusuma-render-vello-common` and `fusuma-render-vello-cpu` are `no_std` with `alloc` behind a default `std` feature (`libm` needed without it; the PNG output stays `std`). The whole `Renderer` on `vello_cpu` builds for the S3 and the C6 and runs on the S3: 2 to 3 percent over raw `vello_cpu` (267 against 260 ms for a full frame). Not yet released
-- [ ] **Partial redraws in the API:** a dirty-rectangle pass in `fusuma` (the flags exist; today the whole tree is redone) that gives the backend the regions to render, with even-aligned windows for the panel; reuse one pixmap and context per region size instead of allocating each time
+- [x] **Partial redraws in the API:** `Tree::paint_frame` draws only what changed and `Scene::set_damage`/`add_damage` make `vello_cpu` rasterise only that (several areas per frame, bands through one reused scratch buffer of at most 128 KB, pixel-identical to a full render inside the area; tested with shapes, text, clips and alpha). Measured on the S3 watch with fonts: a hover 127 to 50 ms, a page change 450 to 1100 ms down to about 265 ms. Limits: damage is one bounding rectangle per frame outside a scroll, and `pixels()` is only valid inside the hinted area, so a screenshot or PNG export must not use the hint
 - [ ] **Memory budget:** a full frame needs 1.4 MB, a card region far less; decide the region size and keep the frame buffer out of the path where possible
 - [ ] **Speed:** the render step is 41 ms for a card; look for what dominates (path flattening, the scalar fallback without SIMD) and whether a cheaper circle and rounded-rectangle path helps
 - [ ] **Text:** `vello_cpu`'s glyph painter (`glifo`) builds for the S3; shaping is the open question, since Parley's ICU4X data is large
@@ -83,12 +83,23 @@ works and is tested.
 - [x] The bitmap fonts (`font_for`, `text_size`) live in `fusuma-render-vello-common`; `fusuma-render-embedded` keeps its own copy until it is deleted
 - [x] Dirty-rectangle redraws in `fusuma`: every change records the area it touches (`take_damage`, `take_damage_in(screen)`), layout records the old and the new place of anything that moved, and `paint_region` draws only what overlaps. A random-change property test proves the damage covers every pixel that changed and that redrawing only the damage equals a full redraw; fuzzed (329k runs)
 - [ ] Use it for the launcher: needs a tile widget (an icon, a label, a press state), a pager with slide transitions and a `compose` pass for offsets, then rebuild the Hibari launcher on them; the launcher still has its own view and the integer renderer
-- [ ] A region renderer that reuses its surface between updates (today a region means a new `vello_cpu` surface), and a flush that sends just the region to the panel
+- [x] A region renderer that reuses its surface and a flush that sends just the region to the panel (the `Board::present(region, pixels)` contract of `fusuma-platform-embedded`)
 - [x] Move the `fusuma` toolkit tests from `Embedded` to `vello_cpu` (done); the launcher and host tests in `hibari-os` still use `Embedded`
 - [x] ~~Delete `fusuma-render-embedded`~~ cancelled: it stays, see Decisions
 - [ ] A choice of default backend by hardware: a `std` feature with `fusuma-render-vello` when `gpu_available()` else `vello_cpu` on a desktop; on a chip, a `[render]` setting in `board.toml` (integer, `tiny-skia` or `vello_cpu`)
 - [ ] Measure `tiny-skia` on the ESP32-S3 and a conformance run on the C6
 - [ ] Publish `fusuma-render-skia` 0.3.0 (the 0.1.0 on crates.io is the old `std` version)
+
+### Scrolling, screen shape and responsive layout (done, measured on the S3 watch)
+
+- [x] **Pixel-shift scrolling:** a container that only scrolled has its pixels moved (`Renderer::shift_area`, `will_draw`) and only the strip that came into view, the scrollbar column and the rounded-corner bands are drawn; the panel is still sent the whole window. Any other change inside the window cancels the shift, so the picture is never wrong, only sometimes slower. 14 tests compare every scrolled frame with a full redraw pixel by pixel (wheel, drag, fling, rubber band, padding, rounded corners); fuzzed. **The frame time on the watch is not measured yet** (a redraw of the list window cost about 180 ms a frame). Only `vello_cpu` implements it; the integer and GPU backends fall back to a full redraw
+- [x] **Screen shape:** `Shape` (`Rect`, `Rounded(radius)`, `Circle`), `Insets` and `safe_insets` (0.293 x the radius on every side), `edge_at(y)`, `Board::shape`, `Input::Shape`, `App::shape`. The showcase lays out inside the corners (checked for radii 40 to 90 and a circle). The watch's 70 px radius is a guess made by eye
+- [x] **Size classes in the showcase:** watch (tile grid, one small page with a back button), phone (Previous and Next row), tablet and desktop (sidebar), by logical width, with the display scale applied; widgets are the same everywhere, only the layout differs
+- [x] **Small fixes found on the watch:** a slider drag no longer turns into a page scroll when the finger drifts; the slider marks only the stretch the thumb crossed; labels in a column keep their text width
+- [ ] Move the size classes (`Class`) and the shape handling out of the showcase into the toolkit, so every app gets them
+- [ ] Faster RGB565 conversion (252 ms of a 750 ms full frame on the watch is my own per-row, per-pixel code), a 240 MHz clock, hot buffers in internal RAM, the second core; **profile layout, text and rasterising first**: the larger part of a big update is still unprofiled
+- [ ] Several damage rectangles outside scrolling, so a hover plus a status line does not repaint everything between them
+- [ ] Virtualised lists (a list of hundreds of rows with a fixed node capacity)
 
 ## Phase 2: animation (out of the box)
 - [x] `fusuma-anim`: `Fx` (Q16.16), easing (quad, cubic, quart, smooth, back, bounce, CSS Bezier), `Tween` with delay, stagger and retarget, `Keyframes`
@@ -96,7 +107,9 @@ works and is tested.
 - [x] 60 unit tests and a fuzz target; builds for RISC-V, ARM and Xtensa
 - [x] `Animator<N>`: a fixed set of running tweens, springs and flings on one frame clock; `step` says whether another frame is needed; stale-safe handles
 - [x] Drag helpers: `rubber_band` (resisting overscroll) and `snap_page` (where a flick settles, at most one page)
-- [ ] Gesture-driven motion in a widget: a pager that follows the finger, lets go into a spring, and a scroll list with fling (needs the widget tree)
+- [x] Scroll physics in the toolkit (`scrollphys`): a drag past an end resists like a rubber band and never stretches past the window, a flick goes on with friction (`Decay`) and slows to a stop, hitting an end at speed stretches a little and springs back with `SpringConfig::SPATIAL`, touching a moving list stops it and the lift is not a click, the wheel, `scroll_to` and the keyboard take over from a fling, slow frames run in 100 ms steps so a watch moves in real time. Tested, with mutation checks. Not yet: a pager that follows the finger, horizontal scrolling
+- [x] Animation vocabulary in `fusuma-anim`: six spring tokens (spatial and effects, fast, default, slow; modelled on Material 3's motion scheme from memory) and a composable, allocation-free `Clip` (`then`, `delay`, `repeat`, `forever`, `ping_pong`, `reverse`, `speed`, `stagger`; presets `fade`, `slide`, `pop`, `shake`). Kept small on purpose: no closures, at most 8 pieces
+- [ ] Wire the vocabulary into widgets: `animate`, `enter` and `exit` for node offset and opacity (opacity is approximate on the integer renderer), page transitions (`Push`, fade-through), a dialog entrance, an animation budget per chip so a watch can skip them
 - [ ] Shared and layout animations: a card that grows into a page, list reorder and insert, stagger helpers
 - [ ] More physics: gravity and bounce, a spring chain for trailing motion, velocity from touch history
 - [ ] Vector animation like Rive or Lottie: a state machine over timelines, playing `velato` (Lottie) and `vello_svg` content; a design-tool file format is out of scope
