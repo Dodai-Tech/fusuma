@@ -43,6 +43,7 @@ impl<const N: usize> Tree<N> {
                 && !n.disabled_eff
                 && n.rect.contains(p)
                 && self.in_viewports(i, p)
+                && !self.blocked(i)
             {
                 found = Some(i);
             }
@@ -74,6 +75,7 @@ impl<const N: usize> Tree<N> {
             if matches!(self.nodes[i].kind, Kind::Scroll { .. })
                 && self.nodes[i].rect.contains(p)
                 && self.in_viewports(i, p)
+                && !self.blocked(i)
             {
                 found = Some(i);
             }
@@ -157,6 +159,15 @@ impl<const N: usize> Tree<N> {
     /// and marks what to redo; the passes after it ([`update`](Self::update),
     /// [`advance`](Self::advance), [`paint`](Self::paint)) do the work.
     pub fn pointer(&mut self, event: Pointer) {
+        // A press outside an open dialog is a request to close it, and reaches nothing behind it.
+        if let Pointer::Down(p) = event
+            && let Some(m) = self.modal()
+            && !self.nodes[m].rect.contains(p)
+        {
+            self.pointer = Some(p);
+            self.dismiss_modal();
+            return;
+        }
         match event {
             Pointer::Move(p) => {
                 self.pointer = Some(p);

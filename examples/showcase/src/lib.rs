@@ -210,6 +210,7 @@ struct Live {
     slider_label: Option<NodeId>,
     field: Option<NodeId>,
     echo: Option<NodeId>,
+    delete: Option<NodeId>,
 }
 
 const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
@@ -233,6 +234,8 @@ pub struct Showcase {
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
     class: Class,
+    /// The confirmation dialog, its Cancel button and its Delete button.
+    dialog: [Option<NodeId>; 3],
     /// How far each edge of the screen is cut off by its shape (rounded corners), in physical pixels.
     insets: fusuma::Insets,
     /// The shape of the screen, as the board said.
@@ -269,6 +272,7 @@ impl Showcase {
             sidebar: [None; 7],
             nav: [None; 3],
             class: Class::of(width),
+            dialog: [None; 3],
             insets: fusuma::Insets::all(0),
             shape: fusuma::Shape::Rect,
             open: false,
@@ -324,6 +328,12 @@ impl Showcase {
     #[must_use]
     pub fn sidebar_item(&self, page: Page) -> Option<NodeId> {
         self.sidebar[Page::ALL.iter().position(|&p| p == page)?]
+    }
+
+    /// The dialog, its Cancel button and its Delete button.
+    #[must_use]
+    pub const fn dialog_nodes(&self) -> [Option<NodeId>; 3] {
+        self.dialog
     }
 
     /// The Previous and Next buttons of the compact layout; `None` in the wide one.
@@ -383,6 +393,7 @@ impl Showcase {
             bar: self.live.bar,
             start: self.live.start,
             reset: self.live.reset,
+            delete: self.live.delete,
             switch: self.live.switch,
             slider: self.live.slider,
             field: self.live.field,
@@ -402,6 +413,39 @@ impl Showcase {
     }
 
     fn build(&mut self) -> Result<(), fusuma::BuildError> {
+        self.dialog = [None; 3];
+        self.build_screen()?;
+        self.build_dialog()
+    }
+
+    /// The confirmation dialog: a child of the root, closed until the Delete button opens it.
+    fn build_dialog(&mut self) -> Result<(), fusuma::BuildError> {
+        let (sp, scale) = (self.theme.spacing, self.scale);
+        let Some(root) = self.tree.root() else {
+            return Ok(());
+        };
+        let t = &mut self.tree;
+        let d = t.dialog(
+            Some(root),
+            Style::new()
+                .width(Length::Fixed(scaled(300, scale)))
+                .padding(sp.lg)
+                .gap(sp.md)
+                .align(CrossAlign::Stretch),
+        )?;
+        t.label(Some(d), "Delete item?", TextRole::Title)?;
+        t.label(Some(d), "This cannot be undone.", TextRole::Body)?;
+        let row = t.row(Some(d), Style::new().gap(sp.md).align(CrossAlign::Stretch))?;
+        let cancel = t.button(Some(row), "Cancel", ButtonVariant::Secondary)?;
+        let ok = t.button(Some(row), "Delete", ButtonVariant::Primary)?;
+        for b in [cancel, ok] {
+            t.set_style(b, Style::new().width(Length::Fill(1)));
+        }
+        self.dialog = [Some(d), Some(cancel), Some(ok)];
+        Ok(())
+    }
+
+    fn build_screen(&mut self) -> Result<(), fusuma::BuildError> {
         let t = &mut self.tree;
         let content = Style::new()
             .padding(self.theme.spacing.md)
@@ -577,8 +621,8 @@ impl Showcase {
                 }
                 let row = t.row(Some(c), Style::new().gap(sp.md))?;
                 live.click_me = Some(t.button(Some(row), "Click me", ButtonVariant::Primary)?);
+                live.delete = Some(t.button(Some(row), "Delete...", ButtonVariant::Secondary)?);
                 if !lite {
-                    t.button(Some(row), "Secondary", ButtonVariant::Secondary)?;
                     let off = t.button(Some(row), "Disabled", ButtonVariant::Primary)?;
                     t.set_enabled(off, false);
                 }
@@ -776,8 +820,32 @@ impl Showcase {
             let id = Some(a.source);
             let mut b = Buf::new();
             match a.kind {
+                ActionKind::Dismissed => {
+                    if let Some(d) = self.dialog[0] {
+                        self.tree.close_dialog(d);
+                        let _ = write!(b, "Cancelled");
+                    }
+                }
                 ActionKind::Clicked => {
-                    if let Some(i) = self.tiles.iter().position(|&t| t.is_some() && t == id) {
+                    if id.is_some() && id == self.live.delete {
+                        if let Some(d) = self.dialog[0] {
+                            self.tree.open_dialog(d);
+                        }
+                    } else if id.is_some() && (id == self.dialog[1] || id == self.dialog[2]) {
+                        if let Some(d) = self.dialog[0] {
+                            self.tree.close_dialog(d);
+                        }
+                        let _ = write!(
+                            b,
+                            "{}",
+                            if id == self.dialog[2] {
+                                "Deleted"
+                            } else {
+                                "Cancelled"
+                            }
+                        );
+                    } else if let Some(i) = self.tiles.iter().position(|&t| t.is_some() && t == id)
+                    {
                         self.open = true;
                         self.page = Page::ALL[i];
                         self.rebuild();
@@ -1042,6 +1110,8 @@ pub struct Widgets {
     pub start: Option<NodeId>,
     /// The Progress page's reset button.
     pub reset: Option<NodeId>,
+    /// The Buttons page's Delete button, which opens the dialog.
+    pub delete: Option<NodeId>,
     /// The Controls page's switch.
     pub switch: Option<NodeId>,
     /// The Controls page's slider.
@@ -1622,7 +1692,7 @@ mod tests {
         let (mut s, _) = watch();
         open(&mut s, Page::Buttons);
         assert!(
-            s.tree().len() < 14,
+            s.tree().len() - 6 < 15, // the closed dialog's six nodes are not the page
             "the Buttons page is a button and a counter: {}",
             s.tree().len()
         );

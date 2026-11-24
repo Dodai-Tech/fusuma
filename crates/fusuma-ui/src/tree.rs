@@ -239,6 +239,13 @@ pub(crate) enum Kind {
         cursor: u8,
         anchor: u8,
     },
+    /// A modal panel centred over the screen and drawn on top of everything: a column of its own, out of the flow of
+    /// its parent. Closed until [`Tree::open_dialog`].
+    Dialog {
+        open: bool,
+        /// What had the focus when it opened, to give it back on close.
+        prev: Option<NodeId>,
+    },
     /// A column that shows a window onto content taller than itself: `offset` pixels scrolled, of
     /// `content` pixels of children.
     Scroll {
@@ -396,6 +403,9 @@ pub enum ActionKind {
     /// The text of a text field was changed by the user (typing, deleting, pasting, an input method). Read it
     /// with [`Tree::text`]. Not sent for [`Tree::set_text`].
     TextChanged,
+    /// The user asked to close the open dialog: pressed outside it, or pressed Cancel (Escape). The app decides whether
+    /// to [`close_dialog`](Tree::close_dialog); nothing closes by itself.
+    Dismissed,
     /// A checkbox or a switch was switched by the user; carries the new state.
     Toggled(bool),
     /// A slider was moved by the user; carries the new value in thousandths. Not sent for changes made
@@ -641,7 +651,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Adds a node under `parent` (or as the root when `parent` is `None`).
-    fn add(
+    pub(crate) fn add(
         &mut self,
         parent: Option<NodeId>,
         kind: Kind,
@@ -656,7 +666,10 @@ impl<const N: usize> Tree<N> {
             }
             Some(p) => {
                 let i = self.slot(p).ok_or(BuildError::NoSuchParent)?;
-                if !matches!(self.nodes[i].kind, Kind::Stack(_) | Kind::Scroll { .. }) {
+                if !matches!(
+                    self.nodes[i].kind,
+                    Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. }
+                ) {
                     return Err(BuildError::NotContainer);
                 }
                 Some(i)

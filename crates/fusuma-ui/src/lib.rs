@@ -5,6 +5,7 @@ mod anim;
 mod app;
 #[cfg(test)]
 mod damage;
+mod dialog;
 mod event;
 mod focus;
 mod layout;

@@ -115,13 +115,13 @@ impl<const N: usize> Tree<N> {
             cur = if i == root { None } else { self.post_next(i) };
         }
         // Place: every node before its children.
-        self.place_all(root, bounds);
+        self.place_all(root, bounds, theme.spacing.lg);
         // A widget the keyboard moved to may be scrolled out of sight: scroll to it with the fresh
         // positions, then place again with the new offsets.
         if let Some(target) = self.pending_reveal.take().and_then(|id| self.slot(id)) {
             self.reveal(target);
             if self.nodes[root].sub.has(Flags::LAYOUT) {
-                self.place_all(root, bounds);
+                self.place_all(root, bounds, theme.spacing.lg);
             }
         }
         // The cursor of a text field a press landed on, and where the caret is.
@@ -145,10 +145,24 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Puts every node where its parent says, from the root down.
-    fn place_all(&mut self, root: usize, bounds: Rect) {
+    fn place_all(&mut self, root: usize, bounds: Rect, margin: u32) {
         self.set_rect(root, bounds);
         let mut cur = Some(root);
         while let Some(i) = cur {
+            if let Kind::Dialog { open, .. } = self.nodes[i].kind {
+                // A dialog sits in the middle of the screen at its own size, kept `margin` from the edges; a closed
+                // one takes no room at all.
+                let rect = if open {
+                    let s = self.nodes[i].size;
+                    let w = s.w.min(bounds.w.saturating_sub(margin.saturating_mul(2)));
+                    let h = s.h.min(bounds.h.saturating_sub(margin.saturating_mul(2)));
+                    let at = crate::paint::centred(bounds, fusuma_render::Size::new(w, h));
+                    Rect::new(at.x, at.y, w, h)
+                } else {
+                    Rect::new(bounds.x, bounds.y, 0, 0)
+                };
+                self.set_rect(i, rect);
+            }
             self.place_children(i);
             cur = self.preorder_next(i, root);
         }
@@ -181,7 +195,7 @@ impl<const N: usize> Tree<N> {
             | Kind::Switch { .. }
             | Kind::Slider { .. }
             | Kind::TextInput { .. } => self.measure_widget(i, renderer, theme),
-            Kind::Stack(_) | Kind::Scroll { .. } => {
+            Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. } => {
                 let axis = match n.kind {
                     Kind::Stack(axis) => axis,
                     _ => Axis::Column,
@@ -190,6 +204,11 @@ impl<const N: usize> Tree<N> {
                 let mut c = n.first;
                 while let Some(ci) = c {
                     let child = &self.nodes[usize::from(ci)];
+                    // A dialog under this container is out of its flow: it takes no room here.
+                    if matches!(child.kind, Kind::Dialog { .. }) {
+                        c = child.next;
+                        continue;
+                    }
                     main = main.saturating_add(main_of(axis, child.size));
                     cross = cross.max(cross_of(axis, child.size));
                     count += 1;
@@ -215,6 +234,7 @@ impl<const N: usize> Tree<N> {
         let (axis, scrolls) = match self.nodes[i].kind {
             Kind::Stack(axis) => (axis, false),
             Kind::Scroll { .. } => (Axis::Column, true),
+            Kind::Dialog { .. } => (Axis::Column, false),
             _ => return,
         };
         let st = self.nodes[i].style;
@@ -234,6 +254,10 @@ impl<const N: usize> Tree<N> {
         let mut c = self.nodes[i].first;
         while let Some(ci) = c {
             let child = &self.nodes[usize::from(ci)];
+            if matches!(child.kind, Kind::Dialog { .. }) {
+                c = child.next;
+                continue;
+            }
             count += 1;
             match main_of_child(&child.style) {
                 Length::Fill(w) => weights = weights.saturating_add(weight(w)),
@@ -270,6 +294,10 @@ impl<const N: usize> Tree<N> {
                 let child = &self.nodes[ci];
                 (child.style, child.size, child.next)
             };
+            if matches!(self.nodes[ci].kind, Kind::Dialog { .. }) {
+                c = next;
+                continue;
+            }
             let main_px = match main_of_child(&child_style) {
                 Length::Fill(w) => {
                     let w = weight(w);

@@ -20,6 +20,8 @@ pub enum Key {
     Up,
     /// Enter or Space: presses the focused widget.
     Activate,
+    /// Escape or a back button: asks to close the open dialog (it sends `Dismissed`); nothing else uses it.
+    Cancel,
     /// The left arrow: lowers the focused slider a step.
     Left,
     /// The right arrow: raises the focused slider a step.
@@ -28,9 +30,9 @@ pub enum Key {
 
 impl<const N: usize> Tree<N> {
     /// Whether node `i` can take the focus: something that can be pressed and is enabled.
-    fn focusable(&self, i: usize) -> bool {
+    pub(crate) fn focusable(&self, i: usize) -> bool {
         let n = &self.nodes[i];
-        n.alive && n.kind.pressable() && !n.disabled_eff
+        n.alive && n.kind.pressable() && !n.disabled_eff && !self.blocked(i)
     }
 
     /// Gives the focus to `target` (or takes it away with `None`), redrawing the two that change.
@@ -127,6 +129,7 @@ impl<const N: usize> Tree<N> {
     /// changes state and queues [`Action`](crate::Action)s.
     pub fn key(&mut self, key: Key) {
         match key {
+            Key::Cancel => self.dismiss_modal(),
             Key::Activate => {
                 if let Some(i) = self.focus.and_then(|id| self.slot(id))
                     && self.focusable(i)

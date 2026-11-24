@@ -56,6 +56,7 @@ impl<const N: usize> Tree<N> {
         // Everything is drawn: nothing is left of a shift to make.
         self.shift = None;
         self.paint_walk(root, renderer, theme, None)?;
+        self.paint_dialogs(renderer, theme, None)?;
         self.clear_flag(Flags::PAINT);
         self.damage = None;
         self.rest = None;
@@ -77,7 +78,7 @@ impl<const N: usize> Tree<N> {
     /// Draws the nodes from `root` on, parents before children. A scroll container clips what is inside it
     /// and draws its scrollbar over it when its children are done. With a `region`, nodes that do not touch
     /// it are skipped.
-    fn paint_walk<R: Renderer>(
+    pub(crate) fn paint_walk<R: Renderer>(
         &self,
         root: usize,
         r: &mut R,
@@ -96,6 +97,11 @@ impl<const N: usize> Tree<N> {
                 depth -= 1;
                 let done = self.end_scroll(open[depth], r, theme);
                 result = result.and(done);
+            }
+            // A dialog is drawn after everything else, on top (see `paint_dialogs`), not here in its tree order.
+            if i != root && matches!(self.nodes[i].kind, Kind::Dialog { .. }) {
+                cur = self.after_subtree(i, root);
+                continue;
             }
             let seen = region.is_none_or(|g| {
                 let o = self.nodes[i].rect.intersect(&g);
@@ -182,6 +188,9 @@ impl<const N: usize> Tree<N> {
         if result.is_ok() {
             result = self.paint_walk(root, renderer, theme, Some(region));
         }
+        if result.is_ok() {
+            result = self.paint_dialogs(renderer, theme, Some(region));
+        }
         let restored = renderer.restore();
         result?;
         restored?;
@@ -233,6 +242,13 @@ impl<const N: usize> Tree<N> {
                 Ok(())
             }
             Kind::Spacer => Ok(()),
+            Kind::Dialog { open, .. } => {
+                if open {
+                    self.paint_dialog_panel(i, r, theme)
+                } else {
+                    Ok(())
+                }
+            }
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
             | Kind::ListItem { .. }

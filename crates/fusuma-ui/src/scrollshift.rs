@@ -91,6 +91,7 @@ impl<const N: usize> Tree<N> {
         if rect.w == 0
             || rect.h == 0
             || root_layout
+            || self.modal().is_some()
             || self.damage.is_some_and(|d| overlaps(&d, &rect))
         {
             return false;
