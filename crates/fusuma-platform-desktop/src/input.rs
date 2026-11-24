@@ -37,6 +37,8 @@ pub fn map_key(key: &WKey, shift: bool) -> Option<Key> {
         WKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
         // Space is text: a text field types it, anything else is pressed by it (the toolkit decides).
         WKey::Named(NamedKey::Enter) => Some(Key::Activate),
+        // Escape closes a dialog (the toolkit sends `Dismissed`); nothing else uses it.
+        WKey::Named(NamedKey::Escape) => Some(Key::Cancel),
         _ => None,
     }
 }
@@ -166,7 +168,8 @@ mod tests {
             None,
             "space is text"
         );
-        assert_eq!(map_key(&named(NamedKey::Escape), false), None);
+        assert_eq!(map_key(&named(NamedKey::Escape), false), Some(Key::Cancel));
+        assert_eq!(map_key(&named(NamedKey::F1), false), None);
         assert_eq!(map_key(&WKey::Character("a".into()), false), None);
     }
 

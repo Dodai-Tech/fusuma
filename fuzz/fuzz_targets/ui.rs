@@ -125,12 +125,13 @@ fuzz_target!(|data: &[u8]| {
             15 => {
                 // The widgets with state, and the scroll container that holds them.
                 let parent = if a % 5 == 0 { None } else { pick(&ids, a) };
-                let added = match b % 6 {
+                let added = match b % 7 {
                     0 => tree.scroll(parent, style(a, b)),
                     1 => tree.checkbox(parent, "c", a % 2 == 0),
                     2 => tree.switch(parent, "s", a % 2 == 0),
                     3 => tree.slider(parent, u16::from(a) * 7),
                     4 => tree.list_item(parent, "l", a % 2 == 0),
+                    6 => tree.dialog(parent, style(a, b)),
                     5 if a % 3 == 0 => tree.text_input(parent, "héllo wörld"),
                     _ => tree.radio(parent, "r", a % 2 == 0),
                 };
@@ -143,6 +144,13 @@ fuzz_target!(|data: &[u8]| {
                 if let Some(id) = pick(&ids, b) {
                     tree.scroll_to(id, i32::from(a) * i32::from(b) - 5000);
                     tree.set_slider(id, u16::from(a) * 9);
+                    // Dialogs: opening and closing whatever is picked (most picks are not dialogs, which is a no-op).
+                    if a % 2 == 0 {
+                        tree.open_dialog(id);
+                    } else {
+                        tree.close_dialog(id);
+                    }
+                    let _ = tree.is_dialog_open(id);
                     let _ = (tree.scroll_offset(id), tree.scroll_max(id), tree.slider_value(id), tree.is_checked(id));
                 }
             }
@@ -150,7 +158,7 @@ fuzz_target!(|data: &[u8]| {
                 if let Some(id) = pick(&ids, b) {
                     let _ = tree.focus(id);
                 }
-                tree.key([Key::Next, Key::Prev, Key::Up, Key::Down, Key::Activate, Key::Left, Key::Right][usize::from(a) % 7]);
+                tree.key([Key::Next, Key::Prev, Key::Up, Key::Down, Key::Activate, Key::Left, Key::Right, Key::Cancel][usize::from(a) % 8]);
             }
             18 => {
                 // Typing, edit commands, an input method and a clipboard read, on whatever has the focus.

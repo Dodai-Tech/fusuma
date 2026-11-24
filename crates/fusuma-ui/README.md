@@ -28,6 +28,11 @@ and cursor moves, and `Input::Preedit` while an input method composes; the app a
 method on), `text_cursor` (where to put its window) and `selected_text` (what a copy takes). Changes send
 `ActionKind::TextChanged`, Enter sends `Clicked`.
 
+**Dialogs.** `dialog(parent, style)` adds a closed modal panel with your content as its children; `open_dialog` shows it
+centred over a dimmed screen, `close_dialog` hides it. While it is open nothing behind it can be pressed, scrolled or
+focused, the focus moves into it and returns on close. A press outside it, or `Key::Cancel` (Escape on a desktop), sends
+`ActionKind::Dismissed`; the toolkit never closes one by itself.
+
 **Scrolling.** `scroll(parent, style)` is a column that clips its children and shows a window onto them; give it a
 height. A drag scrolls it (a press that moves less than 8 px is still a click), `Pointer::Wheel(point, dy)` scrolls the
 container under the point, and moving the focus with the keys scrolls the widget into view. `scroll_to`, `scroll_offset`

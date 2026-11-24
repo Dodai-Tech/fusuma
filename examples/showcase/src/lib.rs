@@ -1910,4 +1910,106 @@ mod tests {
         )
         .unwrap();
     }
+
+    fn tap_id(s: &mut Showcase, id: NodeId) {
+        tap(s, id);
+    }
+
+    #[test]
+    fn the_delete_button_opens_a_dialog_that_cancel_dismiss_and_delete_close() {
+        let (mut s, mut r) = app();
+        let [d, cancel, ok] = s.dialog_nodes().map(Option::unwrap);
+        assert!(!s.tree().is_dialog_open(d));
+        let del = s.widgets().delete.unwrap();
+        tap_id(&mut s, del);
+        assert!(s.tree().is_dialog_open(d));
+        s.frame(&mut r).unwrap();
+        // The page behind does not answer while it is open.
+        let click = s.widgets().click_me.unwrap();
+        tap_id(&mut s, click);
+        assert_eq!(s.clicks(), 0, "the press behind the dialog did not count");
+        assert!(
+            !s.tree().is_dialog_open(d),
+            "a press outside asked to close it, and the app did"
+        );
+        assert_eq!(s.tree().text(s.status.unwrap()), Some("Cancelled"));
+        // Reopen, then Cancel.
+        tap_id(&mut s, del);
+        s.frame(&mut r).unwrap();
+        tap_id(&mut s, cancel);
+        assert!(!s.tree().is_dialog_open(d));
+        assert_eq!(s.tree().text(s.status.unwrap()), Some("Cancelled"));
+        // Reopen, then Delete.
+        tap_id(&mut s, del);
+        s.frame(&mut r).unwrap();
+        tap_id(&mut s, ok);
+        assert!(!s.tree().is_dialog_open(d));
+        assert_eq!(s.tree().text(s.status.unwrap()), Some("Deleted"));
+        // Reopen, then Escape.
+        tap_id(&mut s, del);
+        s.frame(&mut r).unwrap();
+        s.key(Key::Cancel);
+        assert!(!s.tree().is_dialog_open(d), "Escape dismisses it");
+    }
+
+    #[test]
+    fn the_dialog_fits_every_screen_class_and_is_clear_of_a_rounded_corner() {
+        for (w, h, shape) in [
+            (410, 502, fusuma::Shape::Rounded(70)),
+            (600, 800, fusuma::Shape::Rect),
+            (1024, 600, fusuma::Shape::Rect),
+            (466, 466, fusuma::Shape::Circle),
+        ] {
+            let mut s = Showcase::new(w, h);
+            App::shape(&mut s, shape);
+            let mut r = fusuma::renderers::vello_cpu::new(w, h).unwrap();
+            s.frame(&mut r).unwrap();
+            if let Some(tile) = s.tile(Page::Buttons) {
+                tap_id(&mut s, tile);
+                s.frame(&mut r).unwrap();
+            }
+            let del = s.widgets().delete.unwrap();
+            tap_id(&mut s, del);
+            s.frame(&mut r).unwrap();
+            let rc = s.rect_of(s.dialog_nodes()[0].unwrap()).unwrap();
+            assert!(
+                rc.w > 0 && rc.h > 0 && rc.right() <= w as i32 && rc.bottom() <= h as i32,
+                "{w}x{h}: {rc:?}"
+            );
+            if let fusuma::Shape::Circle = shape {
+                assert!(
+                    visible(rc.x, rc.y, w as i32, h as i32, (w / 2) as i32),
+                    "{rc:?} corner on a circle"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_dialog_pictures_are_written_when_asked() {
+        let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") else {
+            return;
+        };
+        for (name, w, h, shape) in [
+            ("tablet", 1024, 600, fusuma::Shape::Rect),
+            ("watch", 410, 502, fusuma::Shape::Rounded(70)),
+        ] {
+            let mut s = Showcase::new(w, h);
+            App::shape(&mut s, shape);
+            let mut r = fusuma::renderers::vello_cpu::new(w, h).unwrap();
+            s.frame(&mut r).unwrap();
+            if let Some(tile) = s.tile(Page::Buttons) {
+                tap_id(&mut s, tile);
+                s.frame(&mut r).unwrap();
+            }
+            let del = s.widgets().delete.unwrap();
+            tap_id(&mut s, del);
+            s.frame(&mut r).unwrap();
+            std::fs::write(
+                std::format!("{dir}/dialog-{name}.png"),
+                fusuma::renderers::vello_cpu::png(&r).unwrap(),
+            )
+            .unwrap();
+        }
+    }
 }
