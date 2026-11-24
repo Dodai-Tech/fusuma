@@ -11,8 +11,8 @@ works and is tested.
   there is no usable adapter). The renderer crates stay separate: each is useful alone, and a firmware
   that only draws must not pull in a toolkit.
 * **Vello for everything with an operating system.** `vello_gpu` on a GPU, `vello_cpu` without
-  one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). The
-  `tiny-skia` backend was dropped; `fusuma-render-skia` 0.1.0 stays on crates.io, unmaintained.
+  one, sharing one implementation of the `Renderer` trait (`fusuma-render-vello-common`). On a chip, Vello
+  whenever a frame fits (see the next two items); `tiny-skia` and the integer renderer are for chips where it does not.
 * **Several renderers, one trait, a default by hardware.** The integer renderer (`fusuma-render-embedded`),
   `tiny-skia` (`fusuma-render-skia`), `vello_cpu` and the Vello GPU backend all pass the same conformance suite.
   A device uses the default that fits it and the others stay available: the GPU backend when there is a usable
@@ -21,6 +21,30 @@ works and is tested.
   (`tools/bench-c6` in `hibari-os`) showed `tiny-skia` 3 to 4 times faster and lighter than `vello_cpu` there, and
   the integer renderer another 3 to 4 times faster, with half the memory per pixel. On the ESP32-S3 `vello_cpu` is
   about 4 times slower than the integer renderer for a full frame but felt richer with partial redraws.
+* **The automatic choice ranks by memory, not by speed, on purpose: the richest backend that fits.** Vello is the
+  preferred look because it draws real typography (Inter and JetBrains Mono through Parley, shaped, with
+  diacritics), which `tiny-skia` and the integer renderer cannot (they have only the ASCII bitmap fonts). So the rule
+  is: the GPU, then `vello_cpu` when PSRAM holds a Vello frame twice over, then `tiny-skia` when its frame fits the
+  RAM left after `min_free_kb`, then the integer renderer. The cost is speed: on the S3 the integer renderer is about
+  4 times faster for a full frame. Where speed matters more, a board pins a backend in `fusuma.toml`; a
+  `prefer = speed | quality` setting is not built.
+* **Fonts beyond Latin are tiered, not bundled everywhere.** Bundled: Latin subsets only (213 KB for three fonts).
+  Desktop and phone get other scripts (Greek, Cyrillic, CJK, emoji) from system fonts through Fontique with
+  fallback: Fusuma's job is to wire that up, never to bundle CJK. A chip with PSRAM may get Greek and Cyrillic as an
+  optional cargo feature (wider Inter and Mono subsets; the size is not measured) and an app can register its own
+  font data for anything else. A chip without PSRAM stays Latin on bitmap fonts. Unknown, to check before promising
+  it: whether `vello_cpu`'s glyph runs draw colour emoji (COLR or bitmap glyphs).
+* **Right-to-left and complex scripts are later work, for desktop and phone only.** Parley shapes and reorders them,
+  so a label probably renders right on Vello, but nothing tests it: the status is unknown, not done. The text field is
+  known to be wrong for them (its caret and selection work on UTF-8 boundaries and measure byte prefixes, which breaks
+  on RTL, combining marks and ligatures), and layout has no direction (rows run left to right, nothing mirrors). Needed:
+  a caret and selection from Parley's cluster API, a layout direction with start and end instead of left and right,
+  and tests with Arabic, Hebrew and Devanagari through system fonts. Chips stay left-to-right Latin.
+* **Design systems plug in from outside, for pixels and for cells.** Fusuma ships a plain theme and a theme interface,
+  and never imports a design system. Dodai maps onto both from `dodai-fusuma` in the `dodai-ui` repository; its text-UI
+  side is a `tui` feature there (off by default, no fonts or renderer), not a separate crate, so one mapping keeps
+  pixels and cells on the same brand. For a board the mapping runs at build time and the firmware carries only
+  Fusuma's theme data (`dodai-core` is `f32` and `std`).
 * **Native only.** No webview. A browser target is a later, optional platform crate that draws
   into a canvas from WebAssembly.
 * **Animation is built in**, in fixed-point maths so that it behaves the same on a chip without an
@@ -42,23 +66,25 @@ works and is tested.
 | Crate | What | `no_std` |
 |---|---|---|
 | `fusuma-render` | `Renderer` trait, geometry, colors, paths, conformance suite; later the optional `Effects` and shader contract (feature-gated, unstable) | yes |
-| `fusuma-render-skia` | `tiny-skia` backend, `no_std` with `alloc`, restored | partly |
-| `fusuma-render-vello-common` | the `Renderer` on a Vello scene, generic over CPU and GPU (internal) | no |
-| `fusuma-render-vello-cpu` | `vello_cpu` backend | no |
+| `fusuma-render-skia` | `tiny-skia` backend, `no_std` with `alloc`; the automatic step between Vello and the integer renderer | partly |
+| `fusuma-render-vello-common` | the `Renderer` on a Vello scene, generic over CPU and GPU (internal) | with `libm` |
+| `fusuma-render-vello-cpu` | `vello_cpu` backend | with `libm` |
 | `fusuma-render-vello` | `vello_gpu` backend | no |
 | `fusuma-anim` | easing, tweens, keyframes, springs, fling decay | yes |
 | `fusuma-shaders` | shader contract implementation and engine (WGSL, prebuilt rust-gpu kernels, CPU path) | no |
 | `fusuma-text`, `fusuma-fonts` | Parley layout over bundled fonts (Inter, Inter Bold, JetBrains Mono); `no_std` with alloc, runs on a chip with PSRAM | partly |
-| `fusuma` | **the toolkit**: widget tree, layout, theme, events, animation, paint, and the widgets as modules; `no_std`, no allocator by default; a `std` feature adds the desktop extras (run-time GPU or CPU choice). Apps depend on this one crate | yes |
+| `fusuma` | **the facade, the one crate an app adds**: re-exports the toolkit and, by feature, `render`, `anim`, `platform`, `text` and the backends | with `default-features = false` |
+| `fusuma-ui` | **the toolkit**: widget tree, layout, theme, events, focus, scrolling, dialogs, text input, animation and paint passes, `Shell` and `App`; `no_std`, no allocator | yes |
+| `fusuma-cells` | **planned**: a cell grid, a diff of two frames into changed runs, an ANSI encoder to any byte sink and an ANSI key and mouse decoder; for every text-UI output | yes, no allocator |
 | `fusuma-platform-embedded`, `fusuma-platform-esp` | shared board code (`Board`, `Driver`, the renderer surface) and the ESP-IDF P4 board; the S3 watch's board is in the Hibari repository for now | yes / no |
 | `fusuma-platform-desktop` | `winit` window, pixel buffer or GPU surface | no |
 | `fusuma-platform-android`, `-ios` | native windows and touch | no |
-| `fusuma-platform-tui` | **planned, our own, a separate platform** (not a renderer): a terminal, an SSH session, a serial console or a character display, drawing each widget in its own text-cell form from a read-only view of the widget tree; input through `crossterm` | no |
+| `fusuma-platform-tui` | **planned, our own, a separate platform** (not a renderer): a terminal or an SSH session through `crossterm`; the serial console of a chip and a pixel panel use `fusuma-cells` directly | no |
 | `fusuma-platform-web` | later, optional: WebAssembly into a canvas | no |
 
 ## Phase 1: renderer
 - [x] `fusuma-render`: `Renderer` trait, conformance suite, fuzzed
-- [x] `fusuma-render-embedded`: integer backend, runs on the ESP32-S3 (to be removed, see Phase 1b)
+- [x] `fusuma-render-embedded`: integer backend, runs on the ESP32-S3 (kept: the lightest backend, see Decisions)
 - [x] `fusuma-render-vello-cpu` on `vello_cpu`, passing the conformance suite and matching the integer backend pixel for pixel; fuzzed
 - [x] `fusuma-render-vello-common`: one implementation for both Vello backends
 - [x] Published 0.1.0 of `fusuma-render`, `-embedded` (and the dropped `-skia`)
@@ -79,6 +105,7 @@ works and is tested.
 - [x] **`no_std` backend:** `fusuma-render-vello-common` and `fusuma-render-vello-cpu` are `no_std` with `alloc` behind a default `std` feature (`libm` needed without it; the PNG output stays `std`). The whole `Renderer` on `vello_cpu` builds for the S3 and the C6 and runs on the S3: 2 to 3 percent over raw `vello_cpu` (267 against 260 ms for a full frame). Not yet released
 - [x] **Partial redraws in the API:** `Tree::paint_frame` draws only what changed and `Scene::set_damage`/`add_damage` make `vello_cpu` rasterise only that (several areas per frame, bands through one reused scratch buffer of at most 128 KB, pixel-identical to a full render inside the area; tested with shapes, text, clips and alpha). Measured on the S3 watch with fonts: a hover 127 to 50 ms, a page change 450 to 1100 ms down to about 265 ms. Limits: damage is one bounding rectangle per frame outside a scroll, and `pixels()` is only valid inside the hinted area, so a screenshot or PNG export must not use the hint
 - [x] **Memory budget:** a `vello_cpu` surface is modelled at about 4.8 bytes a pixel (`fusuma-platform`, measured on the S3); a damaged region is rendered in bands through one reused scratch buffer of at most 128 KB, so a page change no longer allocates a second picture-sized buffer. The chooser refuses a board with no room for a frame. The extra memory is not yet counted in that estimate
+- [ ] **Multithreading:** `vello_cpu` 0.4 has a `multithreading` feature (rayon, `std` only); Fusuma does not turn it on, though `fusuma-render-vello-cpu`'s description said "optionally multithreaded". For the desktop and perhaps the P4 (two cores, ESP-IDF has threads; rayon there is untried), not the S3 (`no_std`). Unknown: whether the partial `render_with` path, which partial redraws use, runs on the threads
 - [ ] **Speed:** found so far on the S3 watch: Vello rasterised the whole surface for a 47x56 hover (fixed: 127 to 50 ms), and the RGB565 conversion is slow (252 ms of a 750 ms full frame, my own per-row code, not yet fixed). Still unprofiled: path flattening, text layout and glyph drawing, and layout, which together are most of a big update
 - [x] **Text:** Parley builds with `libm` for the S3 (Xtensa) and the P4 and runs on both with `vello_cpu`'s glyph runs; the S3 firmware image with Vello, Parley and the three fonts is 2.9 MB. Shaping works (Romanian ă â î ș ț render); wrapping and bidi are not used by any widget yet
 - [x] **P4:** the showcase runs on an ESP32-P4 7" with `vello_cpu` chosen automatically (first full frame about 210 ms without fonts, 300 ms with, a small update about 10 ms of drawing); the S3 benchmark crate itself was not run there
@@ -160,7 +187,10 @@ Plan:
 Two tiers, because a microcontroller and a phone need different things.
 
 * **Microcontrollers keep the built-in bitmap fonts.** They need no allocator, no font files and no
-  Unicode tables. Today these are three monospace sizes; a proportional pixel font and a glyph atlas
+  Unicode tables. Today these are three monospace sizes, and **ASCII only** (`embedded-graphics`' `ascii` sets): on
+  the integer and `tiny-skia` renderers `é` or `ș` draw as the replacement glyph, so "Romanian works" holds only on
+  Vello with fonts. Latin-1 sets (`iso_8859_1`) would add `é` and `ü`; `ș` and `ț` need `iso_8859_2` or a font of our
+  own; a proportional pixel font and a glyph atlas
   for a larger character set are the way to grow them.
 * **Desktop and phone use Parley** (the Linebender text stack, which `/home/sorin/Projects/linebender/parley`
   is a checkout of). Parley is layout: it needs `alloc`, and its dependencies are Fontique (font lookup and
@@ -203,7 +233,7 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
 - [ ] A semantic tree so that other front ends (terminal, accessibility) can read the widget tree: a read-only view of each node's kind, text, state, rectangle, focus and children. **The text-UI platform needs it** (and AccessKit would use it); layout may move to `taffy` on the `std` feature, while the no-allocator layout stays
 - [x] Widgets in `fusuma-ui`: checkbox, radio, switch, slider, selectable list item, progress bar, with keyboard focus (Tab, arrows, Enter)
-- [x] Scroll container (`Tree::scroll`): clips its children, scrolls by touch drag (with a slop so a tap still clicks), mouse wheel (`Pointer::Wheel`) and by moving the focus to a hidden widget; hidden widgets cannot be hit; a scrollbar shows the position. Not yet: inertia after a drag, rubber-banding at the ends (`fusuma-anim` has both), horizontal scrolling
+- [x] Scroll container (`Tree::scroll`): clips its children, scrolls by touch drag (with a slop so a tap still clicks), mouse wheel (`Pointer::Wheel`) and by moving the focus to a hidden widget; hidden widgets cannot be hit; a scrollbar shows the position. Inertia, rubber band and bounce came later (`scrollphys`, Phase 2). Not yet: horizontal scrolling
 - [x] Text input (`Tree::text_input`): a single line of up to 64 bytes with cursor, selection, typing, edit commands, input-method composition and clipboard hooks; the desktop platform wires keys, IME and the system clipboard. Not yet: mouse-drag and word selection, caret blink, undo, longer text, a multi-line field
 - [x] Animation vocabulary in `fusuma-anim`: six spring tokens (spatial and effects, fast, default, slow) and a composable, allocation-free `Clip` with presets (fade, slide, pop, shake). Not yet wired into the toolkit: scroll fling and rubber band, animated node offset and opacity (`animate`, `enter`, `exit`), page transitions (`Push`, fade-through), and an animation budget per chip
 - [x] Dialog (`Tree::dialog`, `open_dialog`, `close_dialog`): centred at its content size, drawn on top, a dimming layer on renderers that blend (none on the integer one, which would black the screen out), modal (nothing behind answers, scrolls or takes the focus), focus moves in and comes back, a press outside or Cancel (Escape) sends `Dismissed` and the app decides. Nested dialogs work. Not yet: an entrance animation, a drop shadow, a dialog that is part of a scrolling page
@@ -225,9 +255,12 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] `fusuma-platform-tui`, our own, **a separate platform and not a renderer** (decided; nothing built). It draws each widget kind its own way (`[x] label`, `(•) label`, `[███░░]`, `[ OK ]`) in a grid of text cells, in a terminal, over SSH, on a serial console of a headless chip, or on a character display. Shared with the pixel platforms: the tree, state, events, focus, scrolling, dialogs, the animation clock, `Shell` and `Input`. Its own: layout in cells, the cell look of each widget, and the terminal input (mouse, keys, resize) and output (a diffed write of only the changed cells). What it needs first, none of it started:
   - [ ] a read-only semantic view of the tree (the item above)
   - [ ] layout that does not need a `Renderer`: `Tree::update` takes one only to measure text, so a small `Measure` trait that a renderer satisfies and a cell grid (one column per character) can too
-  - [ ] a cell theme: lengths in whole cells (a button one row high, a gap one column), a `Theme` preset
-  - [ ] the cell look of every widget kind, and a decision where it lives. **Open design question:** (A) in `fusuma-ui` as a second paint pass into a `CellSink` trait that the platform implements (no allocation in the toolkit, the platform crate stays thin, the layers rule holds as it is), or (B) in its own crate reading the semantic view (the layers rule's "a platform draws nothing" needs a carve-out). I lean towards A, unverified
-  - [ ] `crossterm` input and output, with colour depth detection (truecolor, else 256 colours)
+  - [ ] a cell theme interface with a plain light and dark default: the same colour roles as the pixel `Theme`, how each degrades by colour depth (truecolor, 256, 16, monochrome with bold, reverse and underline), glyph sets (ASCII, light, rounded, heavy borders; checkbox, radio, switch and progress marks; scrollbar; spinner frames), an ASCII-only tier for serial consoles and the bitmap font, spacing in whole cells, emphasis per state, the focus marker, and motion in cell steps with an off switch for slow links. Pixel looks without a cell form get a stand-in (a radius becomes rounded border glyphs, a scrim dims the cells behind). Loadable as data (TOML), so a brand or a terminal can switch it at run time
+  - [ ] the cell look of every widget kind. **Decided: option A**, in `fusuma-ui` as a second paint pass into a `CellSink` trait that the output implements: no allocation in the toolkit, the platform crates stay thin, and the layers rule holds as it is (option B, a crate reading the semantic view, would need a carve-out from "a platform draws nothing")
+  - [ ] `fusuma-cells` (`no_std`, no allocator): the cell grid, the diff into changed runs, the ANSI encoder and decoder
+  - [ ] text snapshot tests: a cell frame is text plus attributes, so every widget in every cell theme is a golden text file (cheaper and clearer than PNGs), and the snapshots make a gallery
+  - [ ] outputs, in this order: (1) `crossterm` terminal and SSH, with colour depth detection, quickest to iterate and testable in CI; (2) the serial console of any chip (C6, RP2040, Cortex-M0), ANSI over a UART through `fusuma-cells`, a few KB of RAM; (3) a pixel panel: the cells drawn with the bitmap font through the integer renderer, only the changed cells, sent as one `Board::present` region
+  - [ ] what is to make it better than `ratatui`, to be shown with numbers: retained (focus, scrolling, dialogs and animation built in, which `ratatui` leaves to the app), one app for pixels and cells, `no_std` with no allocator, a diffed output and one region transfer on a panel
   
   Where the effort should go on a board: `ratatui` with `mousefood` is the current answer for a text UI on a board (and `dodai-ratatui` styles it, but does not build `no_std` yet). From mousefood's source, not measured: without its `framebuffer` feature every cell is drawn straight to the display (one small window and transfer per cell, slow on a QSPI panel); with it, `flush` sends the whole screen, so a one-letter change sends every pixel; `ratatui` itself already diffs, so changed cells are all it draws. Our hypothesis is that one dirty-region transfer (our `Board::present`) beats both, by an unknown number of milliseconds on a 35x55 cell grid. **Measure a ratatui and mousefood screen on the watch first**; a terminal, SSH or serial console needs no such work
 - [ ] `fusuma-platform-web` (optional): WebAssembly into a canvas, no DOM widgets
