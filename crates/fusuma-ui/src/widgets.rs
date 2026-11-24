@@ -217,6 +217,16 @@ impl<const N: usize> Tree<N> {
             self.drag = None;
             return;
         };
+        // A press on a slider is the slider's: it drags sideways, and a finger drifting up or down while it does must
+        // not turn the gesture into a scroll of the page it sits on.
+        if self
+            .captured
+            .and_then(|id| self.slot(id))
+            .is_some_and(|c| self.is_slider(c))
+        {
+            self.drag = None;
+            return;
+        }
         if !d.moving
             && (i64::from(p.y) - i64::from(d.start_y)).abs() >= i64::from(crate::event::SCROLL_SLOP)
         {

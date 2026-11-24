@@ -501,3 +501,43 @@ fn text_outside_the_window_is_not_drawn_by_a_region_repaint_either() {
         );
     }
 }
+
+#[test]
+fn a_slider_in_a_scroll_container_keeps_the_drag_when_the_finger_drifts_up_or_down() {
+    let mut t = Tree::<16>::new();
+    let root = t
+        .column(None, Style::new().align(CrossAlign::Stretch))
+        .unwrap();
+    let sc = t
+        .scroll(
+            Some(root),
+            Style::new()
+                .height(Length::Fixed(120))
+                .gap(4)
+                .align(CrossAlign::Stretch),
+        )
+        .unwrap();
+    let sl = t.slider(Some(sc), 500).unwrap();
+    for _ in 0..6 {
+        t.list_item(Some(sc), "x", false).unwrap();
+    }
+    t.update(&screen(), &THEME, Rect::new(0, 0, W, H));
+    assert!(t.scroll_max(sc).unwrap() > 0, "the page can scroll");
+    let r = t.rect(sl).unwrap();
+    let y = r.y + (r.h / 2) as i32;
+    t.pointer(Pointer::Down(Point::new(r.x + (r.w / 2) as i32, y)));
+    // A thumb dragged right while the finger wanders 25 px down: far past the scroll slop.
+    for k in 1..=6 {
+        t.pointer(Pointer::Move(Point::new(
+            r.x + (r.w / 2) as i32 + k * 12,
+            y + k * 4,
+        )));
+    }
+    assert!(
+        t.slider_value(sl).unwrap() > 600,
+        "the slider followed the finger: {:?}",
+        t.slider_value(sl)
+    );
+    assert_eq!(t.scroll_offset(sc), Some(0), "and the page did not scroll");
+    t.pointer(Pointer::Up(Point::new(r.x + (r.w / 2) as i32 + 72, y + 24)));
+}
