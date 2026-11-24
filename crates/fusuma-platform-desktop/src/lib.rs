@@ -45,8 +45,19 @@ impl Default for Options {
     }
 }
 
-/// How often the app is asked for a frame when nothing else wakes it, in milliseconds (about 60 a second).
+/// How often a frame is run while the app has an animation going, in milliseconds (about 60 a second).
 const FRAME_MS: u64 = 16;
+
+/// When the event loop should wake next: in a frame's time while the app has more to do, and not until the
+/// next event otherwise, so an idle window costs no wake-ups.
+#[must_use]
+fn next_wake(wants_frame: bool, now: Instant) -> ControlFlow {
+    if wants_frame {
+        ControlFlow::WaitUntil(now + Duration::from_millis(FRAME_MS))
+    } else {
+        ControlFlow::Wait
+    }
+}
 
 /// Opens a window and runs `make(width, height)` in it until it is closed.
 ///
@@ -85,6 +96,8 @@ struct State<A> {
     shift: bool,
     /// The window must be shown again even if nothing was redrawn (it was exposed, or resized).
     show: bool,
+    /// The loop was asleep: the time asleep is not time the app lived through.
+    idle: bool,
 }
 
 struct Handler<A> {
@@ -149,6 +162,7 @@ impl<A: App> Handler<A> {
             cursor: None,
             shift: false,
             show: true,
+            idle: false,
         })
     }
 
@@ -191,7 +205,11 @@ impl<A: App> State<A> {
     /// One frame; shows it if anything was redrawn or `force` says the window needs the picture again.
     fn step(&mut self, force: bool) -> anyhow::Result<()> {
         let now = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if self.idle {
+            self.shell.resume(now);
+        }
         let redrawn = self.canvas.frame(&mut self.shell, now).is_some();
+        self.idle = !self.shell.wants_frame();
         if !(redrawn || force || self.show) {
             return Ok(());
         }
@@ -293,12 +311,31 @@ impl<A: App> ApplicationHandler for Handler<A> {
         let Some(st) = self.state.as_mut() else {
             return;
         };
-        if let Err(e) = st.step(false) {
+        if st.shell.wants_frame()
+            && let Err(e) = st.step(false)
+        {
             self.fail(el, e);
             return;
         }
-        el.set_control_flow(ControlFlow::WaitUntil(
-            Instant::now() + Duration::from_millis(FRAME_MS),
-        ));
+        let wants = st.shell.wants_frame();
+        el.set_control_flow(next_wake(wants, Instant::now()));
+    }
+}
+
+#[cfg(test)]
+mod wake_tests {
+    use super::*;
+
+    #[test]
+    fn an_app_with_nothing_to_do_sleeps_until_an_event_and_one_animating_wakes_in_a_frame() {
+        let now = Instant::now();
+        assert_eq!(next_wake(false, now), ControlFlow::Wait);
+        match next_wake(true, now) {
+            ControlFlow::WaitUntil(t) => {
+                let ms = t.duration_since(now).as_millis();
+                assert!((10..=20).contains(&ms), "about a frame: {ms} ms");
+            }
+            other => panic!("expected a timed wake, got {other:?}"),
+        }
     }
 }

@@ -134,6 +134,10 @@ pub struct Shell<A> {
     /// The application.
     pub app: A,
     clock: Clock,
+    /// Something was handed to the app since the last frame.
+    pending: bool,
+    /// The last frame left the app with more to do (an animation, a change not yet drawn).
+    busy: bool,
     /// How the frames are going.
     pub stats: Stats,
 }
@@ -144,6 +148,9 @@ impl<A: App> Shell<A> {
         Self {
             app,
             clock: Clock::new(),
+            pending: false,
+            // The first frame has to be drawn.
+            busy: true,
             stats: Stats {
                 frames: 0,
                 busy_ms: 0,
@@ -153,7 +160,25 @@ impl<A: App> Shell<A> {
 
     /// Hands an input to the app.
     pub fn input(&mut self, input: Input) {
+        self.pending = true;
         deliver(&mut self.app, input);
+    }
+
+    /// Tells the shell that the platform slept until `now_ms`. The time asleep is not time the app lived
+    /// through, so the next frame's step starts from here, and an animation begun by the input that woke the
+    /// platform runs from its start instead of jumping by seconds. Call it when waking from a wait, before
+    /// the frame. An app that needs real time to pass while idle (a timer) returns `true` from
+    /// [`App::tick`] for as long as it is pending, which keeps the platform awake.
+    pub fn resume(&mut self, now_ms: u64) {
+        let _ = self.clock.dt(now_ms);
+    }
+
+    /// Whether a frame is worth running now: something arrived since the last one, or the app said it has
+    /// more to do (an animation in progress). When this is false a platform can sleep until its next input
+    /// instead of waking 60 times a second.
+    #[must_use]
+    pub const fn wants_frame(&self) -> bool {
+        self.pending || self.busy
     }
 
     /// Hands several inputs to the app, in order.
@@ -175,8 +200,11 @@ impl<A: App> Shell<A> {
         renderer: &mut R,
     ) -> Result<Option<Rect>, R::Error> {
         let dt = self.clock.dt(now_ms);
-        self.app.tick(dt);
-        self.app.frame(renderer)
+        let wants = self.app.tick(dt);
+        self.pending = false;
+        let drawn = self.app.frame(renderer);
+        self.busy = wants || matches!(drawn, Ok(Some(_)) | Err(_));
+        drawn
     }
 }
 
@@ -374,5 +402,108 @@ mod tests {
             }
         }
         assert!(shell.app.clicked);
+    }
+
+    /// An app with an animation that runs for `left` more milliseconds.
+    struct Anim {
+        left: u32,
+        drawn: u32,
+        dts: Vec<u32>,
+    }
+
+    impl App for Anim {
+        fn pointer(&mut self, _: Pointer) {
+            self.left = 100;
+        }
+        fn key(&mut self, _: Key) {}
+        fn tick(&mut self, dt: u32) -> bool {
+            self.dts.push(dt);
+            self.left = self.left.saturating_sub(dt);
+            self.left > 0
+        }
+        fn frame<R: Renderer>(&mut self, _: &mut R) -> Result<Option<Rect>, R::Error> {
+            self.drawn += 1;
+            Ok((self.left > 0).then(|| Rect::new(0, 0, 1, 1)))
+        }
+    }
+
+    #[test]
+    fn an_idle_shell_asks_for_no_frames_and_wakes_on_input_or_an_animation() {
+        let mut shell = Shell::new(Anim {
+            left: 0,
+            drawn: 0,
+            dts: Vec::new(),
+        });
+        let mut r = fusuma_render_vello_cpu::new(8, 8).unwrap();
+        assert!(shell.wants_frame(), "the first frame is wanted");
+        shell.frame(0, &mut r).unwrap();
+        assert!(
+            !shell.wants_frame(),
+            "nothing to animate, nothing to draw: sleep"
+        );
+        shell.input(Input::Pointer(Pointer::Leave));
+        assert!(shell.wants_frame(), "an input wakes it");
+        shell.resume(5_000);
+        shell.frame(5_000, &mut r).unwrap();
+        assert!(
+            shell.wants_frame(),
+            "the animation it started is still running"
+        );
+        shell.frame(5_060, &mut r).unwrap();
+        assert!(shell.wants_frame());
+        shell.frame(5_120, &mut r).unwrap();
+        assert!(
+            !shell.wants_frame(),
+            "and it ends, so the shell sleeps again"
+        );
+    }
+
+    #[test]
+    fn the_first_frame_after_a_sleep_does_not_see_the_time_asleep() {
+        let mut shell = Shell::new(Anim {
+            left: 0,
+            drawn: 0,
+            dts: Vec::new(),
+        });
+        let mut r = fusuma_render_vello_cpu::new(8, 8).unwrap();
+        shell.frame(0, &mut r).unwrap();
+        shell.input(Input::Pointer(Pointer::Leave));
+        shell.resume(10_000);
+        shell.frame(10_000, &mut r).unwrap();
+        assert_eq!(
+            shell.app.dts.last(),
+            Some(&0),
+            "ten seconds asleep are not ten seconds of animation"
+        );
+        shell.frame(10_016, &mut r).unwrap();
+        assert_eq!(shell.app.dts.last(), Some(&16), "from then on time is real");
+    }
+
+    #[test]
+    fn without_resume_the_time_is_real_so_a_polling_platform_loses_nothing() {
+        let mut shell = Shell::new(Anim {
+            left: 0,
+            drawn: 0,
+            dts: Vec::new(),
+        });
+        let mut r = fusuma_render_vello_cpu::new(8, 8).unwrap();
+        shell.frame(0, &mut r).unwrap();
+        shell.frame(7_000, &mut r).unwrap();
+        assert_eq!(shell.app.dts.last(), Some(&7_000));
+    }
+
+    #[test]
+    fn a_drawn_frame_keeps_the_shell_awake_for_one_more() {
+        let mut shell = Shell::new(Anim {
+            left: 1,
+            drawn: 0,
+            dts: Vec::new(),
+        });
+        let mut r = fusuma_render_vello_cpu::new(8, 8).unwrap();
+        shell.frame(0, &mut r).unwrap();
+        assert!(
+            shell.wants_frame(),
+            "a frame that drew something is followed by another to be sure"
+        );
     }
 }

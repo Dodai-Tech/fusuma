@@ -18,6 +18,29 @@ pub fn font_for(size: u32) -> &'static MonoFont<'static> {
     }
 }
 
+/// The largest whole-number magnification of the bitmap font.
+pub const MAX_SCALE: u32 = 8;
+
+/// How many times the bitmap font is magnified for a requested line height. Up to 20 pixels the nearest of the
+/// three fonts is used as it is; above that the 10x20 font is scaled by the whole number nearest to
+/// `size / 20` (a 40 pixel line is the 10x20 font at 2x), so a theme scaled for a 2x screen has larger text.
+#[must_use]
+pub fn text_scale(size: u32) -> u32 {
+    if size <= 29 {
+        1
+    } else {
+        ((size.saturating_mul(2).saturating_add(20)) / 40).clamp(1, MAX_SCALE)
+    }
+}
+
+/// The size of `text` at a requested line height: the font's size, times its magnification.
+#[must_use]
+pub fn scaled_text_size(size: u32, text: &str) -> Size {
+    let s = text_size(font_for(size), text);
+    let k = text_scale(size);
+    Size::new(s.w.saturating_mul(k), s.h.saturating_mul(k))
+}
+
 /// The size of `text` in `font`, in pixels: characters, not bytes, side by side.
 #[must_use]
 pub fn text_size(font: &MonoFont<'_>, text: &str) -> Size {
@@ -45,6 +68,27 @@ mod tests {
         ] {
             assert_eq!(font_for(size).character_size.height, height, "size {size}");
         }
+    }
+
+    #[test]
+    fn large_text_magnifies_the_biggest_font_by_a_whole_number() {
+        for (size, k) in [
+            (0, 1),
+            (20, 1),
+            (29, 1),
+            (30, 2),
+            (40, 2),
+            (49, 2),
+            (50, 3),
+            (160, 8),
+            (u32::MAX, 8),
+        ] {
+            assert_eq!(text_scale(size), k, "size {size}");
+        }
+        assert_eq!(scaled_text_size(20, "abc"), Size::new(30, 20));
+        assert_eq!(scaled_text_size(40, "abc"), Size::new(60, 40));
+        assert_eq!(scaled_text_size(40, ""), Size::new(0, 0));
+        assert_eq!(scaled_text_size(u32::MAX, "ab"), Size::new(160, 160));
     }
 
     #[test]

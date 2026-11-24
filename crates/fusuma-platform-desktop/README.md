@@ -25,12 +25,17 @@ texture back), so one path presents either; drawing straight from the GPU to the
 | Tab, Shift+Tab, arrows, Enter, Space | `Key::Next`, `Prev`, `Up`, `Down`, `Left`, `Right`, `Activate` |
 | resize, scale factor | `Input::Resize { width, height, scale_percent }` |
 
+## Scale and idle
+
+The display scale reaches the app as `Input::Resize { scale_percent }`, and `Theme::scaled(percent)` turns a theme into
+one for that scale (lengths multiplied, outlines at least 1 px). The built-in bitmap font is magnified by a whole
+number for sizes above 29 px. The loop sleeps (`ControlFlow::Wait`) when the app has nothing to animate or draw and
+wakes on an event, so an idle window makes no wake-ups; it runs at about 60 frames a second only while the app
+reports an animation.
+
 ## Limits
 
-- The app is laid out in physical pixels; the scale factor is passed to it, but nothing scales the theme with it
-  yet, so a 2x screen shows a small UI.
 - Text is the bitmap fonts (up to 10x20) until `fusuma-text` exists.
-- A frame is asked for 60 times a second even when idle (it costs almost nothing, but it is a wake-up).
 - No text input, IME, clipboard or window decorations of its own.
 
 ## What this crate does not contain

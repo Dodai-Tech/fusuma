@@ -48,6 +48,16 @@ pub const fn theme(dark: bool) -> Theme {
     }
 }
 
+/// `v` pixels at the display scale `percent`.
+const fn scaled(v: u32, percent: u32) -> u32 {
+    let r = v as u64 * percent as u64 / 100;
+    if r > u32::MAX as u64 {
+        u32::MAX
+    } else {
+        r as u32
+    }
+}
+
 /// The pages in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -149,6 +159,8 @@ pub struct Showcase {
     tree: Tree<NODES>,
     theme: Theme,
     dark: bool,
+    /// Display scale in percent; the theme and the fixed sizes follow it.
+    scale: u32,
     bounds: Rect,
     page: Page,
     sidebar: [Option<NodeId>; 5],
@@ -170,6 +182,7 @@ impl Showcase {
         let mut s = Self {
             tree: Tree::new(),
             theme: theme(true),
+            scale: 100,
             dark: true,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
@@ -291,7 +304,7 @@ impl Showcase {
         let side = t.column(
             Some(body),
             Style::new()
-                .width(Length::Fixed(240))
+                .width(Length::Fixed(scaled(240, self.scale)))
                 .padding(self.theme.spacing.sm)
                 .gap(self.theme.spacing.xs)
                 .align(CrossAlign::Stretch)
@@ -314,6 +327,7 @@ impl Showcase {
         let sp = self.theme.spacing;
         let body = self.body;
         let permille = self.permille();
+        let scale = self.scale;
         let t = &mut self.tree;
         let c = t.column(
             body,
@@ -370,8 +384,8 @@ impl Showcase {
                 let list = t.scroll(
                     Some(c),
                     Style::new()
-                        .width(Length::Fixed(360))
-                        .height(Length::Fixed(260))
+                        .width(Length::Fixed(scaled(360, scale)))
+                        .height(Length::Fixed(scaled(260, scale)))
                         .gap(sp.xs)
                         .align(CrossAlign::Stretch),
                 )?;
@@ -432,7 +446,7 @@ impl Showcase {
 
     fn set_dark(&mut self, dark: bool) {
         self.dark = dark;
-        self.theme = theme(dark);
+        self.theme = theme(dark).scaled(self.scale);
         if let Some(b) = self.theme_button {
             self.tree
                 .set_text(b, if dark { "Light theme" } else { "Dark theme" });
@@ -609,9 +623,19 @@ impl App for Showcase {
         Self::tick(self, dt_ms)
     }
 
-    fn resized(&mut self, width: u32, height: u32, _scale_percent: u32) {
+    fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
-        if bounds != self.bounds {
+        let scale = scale_percent.clamp(50, 800);
+        if scale != self.scale {
+            // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
+            self.scale = scale;
+            self.theme = theme(self.dark).scaled(scale);
+            self.bounds = bounds;
+            self.tree.clear();
+            self.sidebar = [None; 5];
+            self.content = None;
+            let _ = self.build();
+        } else if bounds != self.bounds {
             self.bounds = bounds;
             self.tree.invalidate();
         }
@@ -941,8 +965,47 @@ mod tests {
             "the header button moved in"
         );
         // The same size again is nothing to do.
-        App::resized(&mut s, 800, 480, 200);
+        App::resized(&mut s, 800, 480, 100);
         assert_eq!(s.frame(&mut small).unwrap(), None);
         let _ = &mut r;
+    }
+
+    #[test]
+    fn a_2x_screen_gets_a_2x_ui_with_bigger_text_and_the_same_state() {
+        let (mut s, _) = app();
+        let w = s.widgets().click_me.unwrap();
+        tap(&mut s, w);
+        go(&mut s, Page::Controls);
+        let (base_h, base_text) = (s.theme().control_height, s.theme().text.body);
+        App::resized(&mut s, 2048, 1200, 200);
+        assert_eq!(s.theme().control_height, base_h * 2);
+        assert_eq!(s.theme().text.body, base_text * 2);
+        assert_eq!(s.page(), Page::Controls, "the page on show is kept");
+        assert_eq!(s.clicks(), 1, "so is the state");
+        let mut big = fusuma::renderers::vello_cpu::new(2048, 1200).unwrap();
+        s.frame(&mut big).unwrap();
+        let side = s.rect_of(s.sidebar_item(Page::Buttons).unwrap()).unwrap();
+        assert!(side.w > 2 * 200, "the sidebar is twice as wide: {side:?}");
+        assert!(side.h >= 2 * 44 - 2, "and a row twice as tall: {side:?}");
+        // Back to 1x restores the original sizes.
+        App::resized(&mut s, 1024, 600, 100);
+        assert_eq!(s.theme().control_height, base_h);
+    }
+
+    #[test]
+    fn the_same_scale_again_does_not_rebuild_and_the_light_theme_keeps_the_scale() {
+        let (mut s, mut r) = app();
+        App::resized(&mut s, 1024, 600, 150);
+        s.frame(&mut r).unwrap();
+        let t = s.theme_button().unwrap();
+        App::resized(&mut s, 1024, 600, 150);
+        assert_eq!(s.theme_button(), Some(t), "no rebuild for the same scale");
+        tap(&mut s, t);
+        assert!(!s.is_dark());
+        assert_eq!(
+            s.theme().control_height,
+            84,
+            "switching the theme keeps the 150% scale (56 x 1.5)"
+        );
     }
 }

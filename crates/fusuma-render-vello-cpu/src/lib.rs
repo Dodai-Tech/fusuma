@@ -303,4 +303,50 @@ mod tests {
             "{differing} of {area:.0} pixels differ"
         );
     }
+
+    #[test]
+    fn text_at_twice_the_height_is_the_same_glyphs_twice_as_big() {
+        use fusuma_render::{Probe, TextStyle};
+        let paint = |size: u32| {
+            let mut r = new(120, 60).unwrap();
+            r.clear(Color::BLACK).unwrap();
+            r.draw_text("I", Point::new(0, 0), &TextStyle::new(size, Color::WHITE))
+                .unwrap();
+            r
+        };
+        let (small, big) = (paint(20), paint(40));
+        let lit = |r: &VelloCpu, w: i32, h: i32| {
+            (0..h)
+                .flat_map(|y| (0..w).map(move |x| (x, y)))
+                .filter(|&(x, y)| r.pixel(x, y) != Some(Color::BLACK))
+                .count()
+        };
+        let (a, b) = (lit(&small, 120, 60), lit(&big, 120, 60));
+        assert_eq!(
+            b,
+            a * 4,
+            "twice as wide and twice as tall is four times the pixels: {a} {b}"
+        );
+        // Every lit pixel of the small glyph is a 2x2 block in the big one.
+        for y in 0..20 {
+            for x in 0..10 {
+                let on = small.pixel(x, y) != Some(Color::BLACK);
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    assert_eq!(
+                        big.pixel(x * 2 + dx, y * 2 + dy) != Some(Color::BLACK),
+                        on,
+                        "({x}, {y})"
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            small.measure_text("abc", &TextStyle::new(20, Color::WHITE)),
+            fusuma_render::Size::new(30, 20)
+        );
+        assert_eq!(
+            big.measure_text("abc", &TextStyle::new(40, Color::WHITE)),
+            fusuma_render::Size::new(60, 40)
+        );
+    }
 }

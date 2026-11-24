@@ -103,6 +103,59 @@ pub struct Theme {
     pub motion: MotionTimes,
 }
 
+impl Theme {
+    /// This theme for a display at `percent` scale (100 is one pixel per logical pixel, 200 a 2x screen): every
+    /// length is multiplied and rounded, and nothing that was visible disappears (a 1 pixel outline stays at
+    /// least 1). Colours and motion are unchanged. `percent` is held between 50 and 800, and 100 returns the
+    /// theme as it is. Apply it to the base theme each time, not to an already scaled one.
+    #[must_use]
+    pub const fn scaled(self, percent: u32) -> Self {
+        let p = if percent < 50 {
+            50
+        } else if percent > 800 {
+            800
+        } else {
+            percent
+        };
+        if p == 100 {
+            return self;
+        }
+        // Rounded to the nearest pixel, and never below `min`.
+        const fn s(v: u32, p: u32, min: u32) -> u32 {
+            let r = (v as u64 * p as u64 + 50) / 100;
+            let r = if r > u32::MAX as u64 {
+                u32::MAX
+            } else {
+                r as u32
+            };
+            if r < min { min } else { r }
+        }
+        Self {
+            spacing: Spacing {
+                xs: s(self.spacing.xs, p, 1),
+                sm: s(self.spacing.sm, p, 1),
+                md: s(self.spacing.md, p, 1),
+                lg: s(self.spacing.lg, p, 1),
+            },
+            radii: Radii {
+                sm: s(self.radii.sm, p, 0),
+                md: s(self.radii.md, p, 0),
+                lg: s(self.radii.lg, p, 0),
+            },
+            text: TextSizes {
+                caption: s(self.text.caption, p, 1),
+                body: s(self.text.body, p, 1),
+                title: s(self.text.title, p, 1),
+            },
+            control_height: s(self.control_height, p, 1),
+            border_width: s(self.border_width, p, 1),
+            indicator: s(self.indicator, p, 1),
+            track_height: s(self.track_height, p, 1),
+            ..self
+        }
+    }
+}
+
 /// What a text is for; decides its size and colour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum TextRole {
@@ -446,5 +499,32 @@ mod tests {
                 "disabled looks the same for every variant"
             );
         }
+    }
+
+    #[test]
+    fn scaling_multiplies_lengths_keeps_colours_and_never_loses_an_outline() {
+        let base = Theme::DARK;
+        assert_eq!(base.scaled(100), base);
+        let big = base.scaled(200);
+        assert_eq!(big.control_height, base.control_height * 2);
+        assert_eq!(big.spacing.md, base.spacing.md * 2);
+        assert_eq!(big.text.body, base.text.body * 2);
+        assert_eq!(big.border_width, 2);
+        assert_eq!((big.colors, big.motion), (base.colors, base.motion));
+        let small = base.scaled(50);
+        assert_eq!(small.border_width, 1, "a 1 px outline stays visible");
+        assert!(small.spacing.xs >= 1 && small.text.caption >= 1);
+        assert_eq!(base.scaled(150).control_height, 66);
+    }
+
+    #[test]
+    fn scaling_is_held_to_a_sane_range_and_does_not_overflow() {
+        let base = Theme::DARK;
+        assert_eq!(base.scaled(0), base.scaled(50));
+        assert_eq!(base.scaled(u32::MAX), base.scaled(800));
+        let mut huge = base;
+        huge.control_height = u32::MAX;
+        assert_eq!(huge.scaled(800).control_height, u32::MAX);
+        assert!(base.scaled(125).radii.sm <= base.scaled(125).radii.md);
     }
 }
