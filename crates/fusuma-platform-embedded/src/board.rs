@@ -56,6 +56,63 @@ pub trait Pixels {
     /// Writes the pixels of row `y` from column `x` on into `out` (`out.len()` of them). Rows or columns outside
     /// the picture are left as they were.
     fn row(&mut self, y: u32, x: u32, out: &mut [u16]);
+
+    /// Writes a block of rows in one call: `width` pixels from column `x` of each row from `y`, into `out` one
+    /// row every `stride` pixels (`stride` is `width` for a packed band, the screen width for a frame buffer), as
+    /// many rows as `out` holds, in byte `order`. Faster than [`row`](Self::row) row by row: one call, one pass,
+    /// and the byte swap a panel needs done on the way. What lies outside the picture is left as it was.
+    fn rows(
+        &mut self,
+        y: u32,
+        x: u32,
+        width: u32,
+        out: &mut [u16],
+        stride: usize,
+        order: ByteOrder,
+    ) {
+        let width = width as usize;
+        if width == 0 || stride < width {
+            return;
+        }
+        for (i, line) in out.chunks_mut(stride).enumerate() {
+            let Some(dst) = line.get_mut(..width) else {
+                break;
+            };
+            self.row(y.saturating_add(i as u32), x, dst);
+            order.apply(dst);
+        }
+    }
+}
+
+/// The byte order a panel takes its RGB565 pixels in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ByteOrder {
+    /// The CPU's own (little-endian on every ESP chip): a frame buffer scanned out by DMA.
+    #[default]
+    Native,
+    /// High byte first, as most SPI and QSPI panels take it.
+    BigEndian,
+}
+
+impl ByteOrder {
+    /// `px` (native RGB565) as this order puts it in memory.
+    #[must_use]
+    #[inline]
+    pub const fn of(self, px: u16) -> u16 {
+        match self {
+            Self::Native => px,
+            Self::BigEndian => px.to_be(),
+        }
+    }
+
+    /// Turns native pixels into this order, in place.
+    pub fn apply(self, pixels: &mut [u16]) {
+        if self == Self::BigEndian {
+            for p in pixels {
+                *p = p.to_be();
+            }
+        }
+    }
 }
 
 /// A board: one screen and, usually, one touch panel. A chip's runtime brings the hardware up and hands the
@@ -87,6 +144,12 @@ pub trait Board {
     /// # Errors
     /// The bus error.
     fn present(&mut self, region: Rect, pixels: &mut dyn Pixels) -> Result<(), Self::Error>;
+
+    /// A monotonic clock in microseconds, for the [`Driver`](crate::Driver) to time the stages of a step
+    /// ([`Timing`](crate::Timing)). `None` (the default) means no timing.
+    fn now_us(&self) -> Option<u64> {
+        None
+    }
 }
 
 #[cfg(test)]

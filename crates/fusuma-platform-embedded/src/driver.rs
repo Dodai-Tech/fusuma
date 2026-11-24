@@ -15,6 +15,21 @@ pub struct Step {
     /// Whether the app wants another frame soon (an animation, a change not drawn yet). When false a runtime can
     /// sleep until touch arrives, or the next poll if it has no interrupt.
     pub wants_frame: bool,
+    /// How long each stage took, when the board has a clock ([`Board::now_us`]) and something was shown.
+    pub timing: Option<Timing>,
+}
+
+/// Where the time of one step went, in microseconds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Timing {
+    /// Reading the touch panel and handing its events to the app.
+    pub input_us: u32,
+    /// The app's frame: layout and the paint commands (with the integer renderer, the drawing itself).
+    pub draw_us: u32,
+    /// Turning the paint commands into pixels, for a renderer that does it lazily (Vello); 0 for the integer one.
+    pub raster_us: u32,
+    /// The board showing the region: copying or converting the rows and the transfer to the panel.
+    pub present_us: u32,
 }
 
 /// Why a step failed.
@@ -103,10 +118,12 @@ impl<A: App, B: Board> Driver<A, B> {
     /// # Errors
     /// [`DriverError`] when drawing or showing the frame failed.
     pub fn step(&mut self, now_ms: u64) -> Result<Step, DriverError<B::Error>> {
+        let t0 = self.board.now_us();
         let sample = self.board.touch().unwrap_or(None);
         for event in self.touch.step(sample).into_iter().flatten() {
             self.shell.input(Input::Pointer(event));
         }
+        let t1 = self.board.now_us();
         let drawn = self
             .surface
             .frame(&mut self.shell, now_ms)
@@ -114,14 +131,31 @@ impl<A: App, B: Board> Driver<A, B> {
         let shown = drawn
             .map(|r| r.intersect(&self.screen))
             .filter(|r| r.w > 0 && r.h > 0);
+        let (mut t2, mut t3, mut t4) = (t1, t1, t1);
         if let Some(region) = shown {
+            t2 = self.board.now_us();
+            self.surface.rasterise();
+            t3 = self.board.now_us();
             self.board
                 .present(region, &mut self.surface)
                 .map_err(DriverError::Board)?;
+            t4 = self.board.now_us();
         }
+        let span = |a: Option<u64>, b: Option<u64>| {
+            a.zip(b).map_or(0, |(a, b)| {
+                u32::try_from(b.saturating_sub(a)).unwrap_or(u32::MAX)
+            })
+        };
+        let timing = (shown.is_some() && t0.is_some()).then(|| Timing {
+            input_us: span(t0, t1),
+            draw_us: span(t1, t2),
+            raster_us: span(t2, t3),
+            present_us: span(t3, t4),
+        });
         Ok(Step {
             shown,
             wants_frame: self.shell.wants_frame(),
+            timing,
         })
     }
 }
@@ -149,6 +183,8 @@ mod tests {
         chunk: usize,
         fail_present: bool,
         shape: fusuma::Shape,
+        /// A clock that moves 10 us at every reading; `None`: no clock.
+        clock: Option<core::cell::Cell<u64>>,
     }
 
     impl Fake {
@@ -162,6 +198,7 @@ mod tests {
                 chunk: 1_000_000,
                 fail_present: false,
                 shape: fusuma::Shape::Rect,
+                clock: None,
             }
         }
 
@@ -185,6 +222,13 @@ mod tests {
             self.touches.pop_front().unwrap_or(Ok(None))
         }
 
+        fn now_us(&self) -> Option<u64> {
+            self.clock.as_ref().map(|c| {
+                c.set(c.get() + 10);
+                c.get()
+            })
+        }
+
         fn present(&mut self, region: Rect, pixels: &mut dyn Pixels) -> Result<(), ()> {
             if self.fail_present {
                 return Err(());
@@ -200,6 +244,36 @@ mod tests {
                 }
             }
             Ok(())
+        }
+    }
+
+    #[test]
+    fn each_stage_is_timed_when_the_board_has_a_clock_and_only_then() {
+        for backend in backends() {
+            let mut board = Fake::new(320, 200);
+            board.clock = Some(core::cell::Cell::new(0));
+            let mut d = Driver::new(Showcase::new(320, 200), board, backend).unwrap();
+            let step = d.step(0).unwrap();
+            assert!(step.shown.is_some());
+            // The fake clock moves 10 us a reading, so each stage between two readings is 10 us.
+            assert_eq!(
+                step.timing,
+                Some(Timing {
+                    input_us: 10,
+                    draw_us: 10,
+                    raster_us: 10,
+                    present_us: 10
+                }),
+                "{backend:?}"
+            );
+            let idle = d.step(16).unwrap();
+            assert_eq!(
+                (idle.shown, idle.timing),
+                (None, None),
+                "nothing shown, nothing timed"
+            );
+            let mut plain = driver(backend);
+            assert_eq!(plain.step(0).unwrap().timing, None, "no clock");
         }
     }
 

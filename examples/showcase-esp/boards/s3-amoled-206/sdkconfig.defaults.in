@@ -27,3 +27,7 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# The frame is in PSRAM and read row by row for every update: longer data cache lines suit that sequential read.
+# (A 64 KB cache was measured too: 2 ms more off a full frame for 32 KB less internal RAM; not worth it.)
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

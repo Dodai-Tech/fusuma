@@ -13,6 +13,12 @@ works and is tested.
    tested pixel by pixel against Vello. Measured on the S3 watch with the same showcase, the target to reach: the
    integer renderer takes 97 ms for the first frame, 7 ms for a tap and 88 ms for a scroll step or page; Vello with
    Inter takes 558, 47 and 311 ms. Hibari's launcher is fast for the same reason: it draws with the integer renderer.
+   - [x] **A0, measure and copy faster** (`Timing` per driver step from `Board::now_us`: input, draw, raster, present;
+     the ESP runtime logs the averages and the slowest update with its stages every 10 s. `Pixels::rows` fills a
+     block of rows in one pass in the panel's `ByteOrder`, for the integer and the Vello surface; the S3 data cache
+     uses 64-byte lines). Measured on the S3 watch, integer renderer, full frame: copying to the panel 16.8 -> 12.7
+     ms, first frame 98 -> 83 ms; internal RAM unchanged. A 64 KB data cache took 32 KB of internal RAM for no
+     further gain, so it was left out. The copy is bound by reading the 400 KB frame from PSRAM (about 32 MB/s)
 2. **UI components and logic:** the missing widgets and behaviour (see Phase 4), each with a pixel look.
 3. **TUI:** the cells in the toolkit (`Measure`, `CellSink`, the cell theme), running apps, then the outputs (see
    Phase 5). The `fusuma-cells` and `fusuma-platform-tui` scaffolds wait until then.

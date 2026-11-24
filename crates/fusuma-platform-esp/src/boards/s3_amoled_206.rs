@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use esp_idf_svc::sys::{MALLOC_CAP_DMA, MALLOC_CAP_INTERNAL, heap_caps_malloc, s3_amoled as ffi};
 use fusuma::render::{Point, Rect};
-use fusuma_platform_embedded::{Board, Pixels, aligned, band_rows};
+use fusuma_platform_embedded::{Board, ByteOrder, Pixels, aligned, band_rows};
 
 const WIDTH: u32 = ffi::S3_LCD_W;
 const HEIGHT: u32 = ffi::S3_LCD_H;
@@ -130,6 +130,11 @@ impl Board for Panel {
         Ok(self.held)
     }
 
+    fn now_us(&self) -> Option<u64> {
+        // SAFETY: a plain getter.
+        Some(unsafe { esp_idf_svc::sys::esp_timer_get_time() } as u64)
+    }
+
     fn present(&mut self, region: Rect, pixels: &mut dyn Pixels) -> Result<(), Infallible> {
         let Some(r) = aligned(region, WIDTH, HEIGHT, GRID) else {
             return Ok(());
@@ -144,13 +149,8 @@ impl Board for Panel {
             let len = (width * h) as usize;
             let band = &mut self.bands[self.next][..len];
             let t0 = Instant::now();
-            for (i, row) in band.chunks_exact_mut(width as usize).enumerate() {
-                pixels.row(y + i as u32, x0, row);
-            }
-            // The panel takes big-endian pixels.
-            for p in band.iter_mut() {
-                *p = p.to_be();
-            }
+            // One pass: the rows, already in the panel's big-endian order.
+            pixels.rows(y, x0, width, band, width as usize, ByteOrder::BigEndian);
             let t1 = Instant::now();
             // SAFETY: the band is DMA-capable and stays untouched until the shim's next call: the other band is
             // filled next, and its `s3_amoled_draw` waits for this transfer before it starts.

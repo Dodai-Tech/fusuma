@@ -96,6 +96,11 @@ impl fusuma_platform_embedded::Board for P4Board {
         Ok(touch_sample())
     }
 
+    fn now_us(&self) -> Option<u64> {
+        // SAFETY: a plain getter.
+        Some(unsafe { esp_idf_svc::sys::esp_timer_get_time() } as u64)
+    }
+
     fn present(
         &mut self,
         region: fusuma::render::Rect,
@@ -109,11 +114,16 @@ impl fusuma_platform_embedded::Board for P4Board {
             region.y.max(0) as usize,
             (region.bottom().max(0) as usize).min(HEIGHT),
         );
-        for y in y0..y1 {
-            pixels.row(
-                y as u32,
+        if x1 > x0 && y1 > y0 {
+            // Every row of the region in one call, straight into the frame buffer (one row every WIDTH).
+            let end = (y1 - 1) * WIDTH + x1;
+            pixels.rows(
+                y0 as u32,
                 x0 as u32,
-                &mut self.screen[y * WIDTH + x0..y * WIDTH + x1],
+                (x1 - x0) as u32,
+                &mut self.screen[y0 * WIDTH + x0..end],
+                WIDTH,
+                fusuma_platform_embedded::ByteOrder::Native,
             );
         }
         flush_rows(y0 as u32, y1 as u32);

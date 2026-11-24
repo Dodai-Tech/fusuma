@@ -146,6 +146,10 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
     // (count, total ms, worst ms) of the updates after the first: small ones (under a tenth of the screen, a tap or a
     // hover) and big ones (page changes, scrolling).
     let (mut small, mut big) = ((0u32, 0u64, 0u64), (0u32, 0u64, 0u64));
+    // Where the time of the updates went, summed (input, draw, raster, present, in us), and the slowest update
+    // since the last report with its stages and region.
+    let mut stages = [0u64; 4];
+    let mut slowest: Option<(u32, fusuma::render::Rect, fusuma_platform_embedded::Timing)> = None;
 
     loop {
         let now = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -164,6 +168,20 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
                     slot.0 += 1;
                     slot.1 += took;
                     slot.2 = slot.2.max(took);
+                    if let Some(t) = step.timing {
+                        for (sum, us) in stages.iter_mut().zip([
+                            t.input_us,
+                            t.draw_us,
+                            t.raster_us,
+                            t.present_us,
+                        ]) {
+                            *sum += u64::from(us);
+                        }
+                        let total = t.input_us + t.draw_us + t.raster_us + t.present_us;
+                        if slowest.is_none_or(|(worst, ..)| total > worst) {
+                            slowest = Some((total, r, t));
+                        }
+                    }
                 }
                 driver.shell_mut().stats.record(took);
             }
@@ -192,6 +210,28 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
                 big.1.checked_div(u64::from(big.0)).unwrap_or(0),
                 big.2
             );
+            let n = u64::from(small.0 + big.0).max(1);
+            log::info!(
+                "per update on average: input {} us, draw {} us, raster {} us, present {} us",
+                stages[0] / n,
+                stages[1] / n,
+                stages[2] / n,
+                stages[3] / n
+            );
+            if let Some((total, r, t)) = slowest.take() {
+                log::info!(
+                    "slowest since the last report: {} ms for {}x{} at ({}, {}): input {} us, draw {} us, raster {} us, present {} us",
+                    total / 1000,
+                    r.w,
+                    r.h,
+                    r.x,
+                    r.y,
+                    t.input_us,
+                    t.draw_us,
+                    t.raster_us,
+                    t.present_us
+                );
+            }
             if let Some(line) = driver.board_mut().report() {
                 log::info!("{line}");
             }
