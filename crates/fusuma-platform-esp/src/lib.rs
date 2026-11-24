@@ -1,15 +1,14 @@
 //! Fusuma on ESP-IDF boards. See the README.
 
 mod hw;
-mod surface;
 
 use std::time::{Duration, Instant};
 
-use fusuma::{App, Input, Shell, TouchTracker};
+use fusuma::App;
+use fusuma_platform_embedded::{Driver, DriverError};
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
 use fusuma::platform::{Hardware, Machine, Render};
 
-use surface::Surface;
 
 /// The backends linked into this program: the integer one always, the others by cargo feature.
 pub const LINKED: &[Backend] = &[
@@ -81,11 +80,6 @@ fn heap() -> (usize, usize, usize) {
     }
 }
 
-/// RGBA8 (premultiplied; every pixel here is opaque) to RGB565.
-pub(crate) fn rgb565(r: u8, g: u8, b: u8) -> u16 {
-    ((u16::from(r) & 0xF8) << 8) | ((u16::from(g) & 0xFC) << 3) | (u16::from(b) >> 3)
-}
-
 /// Runs `make(width, height)` on this board, for ever.
 ///
 /// # Errors
@@ -111,7 +105,7 @@ fn run_here<A: App>(
     options: Options,
 ) -> anyhow::Result<()> {
 
-    hw::init()?;
+    let board = hw::P4Board::new()?;
     hw::set_backlight(options.backlight);
     let (w, h) = (hw::WIDTH as u32, hw::HEIGHT as u32);
     // The layers, weakest first: the automatic rule needs no layer, then the project's file, then the build.
@@ -151,46 +145,36 @@ fn run_here<A: App>(
         }
     );
     log::info!("renderer: {plan}");
-    let mut surface = Surface::new(plan.uses, w, h)
+    let mut driver = Driver::new(make(w, h), board, plan.uses)
         .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;
-
-    let fb = hw::framebuffer();
-    anyhow::ensure!(!fb.is_null(), "no frame buffer");
-    // SAFETY: the DSI driver owns WIDTH * HEIGHT RGB565 pixels at `fb` for the whole program, and
-    // nothing else writes to it.
-    let screen = unsafe { std::slice::from_raw_parts_mut(fb, hw::WIDTH * hw::HEIGHT) };
-
-    let mut shell = Shell::new(make(w, h));
-    let mut touch = TouchTracker::new();
     let started_at = Instant::now();
     let mut report = Instant::now();
 
     loop {
-        for event in touch.step(hw::touch_sample()).into_iter().flatten() {
-            shell.input(Input::Pointer(event));
-        }
         let now = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         let begun = Instant::now();
-        if let Some(region) = surface.frame(&mut shell, now) {
-            if shell.stats.frames == 0 {
-                log::info!("heap after the first frame: internal free {} KB", heap().0 / 1024);
+        match driver.step(now) {
+            Ok(step) if step.shown.is_some() => {
+                if driver.shell().stats.frames == 0 {
+                    log::info!("heap after the first frame: internal free {} KB", heap().0 / 1024);
+                }
+                driver
+                    .shell_mut()
+                    .stats
+                    .record(u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX));
             }
-            surface.present(region, screen);
-            hw::flush_rows(
-                region.y.max(0) as u32,
-                region.bottom().clamp(0, hw::HEIGHT as i32) as u32,
-            );
-            shell
-                .stats
-                .record(u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX));
+            Ok(_) => {}
+            Err(DriverError::Draw(e)) => log::error!("draw failed: {}", e.0),
+            Err(DriverError::Board(never)) => match never {},
         }
         if report.elapsed() > Duration::from_secs(10) {
             report = Instant::now();
             let (free, low, psram) = heap();
+            let stats = driver.shell().stats;
             log::info!(
                 "alive: {} frames, {} ms each on average; internal RAM free {} KB (lowest ever {} KB), PSRAM free {} KB",
-                shell.stats.frames,
-                shell.stats.average_ms(),
+                stats.frames,
+                stats.average_ms(),
                 free / 1024,
                 low / 1024,
                 psram / 1024

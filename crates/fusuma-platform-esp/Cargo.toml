@@ -18,13 +18,14 @@ publish = false
 default = ["skia", "vello-cpu", "fonts"]
 # Link the `tiny-skia` and the `vello_cpu` renderers next to the integer one, which is always there.
 # Leaving both off links the integer renderer only (the smallest firmware).
-skia = ["fusuma/renderer-skia"]
-vello-cpu = ["fusuma/renderer-vello-cpu"]
+skia = ["fusuma/renderer-skia", "fusuma-platform-embedded/skia"]
+vello-cpu = ["fusuma/renderer-vello-cpu", "fusuma-platform-embedded/vello-cpu"]
 # Vector fonts (Inter, Inter Bold, JetBrains Mono: about 215 KB of flash) for the Vello renderers. Without it text is
 # the bitmap font. The integer and `tiny-skia` renderers always draw the bitmap font.
 fonts = ["fusuma/font-inter", "fusuma/font-inter-bold", "fusuma/font-jetbrains-mono"]
 
 [dependencies]
+fusuma-platform-embedded = { path = "../fusuma-platform-embedded", features = ["std"] }
 fusuma = { path = "../fusuma", default-features = false, features = ["std", "toml", "renderer-integer"] }
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 log = "0.4"

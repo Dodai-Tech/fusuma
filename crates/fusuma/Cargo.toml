@@ -16,6 +16,8 @@ categories = ["gui", "embedded", "no-std"]
 default = ["std", "renderer-vello-cpu", "font-inter", "font-inter-bold"]
 # The standard library. Without it the crate is `no_std` (the Vello renderers then need `libm`, see their README).
 std = ["fusuma-render-vello-cpu?/std", "fusuma-render-skia?/std"]
+# Software floating point (the `libm` crate) for the Vello renderers without `std`, on a chip with no FPU or no libm.
+libm = ["fusuma-render-vello-cpu?/libm"]
 # Reading renderer settings from TOML (`fusuma.toml`).
 toml = ["fusuma-platform/toml"]
 # Renderer backends, each linked only when asked for. The platform picks among those linked.

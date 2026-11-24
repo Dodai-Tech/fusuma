@@ -958,6 +958,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-platform-embedded"
+version = "0.2.0"
+dependencies = [
+ "fusuma",
+ "fusuma-showcase",
+]
+
+[[package]]
 name = "fusuma-render"
 version = "0.2.0"
 

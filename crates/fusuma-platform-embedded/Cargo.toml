@@ -1,0 +1,34 @@
+[package]
+name = "fusuma-platform-embedded"
+description = "Fusuma on microcontroller boards: a Board trait (panel and touch), the renderer surface and the frame step every chip shares (no_std with alloc, host-testable)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform-embedded"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "embedded", "no-std", "esp32", "touch"]
+categories = ["gui", "embedded", "no-std"]
+
+[features]
+default = []
+# The standard library (a host test, ESP-IDF). Without it the crate is `no_std` with `alloc`.
+std = ["fusuma/std"]
+# Link the `tiny-skia` and `vello_cpu` renderers next to the integer one, which is always there. `vello-cpu`
+# on a chip without `std` needs `libm` as well.
+# Software floating point, needed by `vello-cpu` without `std`.
+libm = ["fusuma/libm"]
+skia = ["fusuma/renderer-skia"]
+vello-cpu = ["fusuma/renderer-vello-cpu"]
+
+[dependencies]
+fusuma = { workspace = true, features = ["renderer-integer"] }
+
+[dev-dependencies]
+fusuma = { workspace = true, features = ["std", "renderer-integer", "renderer-vello-cpu", "renderer-skia"] }
+fusuma-showcase = { path = "../../examples/showcase" }
+
+[lints]
+workspace = true

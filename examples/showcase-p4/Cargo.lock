@@ -1028,12 +1028,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-platform-embedded"
+version = "0.2.0"
+dependencies = [
+ "fusuma",
+]
+
+[[package]]
 name = "fusuma-platform-esp"
 version = "0.2.0"
 dependencies = [
  "anyhow",
  "esp-idf-svc",
  "fusuma",
+ "fusuma-platform-embedded",
  "log",
 ]
 

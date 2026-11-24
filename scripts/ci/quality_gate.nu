@@ -51,8 +51,13 @@ def main [--skip-fmt, --skip-test, --skip-nu] {
     $ok = (run_step "vello backends without std, with libm" {
         cargo clippy --lib --no-default-features --features libm -p fusuma-render-vello-common -p fusuma-render-vello-cpu -- -D warnings
     }) and $ok
-    $ok = (run_step "vector text without std, with libm (what a chip builds)" {
+    $ok = (run_step "embedded platform on other architectures (RISC-V, Cortex-M0+/M4F, bare-metal ARM64)" {
+        nu scripts/ci/embedded_matrix.nu
+    }) and $ok
+    $ok = (run_step "vector text for a chip: the CPU renderer without std, with libm" {
         cargo clippy --lib --no-default-features --features libm,inter,inter-bold,jetbrains-mono -p fusuma-render-vello-cpu -- -D warnings
+    }) and $ok
+    $ok = (run_step "vector text for a chip: the text engine without std" {
         cargo clippy --lib --no-default-features --features inter,inter-bold,jetbrains-mono -p fusuma-text -- -D warnings
     }) and $ok
     if not $skip_test {

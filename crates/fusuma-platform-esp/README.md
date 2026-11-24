@@ -40,6 +40,12 @@ from the firmware:
 
 The log line `alive: ... internal RAM free ... (lowest ever ...)` is the number to set `min_free_kb` from.
 
+## Where the shared code is
+
+The frame loop, the renderer surface and the touch handling are `fusuma-platform-embedded`, shared by every board. This
+crate is the Waveshare P4 as a `Board` (`hw.rs`: the DSI frame buffer and the GT911), the ESP-IDF thread and heap
+probe, and the settings. A new board is a new `Board` implementation, not a new loop.
+
 ## What this crate does not contain
 
 Components, layout, theme, focus, scrolling, the frame clock and the turning of touch samples into pointer events

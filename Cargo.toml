@@ -10,6 +10,7 @@ members = [
     "crates/fusuma-text",
     "crates/fusuma-platform",
     "crates/fusuma-platform-desktop",
+    "crates/fusuma-platform-embedded",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-skia",
     "crates/fusuma-render-vello-cpu",
