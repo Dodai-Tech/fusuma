@@ -522,6 +522,19 @@ impl<const N: usize> Tree<N> {
 
     /// Marks that a pass has work for node `i`, and for every ancestor, so a pass can tell from the
     /// root whether anything below needs it.
+    /// Like [`request`](Self::request) for a paint, but only `part` of the node needs redrawing (a slider thumb that
+    /// moved a little): the damage is that part, cut to the scroll windows the node is in.
+    pub(crate) fn request_part(&mut self, i: usize, flag: u8, part: Rect) {
+        let part = self.clip_to_viewports(i, part.intersect(&self.nodes[i].rect));
+        self.add_damage(part);
+        self.nodes[i].own.insert(flag);
+        let mut cur = Some(i);
+        while let Some(c) = cur {
+            self.nodes[c].sub.insert(flag);
+            cur = self.nodes[c].parent.map(usize::from);
+        }
+    }
+
     pub(crate) fn request(&mut self, i: usize, flag: u8) {
         if flag & Flags::PAINT != 0 {
             let rect = self.visible_rect(i);

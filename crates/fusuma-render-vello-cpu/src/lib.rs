@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
 
-#[cfg(any(feature = "png", feature = "text"))]
 extern crate alloc;
 
 use fusuma_render::Renderer;
@@ -13,6 +12,10 @@ use fusuma_render_vello_common::{
     stroke,
 };
 use vello_cpu::{Pixmap, RenderContext, Resources};
+
+/// The most memory a damaged region is rasterised through at once, in bytes: the extra RAM a partial render costs,
+/// whatever the size of the region (a 410-pixel-wide band of 78 rows).
+pub const SCRATCH_BYTES: usize = 128 * 1024;
 
 /// The Fusuma renderer on `vello_cpu`.
 pub type VelloCpu = Backend<CpuScene>;
@@ -27,6 +30,8 @@ pub struct CpuScene {
     dirty: bool,
     /// The part of the next frame that matters, from [`Scene::set_damage`].
     damage: Option<(i32, i32, u32, u32)>,
+    /// The reused buffer a damaged region is rasterised through, in bands.
+    scratch: alloc::vec::Vec<u8>,
 }
 
 impl CpuScene {
@@ -45,6 +50,7 @@ impl CpuScene {
             size: (w, h),
             dirty: true,
             damage: None,
+            scratch: alloc::vec::Vec::new(),
         })
     }
 
@@ -64,23 +70,36 @@ impl CpuScene {
         Some((x0 as u16, y0 as u16, (x1 - x0) as u16, (y1 - y0) as u16))
     }
 
-    /// Rasterises only `region` of the scene, into a pixmap of that size, and copies it into the picture: the cost
-    /// follows the area that changed, not the surface.
+    /// Rasterises only `region` of the scene and copies it into the picture: the cost follows the area that
+    /// changed, not the surface. It works in bands of rows through one reused buffer of at most [`SCRATCH_BYTES`],
+    /// so a large region does not allocate a second picture-sized pixmap.
     fn render_region(&mut self, (x, y, w, h): (u16, u16, u16, u16)) {
-        let mut part = Pixmap::new(w, h);
-        let settings = vello_cpu::RasterizerSettings {
-            offset: (-i32::from(x), -i32::from(y)),
-            ..vello_cpu::RasterizerSettings::default()
-        };
-        self.ctx
-            .render_with(&mut part, &mut self.resources, settings);
-        let stride = usize::from(self.size.0) * 4;
         let row = usize::from(w) * 4;
-        let src = part.data_as_u8_slice();
-        let dst = self.target.data_as_u8_slice_mut();
-        for r in 0..usize::from(h) {
-            let at = (usize::from(y) + r) * stride + usize::from(x) * 4;
-            dst[at..at + row].copy_from_slice(&src[r * row..(r + 1) * row]);
+        let band = (SCRATCH_BYTES / row.max(1)).clamp(1, usize::from(h));
+        let stride = usize::from(self.size.0) * 4;
+        let mut top = 0usize;
+        while top < usize::from(h) {
+            let rows = band.min(usize::from(h) - top);
+            let bytes = rows * row;
+            if self.scratch.len() < bytes {
+                self.scratch.resize(bytes, 0);
+            }
+            // `rows` is at most `h`, so it fits a u16.
+            let Some(part) = vello_cpu::PixmapMut::new(w, rows as u16, &mut self.scratch[..bytes])
+            else {
+                return;
+            };
+            let settings = vello_cpu::RasterizerSettings {
+                offset: (-i32::from(x), -(i32::from(y) + top as i32)),
+                ..vello_cpu::RasterizerSettings::default()
+            };
+            self.ctx.render_with(part, &mut self.resources, settings);
+            let dst = self.target.data_as_u8_slice_mut();
+            for r in 0..rows {
+                let at = (usize::from(y) + top + r) * stride + usize::from(x) * 4;
+                dst[at..at + row].copy_from_slice(&self.scratch[r * row..(r + 1) * row]);
+            }
+            top += rows;
         }
     }
 
@@ -713,5 +732,63 @@ mod tests {
         r.fill_rect(Rect::new(0, 0, 30, 30), 0, Color::rgb(7, 7, 7))
             .unwrap();
         assert_eq!(r.pixel(29, 29), Some(Color::rgb(7, 7, 7)));
+    }
+
+    #[test]
+    fn a_region_taller_than_the_scratch_buffer_is_rendered_in_bands_and_is_still_exact() {
+        use fusuma_render::Probe;
+        // 400 px wide: 128 KB holds 81 rows, so a 300-row region takes four bands.
+        let draw = |r: &mut VelloCpu| {
+            r.clear(Color::rgb(10, 10, 40)).unwrap();
+            r.fill_rect(Rect::new(5, 5, 390, 290), 12, Color::rgb(220, 80, 40))
+                .unwrap();
+            r.fill_circle(Point::new(200, 150), 90, Color::rgba(40, 200, 220, 180))
+                .unwrap();
+            r.draw_text(
+                "banded",
+                Point::new(30, 140),
+                &fusuma_render::TextStyle::new(24, Color::WHITE),
+            )
+            .unwrap();
+        };
+        let mut full = new(400, 320).unwrap();
+        draw(&mut full);
+        let mut part = new(400, 320).unwrap();
+        draw(&mut part);
+        part.with_scene(|s| s.set_damage((0, 10, 400, 300)));
+        for y in 10..310 {
+            for x in 0..400 {
+                assert_eq!(part.pixel(x, y), full.pixel(x, y), "({x}, {y})");
+            }
+        }
+        part.with_scene(|s| {
+            assert!(
+                s.scratch.len() <= SCRATCH_BYTES,
+                "{} bytes",
+                s.scratch.len()
+            )
+        });
+    }
+
+    #[test]
+    fn the_scratch_buffer_is_reused_and_never_grows_past_its_cap() {
+        let mut r = new(600, 600).unwrap();
+        for round in 0..5 {
+            r.with_scene(Scene::reset);
+            r.fill_rect(Rect::new(0, 0, 600, 600), 0, Color::rgb(round * 10, 0, 0))
+                .unwrap();
+            r.with_scene(|s| s.set_damage((0, 0, 599, 599)));
+            r.with_scene(|s| {
+                let _ = s.pixels();
+                assert!(s.scratch.len() <= SCRATCH_BYTES);
+            });
+        }
+        // A one-pixel-wide, very tall region is one row per band at worst, and still correct.
+        r.with_scene(Scene::reset);
+        r.fill_rect(Rect::new(0, 0, 600, 600), 0, Color::rgb(1, 2, 3))
+            .unwrap();
+        r.with_scene(|s| s.set_damage((7, 0, 1, 600)));
+        use fusuma_render::Probe;
+        assert_eq!(r.pixel(7, 599), Some(Color::rgb(1, 2, 3)));
     }
 }

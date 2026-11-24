@@ -117,17 +117,32 @@ impl<const N: usize> Tree<N> {
     /// Moves slider `i` to `to` thousandths; sends [`ActionKind::Changed`] if that is a change.
     pub(crate) fn move_slider(&mut self, i: usize, to: u16) {
         let to = to.min(1000);
-        if let Kind::Slider { permille } = &mut self.nodes[i].kind
-            && *permille != to
-        {
-            *permille = to;
-            let source = self.id_of(i);
-            self.request(i, Flags::PAINT);
-            self.push_action(Action {
-                source,
-                kind: ActionKind::Changed(to),
-            });
+        let Kind::Slider { permille: old } = self.nodes[i].kind else {
+            return;
+        };
+        if old == to {
+            return;
         }
+        if let Kind::Slider { permille } = &mut self.nodes[i].kind {
+            *permille = to;
+        }
+        let source = self.id_of(i);
+        // Only the stretch between the old and the new thumb changes: the thumb, and the filled part of the track.
+        // Marking the whole slider changed would redraw a screen-wide strip for a thumb that moved a few pixels.
+        let r = self.nodes[i].rect;
+        let thumb = r.h.min(r.w);
+        let span = i64::from(r.w.saturating_sub(thumb));
+        let at = |p: u16| i64::from(r.x) + i64::from(thumb / 2) + span * i64::from(p) / 1000;
+        let (a, b) = (at(old).min(at(to)), at(old).max(at(to)));
+        let pad = i64::from(thumb / 2) + 2;
+        let x0 = (a - pad).max(i64::from(r.x));
+        let x1 = (b + pad).min(i64::from(r.right()));
+        let part = Rect::new(x0 as i32, r.y, (x1 - x0).max(0) as u32, r.h);
+        self.request_part(i, Flags::PAINT, part);
+        self.push_action(Action {
+            source,
+            kind: ActionKind::Changed(to),
+        });
     }
 
     /// Moves slider `i` to where the pointer is, `x` in tree coordinates. The thumb is as wide as the
@@ -997,5 +1012,54 @@ mod tests {
             THEME.colors.primary,
             "the thumb"
         );
+    }
+
+    #[test]
+    fn moving_a_slider_marks_changed_only_the_stretch_the_thumb_crossed() {
+        let mut c = controls();
+        let r = c.t.rect(c.sl).unwrap();
+        let y = r.y + (r.h / 2) as i32;
+        c.t.pointer(Pointer::Down(Point::new(x_at(&c.t, c.sl, 100), y)));
+        let _ = c.t.take_damage(); // the press itself recolours the whole slider
+        c.t.pointer(Pointer::Move(Point::new(x_at(&c.t, c.sl, 200), y)));
+        let d = c.t.take_damage().expect("the thumb moved");
+        let (a, b) = (x_at(&c.t, c.sl, 100), x_at(&c.t, c.sl, 200));
+        assert!(
+            d.x <= a && d.right() >= b,
+            "covers the old and the new thumb: {d:?}"
+        );
+        assert!(
+            d.w < r.w / 2 && d.h <= r.h,
+            "but not the whole slider: {d:?} of {r:?}"
+        );
+        // The picture is still right: a partial redraw equals a full one.
+        let (mut part, mut full) = (screen(), screen());
+        for s in [&mut part, &mut full] {
+            c.t.update(s, &THEME, Rect::new(0, 0, 240, 320));
+            s.clear(THEME.colors.background).unwrap();
+        }
+        c.t.paint(&mut full, &THEME).unwrap();
+        c.t.invalidate();
+        let region = c.t.take_damage().unwrap();
+        c.t.paint_region(&mut part, &THEME, region).unwrap();
+        for x in (0..240).step_by(3) {
+            for yy in (0..320).step_by(3) {
+                assert_eq!(part.pixel(x, yy), full.pixel(x, yy), "({x}, {yy})");
+            }
+        }
+    }
+
+    #[test]
+    fn a_label_in_a_stretching_column_keeps_its_text_width_and_a_fill_width_label_stretches() {
+        let mut t = Tree::<4>::new();
+        let root = t
+            .column(None, Style::new().align(CrossAlign::Stretch))
+            .unwrap();
+        let text = t.label(Some(root), "Hi", TextRole::Body).unwrap();
+        let wide = t.label(Some(root), "Hi", TextRole::Body).unwrap();
+        t.set_style(wide, Style::new().width(crate::tree::Length::Fill(1)));
+        t.update(&screen(), &THEME, Rect::new(0, 0, 200, 100));
+        assert!(t.rect(text).unwrap().w < 50, "{:?}", t.rect(text));
+        assert_eq!(t.rect(wide).unwrap().w, 200);
     }
 }

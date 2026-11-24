@@ -101,7 +101,10 @@ impl Surface {
                 // Only what changed has to be rasterised: a hover is a few hundred pixels, not the screen.
                 if let Some(d) = drawn {
                     r.with_scene(|s| {
-                        fusuma::renderers::vello_cpu::Scene::set_damage(s, (d.x, d.y, d.w, d.h))
+                        fusuma::renderers::vello_cpu::Scene::set_damage(s, (d.x, d.y, d.w, d.h));
+                        // Vello rasterises lazily, on the first read of the pixels. Do it here, so the time is
+                        // counted as drawing and reading rows is only a conversion.
+                        let _ = fusuma::renderers::vello_cpu::Scene::pixels(s);
                     });
                 }
                 Ok(drawn)

@@ -267,8 +267,13 @@ impl<const N: usize> Tree<N> {
                 }
                 _ => main_of(axis, child_size),
             };
+            // A label's text is drawn from its left edge, so stretching it across a column changes nothing that is
+            // seen: it keeps its text width, which is also all that needs redrawing when the text changes.
+            let text_in_column =
+                axis == Axis::Column && matches!(self.nodes[ci].kind, Kind::Label { .. });
             let cross_px = match (cross_len(axis, &child_style), st.align) {
-                (Length::Fill(_), _) | (Length::Content, CrossAlign::Stretch) => cross_total,
+                (Length::Fill(_), _) => cross_total,
+                (Length::Content, CrossAlign::Stretch) if !text_in_column => cross_total,
                 (Length::Fixed(f), _) => f,
                 (Length::Content, _) => cross_of(axis, child_size).min(cross_total),
             };
@@ -404,10 +409,10 @@ mod tests {
         let (s, c, _) = build(CrossAlign::End);
         assert_eq!((s.x, c.x), (80, 100 - c.w as i32));
         let (s, c, _) = build(CrossAlign::Stretch);
-        assert_eq!(
-            (s.w, c.w),
-            (20, 100),
-            "a fixed size stays, content stretches"
+        assert_eq!(s.w, 20, "a fixed size stays");
+        assert!(
+            c.w < 100,
+            "a label keeps its text width: stretching it would change nothing that is seen"
         );
     }
 
@@ -645,5 +650,20 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_button_in_a_stretching_column_still_stretches() {
+        let mut t = Tree::<4>::new();
+        let root = t
+            .column(None, Style::new().align(CrossAlign::Stretch))
+            .unwrap();
+        let b = t.button(Some(root), "OK", ButtonVariant::Primary).unwrap();
+        t.update(&screen(), &THEME, Rect::new(0, 0, 100, 100));
+        assert_eq!(
+            rect(&t, b).w,
+            100,
+            "it draws a background, so the width is seen"
+        );
     }
 }
