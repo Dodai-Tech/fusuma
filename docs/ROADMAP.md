@@ -72,11 +72,11 @@ works and is tested.
 - [x] **Tearing** was not a missing tearing-effect sync: the CO5300 needs an explicit memory-write command (0x2C) after each address window, and without it a partial update lands in the wrong place. Fixed in `hibari-drivers` with a regression test; update windows are also kept even-aligned
 - [x] **`no_std` backend:** `fusuma-render-vello-common` and `fusuma-render-vello-cpu` are `no_std` with `alloc` behind a default `std` feature (`libm` needed without it; the PNG output stays `std`). The whole `Renderer` on `vello_cpu` builds for the S3 and the C6 and runs on the S3: 2 to 3 percent over raw `vello_cpu` (267 against 260 ms for a full frame). Not yet released
 - [x] **Partial redraws in the API:** `Tree::paint_frame` draws only what changed and `Scene::set_damage`/`add_damage` make `vello_cpu` rasterise only that (several areas per frame, bands through one reused scratch buffer of at most 128 KB, pixel-identical to a full render inside the area; tested with shapes, text, clips and alpha). Measured on the S3 watch with fonts: a hover 127 to 50 ms, a page change 450 to 1100 ms down to about 265 ms. Limits: damage is one bounding rectangle per frame outside a scroll, and `pixels()` is only valid inside the hinted area, so a screenshot or PNG export must not use the hint
-- [ ] **Memory budget:** a full frame needs 1.4 MB, a card region far less; decide the region size and keep the frame buffer out of the path where possible
-- [ ] **Speed:** the render step is 41 ms for a card; look for what dominates (path flattening, the scalar fallback without SIMD) and whether a cheaper circle and rounded-rectangle path helps
-- [ ] **Text:** `vello_cpu`'s glyph painter (`glifo`) builds for the S3; shaping is the open question, since Parley's ICU4X data is large
-- [ ] **P4:** run the benchmark on an ESP32-P4 (400 MHz, FPU, vector extension)
-- [ ] **A fair A/B on the board:** the same card demo with the integer renderer, and with anti-aliasing added to it, to compare look, speed and memory
+- [x] **Memory budget:** a `vello_cpu` surface is modelled at about 4.8 bytes a pixel (`fusuma-platform`, measured on the S3); a damaged region is rendered in bands through one reused scratch buffer of at most 128 KB, so a page change no longer allocates a second picture-sized buffer. The chooser refuses a board with no room for a frame. The extra memory is not yet counted in that estimate
+- [ ] **Speed:** found so far on the S3 watch: Vello rasterised the whole surface for a 47x56 hover (fixed: 127 to 50 ms), and the RGB565 conversion is slow (252 ms of a 750 ms full frame, my own per-row code, not yet fixed). Still unprofiled: path flattening, text layout and glyph drawing, and layout, which together are most of a big update
+- [x] **Text:** Parley builds with `libm` for the S3 (Xtensa) and the P4 and runs on both with `vello_cpu`'s glyph runs; the S3 firmware image with Vello, Parley and the three fonts is 2.9 MB. Shaping works (Romanian ă â î ș ț render); wrapping and bidi are not used by any widget yet
+- [x] **P4:** the showcase runs on an ESP32-P4 7" with `vello_cpu` chosen automatically (first full frame about 210 ms without fonts, 300 ms with, a small update about 10 ms of drawing); the S3 benchmark crate itself was not run there
+- [x] **A fair A/B on the board** (S3 watch, 410x502 first frame): integer 196 ms, Vello 523 ms (948 ms with Inter), `tiny-skia` 1883 ms. Not done: the integer renderer with anti-aliasing added
 
 ### The integer renderer is kept (the removal below is cancelled)
 
@@ -86,9 +86,10 @@ works and is tested.
 - [x] A region renderer that reuses its surface and a flush that sends just the region to the panel (the `Board::present(region, pixels)` contract of `fusuma-platform-embedded`)
 - [x] Move the `fusuma` toolkit tests from `Embedded` to `vello_cpu` (done); the launcher and host tests in `hibari-os` still use `Embedded`
 - [x] ~~Delete `fusuma-render-embedded`~~ cancelled: it stays, see Decisions
-- [ ] A choice of default backend by hardware: a `std` feature with `fusuma-render-vello` when `gpu_available()` else `vello_cpu` on a desktop; on a chip, a `[render]` setting in `board.toml` (integer, `tiny-skia` or `vello_cpu`)
-- [ ] Measure `tiny-skia` on the ESP32-S3 and a conformance run on the C6
-- [ ] Publish `fusuma-render-skia` 0.3.0 (the 0.1.0 on crates.io is the old `std` version)
+- [x] A choice of default backend by hardware: `fusuma-platform` picks by hardware facts (GPU, then PSRAM, then memory) with layered overrides (`[render]` in `fusuma.toml`, a cargo feature) and a memory check; the P4 and desktop use it. **The rule ranks by memory, not speed**: on the S3 it picks Vello although the integer renderer is about 4x faster for a full frame. A speed-aware `prefer = smooth/quality` setting is not built
+- [x] Measured `tiny-skia` on the ESP32-S3: 1883 ms for a full 410x502 frame, the slowest of the three
+- [ ] A conformance run of the renderers on the C6
+- [ ] Publish the 0.3.0 set (`fusuma`, `fusuma-ui`, `fusuma-platform`, `fusuma-fonts`, `fusuma-text`, the renderers; `fusuma-render-skia` on crates.io is the old `std` 0.1.0). Not done: it unblocks Hibari's and `dodai-fusuma`'s CI, which depend on Fusuma by a sibling path
 
 ### Scrolling, screen shape and responsive layout (done, measured on the S3 watch)
 
@@ -142,9 +143,9 @@ What `dodai-core` looks like (read before designing the interface):
 
 Plan:
 - [ ] Read `dodai-core`'s token model and the `dodai-slint` and `dodai-iced` adapters; shape the Fusuma theme interface so the Dodai themes map onto it without loss (per-widget tokens and states, shape system, motion, effects)
-- [ ] `fusuma`: a `Theme` trait and a default light and dark theme (colours, spacing, radii, text sizes, motion timings), and widgets that read only from it
-- [ ] `dodai-fusuma` in the `dodai-ui` repository: Dodai themes as a Fusuma theme, generated from the component spec where possible (a Fusuma target for `dodai-gen`), plus Dodai-only widgets
-- [ ] Theme switching at run time, and density scaling
+- [x] `fusuma`: a `Theme` (a struct, not a trait) with a neutral default light and dark theme (colours, spacing, radii, text sizes, fonts, control and indicator sizes, motion timings); every widget reads only from it
+- [ ] `dodai-fusuma` in the `dodai-ui` repository: a first adapter exists on a local branch, **unpushed** (colours, spacing, radii, text sizes and sizes from `dodai-core::Theme`, translucent surfaces flattened for renderers without alpha; fonts left at Fusuma's default; seven tests). Not done: per-widget tokens, a Fusuma target for `dodai-gen`, Dodai-only widgets. Another agent is working on a dodai-ui facade, so it waits for that. Its Fusuma font features stay off there: Parley 0.13 conflicts with the Parley 0.11 in `dodai-slint`
+- [x] Theme switching at run time (the showcase's theme button repaints everything) and density scaling (`Theme::scaled(percent)`, with the bitmap font magnified in whole steps)
 - [ ] **Animation overlap:** `fusuma-anim` (fixed point, `no_std`, runs without an FPU) and `dodai-core::motion` (`f32`, `std`, richer: reactions, glide, mixins) do the same job. Keep both for now, because Hibari on a microcontroller cannot take the `f32`/`std` one; map the theme's motion tokens (duration, easing, spring response) onto `fusuma-anim`; consider moving shared curves and presets to one source later, and do not add features to both
 
 ## Text
@@ -164,17 +165,15 @@ Two tiers, because a microcontroller and a phone need different things.
   engine. Fusuma's `Renderer` trait has no glyph call today: it needs a small, optional `draw_glyphs`
   that the Vello backends implement and the integer backend does not (it keeps its bitmap fonts).
 
-Costs, honestly: ICU4X's compiled data is large (the `icu_segmenter` source alone is 23 MB), so a Parley
-build is a megabyte-class dependency and out of the question for the S3's firmware. The `complex-scripts`
-feature (dictionary breaking for CJK, Thai and others) adds more. Whether Parley builds for the ESP at all
-with `libm` is unmeasured, and I would not try before the desktop path works.
+Costs, measured: the S3 watch firmware with Vello, Parley and the three bundled fonts (213 KB of the total) is a 2.9 MB image, so Parley is affordable on a chip with PSRAM, though not on one without (the C6 has no room for it). ICU4X's data is large (the `icu_segmenter` source alone is 23 MB) and was **not** the problem it was feared to be with the `libm` feature. The `complex-scripts`
+feature (dictionary breaking for CJK, Thai and others) adds more. It builds and runs on the S3 and the P4 with `libm` (not `std`: that pulls `memmap2`, which has no ESP-IDF support). On the P4 it needs `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512` and a 128 KB app stack, or it fills internal RAM (see the `esp-boards-rust` skill).
 
-- [ ] A `TextEngine` seam in `fusuma` so labels measure and draw through either tier: bitmap on a chip, Parley on a desktop
-- [ ] `fusuma-text`: Parley layout (font selection, shaping, wrapping, bidi, alignment) behind the seam; system fonts through Fontique, with a bundled fallback font so tests do not depend on the machine
-- [ ] An optional `draw_glyphs` on `Renderer`, implemented by `fusuma-render-vello-cpu` and `-vello` using their glyph runs; conformance test with a bundled font
-- [ ] Text widgets: wrapped and multi-line labels, then an input field using Parley's selection and editing utilities (cursor, selection, IME) and a placeholder
-- [ ] Measure: the Parley build size for a desktop binary, and whether a no-ICU path (the lightweight segmenter) is enough for Latin text
-- [ ] Per-widget style: font family, size, weight and line height as theme tokens, so a design system can set them
+- [x] A text seam: `TextStyle` carries a `Font` (`Sans`, `SansBold`, `Mono`, `Bitmap`); a backend with vector fonts lays out and draws with them, any other (or a font that is not bundled) draws its bitmap font, so asking is always safe. Measuring and drawing use the same size, which the conformance suite caught
+- [x] `fusuma-text` (Parley layout, one line, cached; `no_std` with alloc) and `fusuma-fonts` (Inter, Inter Bold, JetBrains Mono, Latin subsets under the OFL, one cargo feature each). Not done: system fonts through Fontique (the desktop does not use them yet), and no Greek, Cyrillic, CJK or emoji
+- [x] Glyph drawing: not a `Renderer` call but `Scene::draw_glyphs` in `fusuma-render-vello-common`, implemented by the CPU and GPU scenes through `glyph_run`; tests check the GPU picture against the CPU one and that nothing is drawn outside the measured box. The integer and `tiny-skia` backends keep the bitmap font
+- [ ] Text widgets: a single-line text field exists (own cursor and selection code, not Parley's editing utilities; up to 64 bytes; IME and clipboard through the desktop platform; no placeholder, no drag selection, no undo). Not done: wrapped and multi-line labels (Parley can wrap, no widget asks it to) and a multi-line text view
+- [ ] Measure: Parley's own code size (only the whole image is known: 2.9 MB on the S3), and whether the lightweight segmenter is enough for Latin text
+- [ ] Per-widget style: font family, size, weight and line height as theme tokens. Done: `Theme::fonts` maps text roles (body, title, mono) to fonts and `TextRole::Code` uses mono; sizes are theme tokens. Not done: weight, line height and per-widget overrides
 
 ## Phase 4: the toolkit
 
@@ -186,11 +185,12 @@ ESP the tree is a fixed arena with the widgets as a closed enum, text stored inl
 desktop-sized trees use the same code with a bigger `N`.
 
 - [x] `fusuma` first slice: `Tree<N>` (generation-checked handles, remove, reuse), layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross alignment; measured through the renderer), theme tokens with default dark and light (contrast-tested), event pass (capture, hover, click actions, cancel on leave or disable), update pass (disabled flows down, layout on request, hover refreshed after layout), animation pass (button hover fade, only widgets that asked), paint pass. 53 tests, a fuzz target (646k runs), builds for RISC-V, ARM and Xtensa; a tree of 32 widgets is about 4 KB
-- [ ] Show it on the ESP32-S3 board with the integer renderer (a toolkit screen in `hibari-os`'s `boards/s3-amoled-206`), measure frame time and memory; the integer renderer itself needs speeding up (61 ms for a full-screen frame)
-- [ ] Layout only the changed subtrees (paint is done by region; layout still redoes the whole tree when anything asks)
-- [ ] A compose pass: offsets for scrolling without a layout
-- [ ] Focus and keyboard, text input with an input method; accessibility with `AccessKit`
-- [ ] More widgets: toggle, slider, progress, list with scrolling and fling (using `fusuma-anim`), dialog, tabs, text field; overlays and z-order
+- [x] Shown on the ESP32-S3 board: the showcase runs on the watch with the integer renderer (first frame 196 ms, against 61 ms for the old launcher's own code, which is not explained: layout and damage handling are the suspects, unmeasured), in `tools/fusuma-showcase-s3` of the Hibari repository
+- [ ] Layout only the changed subtrees (paint is done by region, and a scroll avoids redrawing the window; layout still redoes the whole tree when anything asks, which is unmeasured but a suspect for the 196 ms frame on the watch)
+- [ ] A compose pass: offsets for scrolling without a layout (a scroll still relayouts the whole tree; pixel-shift scrolling removed the redraw cost, not this)
+- [x] Focus and keyboard (Tab, arrows, Enter, Escape), text input with an input method
+- [ ] Accessibility with `AccessKit` (not started)
+- [x] Widgets done: checkbox, radio, switch, slider, progress, selectable list, scroll container with fling, rubber band and bounce, text field, dialog (the modal overlay and z-order). See the lines below for what is still missing
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature (the built-in set stays a closed enum for the no-allocator case)
 - [ ] A view layer: a lightweight description built from application state and diffed into the retained tree, with messages routed back
 - [ ] Per-widget style hooks so that a design system can restyle a widget beyond the theme tokens
@@ -201,7 +201,7 @@ desktop-sized trees use the same code with a bigger `N`.
 - [x] Animation vocabulary in `fusuma-anim`: six spring tokens (spatial and effects, fast, default, slow) and a composable, allocation-free `Clip` with presets (fade, slide, pop, shake). Not yet wired into the toolkit: scroll fling and rubber band, animated node offset and opacity (`animate`, `enter`, `exit`), page transitions (`Push`, fade-through), and an animation budget per chip
 - [x] Dialog (`Tree::dialog`, `open_dialog`, `close_dialog`): centred at its content size, drawn on top, a dimming layer on renderers that blend (none on the integer one, which would black the screen out), modal (nothing behind answers, scrolls or takes the focus), focus moves in and comes back, a press outside or Cancel (Escape) sends `Dismissed` and the app decides. Nested dialogs work. Not yet: an entrance animation, a drop shadow, a dialog that is part of a scrolling page
 - [ ] More widgets: multi-line text view, tabs, menu, toast
-- [ ] `fusuma-platform-mcu`, then `fusuma-platform-desktop` (`winit`)
+- [x] The platform crates: `fusuma-platform-embedded` (shared by every board), `fusuma-platform-esp` (the P4 on ESP-IDF) and `fusuma-platform-desktop` (winit); the watch's board is in the Hibari repository for now
 - [x] `fusuma` is a facade crate (`fusuma-ui` is the toolkit): `renderer-*` features link backends, `toml` reads settings, `fusuma-platform` chooses
 - [x] `fusuma::Shell`, `Input`, `TouchTracker`, `Clock`, `wheel_pixels` and `App::resized` in `fusuma-ui`: the frame step and input handling every platform shares; a CI rule keeps widgets and renderers out of `fusuma-platform-*`
 - [x] `fusuma-platform-desktop`: a winit window, mouse, touch, keyboard, wheel and resize into the shared `Shell`; GPU Vello when an adapter exists, CPU otherwise, with the same settings layers; the showcase runs in it (`just showcase-desktop`). Theme scaling (`Theme::scaled`) and an idle loop that sleeps (312 wake-ups in 5 s became 0) are done. Not yet: presenting straight from the GPU, real fonts, macOS and Windows run by hand
@@ -210,12 +210,12 @@ desktop-sized trees use the same code with a bigger `N`.
 - [ ] Boards beyond the P4 and the S3 watch: the C6 (the `Board` for their panels; `esp-hal` without ESP-IDF as well as ESP-IDF), a Cortex-M one (RP2040, STM32, nRF), a Linux framebuffer/DRM one for Raspberry Pi-class kiosks with no window system
 - [ ] Mobile (`fusuma-platform-mobile`), Apple Silicon and Windows run by hand (CI builds them)
 - [ ] Platform picked by target automatically (`fusuma-platform-desktop`, `-mobile`; the ESP one is a separate firmware-side crate)
-- [ ] A gesture recogniser (tap, long press, swipe, drag with `fusuma-anim`): Hibari OS has one in `hibari-hal` that moves here, since a desktop and a phone need it too
+- [ ] A gesture recogniser (tap, long press, swipe, drag with `fusuma-anim`): tap, drag and fling exist inside the widgets (the scroll container, the slider); long press and swipe do not, and Hibari OS's recogniser in `hibari-hal` has not moved here
 - [ ] Port the Hibari OS launcher to Fusuma widgets, and `dodai-fusuma` (Dodai widgets and a `ShaderView`) in the `dodai-ui` repository
 
 ## Phase 5: more platforms
 - [ ] `fusuma-platform-android` and `-ios`: native windows and touch, no web wrapper
-- [ ] `fusuma-platform-tui`: render the semantic tree as text cells (terminal over SSH, serial console on a headless chip, character displays)
+- [ ] `fusuma-platform-tui`: render the semantic tree as text cells. **Probably superseded:** the plan discussed was that a text UI is a separate toolkit (ratatui with `mousefood` on a board, `dodai-ratatui` for the look, crossterm on a desktop) and not a Fusuma renderer. I proposed it and you did not object, but you did not confirm it; `dodai-ratatui` does not build `no_std` yet, which is the open question
 - [ ] `fusuma-platform-web` (optional): WebAssembly into a canvas, no DOM widgets
 
 ## Out of scope
