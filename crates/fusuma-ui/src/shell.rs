@@ -21,6 +21,8 @@ pub enum Input {
     Preedit(InputText),
     /// An edit command for a text field.
     Edit(Edit),
+    /// The shape of the screen (rounded corners, a circle); a rectangle needs no message.
+    Shape(crate::Shape),
     /// The drawing area changed size, or the display's scale did.
     Resize {
         /// Width in pixels.
@@ -58,6 +60,7 @@ pub fn deliver<A: App>(app: &mut A, input: Input) {
         Input::Text(t) => app.text(t.as_str()),
         Input::Preedit(t) => app.preedit(t.as_str()),
         Input::Edit(e) => app.edit(e),
+        Input::Shape(s) => app.shape(s),
         Input::Resize {
             width,
             height,

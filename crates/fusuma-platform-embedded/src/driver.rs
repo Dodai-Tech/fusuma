@@ -42,8 +42,13 @@ impl<A: App, B: Board> Driver<A, B> {
     pub fn new(app: A, board: B, backend: Backend) -> Option<Self> {
         let (w, h) = board.size();
         let surface = Surface::new(backend, w, h)?;
+        let mut shell = Shell::new(app);
+        let shape = board.shape();
+        if shape != fusuma::Shape::Rect {
+            shell.input(Input::Shape(shape));
+        }
         Some(Self {
-            shell: Shell::new(app),
+            shell,
             board,
             surface,
             touch: TouchTracker::new(),
@@ -138,6 +143,7 @@ mod tests {
         /// How many pixels are asked for at a time: a bus that sends a few at a time.
         chunk: usize,
         fail_present: bool,
+        shape: fusuma::Shape,
     }
 
     impl Fake {
@@ -150,6 +156,7 @@ mod tests {
                 shown: Vec::new(),
                 chunk: 1_000_000,
                 fail_present: false,
+                shape: fusuma::Shape::Rect,
             }
         }
 
@@ -163,6 +170,10 @@ mod tests {
 
         fn size(&self) -> (u32, u32) {
             (self.w, self.h)
+        }
+
+        fn shape(&self) -> fusuma::Shape {
+            self.shape
         }
 
         fn touch(&mut self) -> Result<Option<Point>, ()> {
@@ -348,5 +359,25 @@ mod tests {
             "the focus ring is drawn"
         );
         assert!(Driver::new(Showcase::new(10, 10), Fake::new(10, 10), Backend::VelloGpu).is_none());
+    }
+
+    #[test]
+    fn the_boards_shape_reaches_the_app_before_the_first_frame() {
+        let mut board = Fake::new(410, 502);
+        board.shape = fusuma::Shape::Rounded(60);
+        let mut round = Driver::new(Showcase::new(410, 502), board, Backend::Integer).unwrap();
+        let plain = Driver::new(
+            Showcase::new(410, 502),
+            Fake::new(410, 502),
+            Backend::Integer,
+        )
+        .unwrap();
+        round.step(0).unwrap();
+        let (a, b) = (
+            round.shell().app.theme_button().unwrap(),
+            plain.shell().app.theme_button().unwrap(),
+        );
+        let (ra, rb) = (round.shell().app.rect_of(a), plain.shell().app.rect_of(b));
+        assert_ne!(ra, rb, "the page was laid out inside the corners");
     }
 }

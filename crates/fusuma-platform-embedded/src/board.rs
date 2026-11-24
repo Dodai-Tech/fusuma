@@ -26,6 +26,12 @@ pub trait Board {
     /// The screen size in pixels.
     fn size(&self) -> (u32, u32);
 
+    /// The outline of the visible screen: a watch has rounded corners, a round one is a circle. The default is a
+    /// rectangle. The app gets it at start and keeps its layout inside what the shape leaves.
+    fn shape(&self) -> fusuma::Shape {
+        fusuma::Shape::Rect
+    }
+
     /// Where a finger is touching, in screen pixels, or `None` when there is none. A board without a touch
     /// panel always answers `None`.
     ///

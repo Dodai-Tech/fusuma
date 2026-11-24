@@ -45,6 +45,13 @@ pub trait App {
         None
     }
 
+    /// The shape of the screen is `shape` (rounded corners, a circle): content in a corner is cut off, so a layout keeps
+    /// to the room [`Shape::safe_insets`] leaves. A board sends it once at start; a rectangle never does, so the default
+    /// does nothing.
+    fn shape(&mut self, shape: crate::Shape) {
+        let _ = shape;
+    }
+
     /// The drawing area changed to `width` x `height` pixels, or the display's scale did (`scale_percent`: 100
     /// is one pixel per logical pixel). A window being resized or a phone being rotated calls this; a fixed
     /// screen never does, so the default does nothing.

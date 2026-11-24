@@ -13,6 +13,7 @@ mod paint;
 mod scroll;
 mod scrollphys;
 mod scrollshift;
+mod shape;
 mod shell;
 mod textinput;
 mod theme;
@@ -22,6 +23,7 @@ mod widgets;
 pub use app::App;
 pub use event::Pointer;
 pub use focus::Key;
+pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{

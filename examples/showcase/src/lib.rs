@@ -233,6 +233,10 @@ pub struct Showcase {
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
     class: Class,
+    /// How far each edge of the screen is cut off by its shape (rounded corners), in physical pixels.
+    insets: fusuma::Insets,
+    /// The shape of the screen, as the board said.
+    shape: fusuma::Shape,
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
@@ -265,6 +269,8 @@ impl Showcase {
             sidebar: [None; 7],
             nav: [None; 3],
             class: Class::of(width),
+            insets: fusuma::Insets::all(0),
+            shape: fusuma::Shape::Rect,
             open: false,
             tiles: [None; 7],
             back: None,
@@ -397,14 +403,36 @@ impl Showcase {
 
     fn build(&mut self) -> Result<(), fusuma::BuildError> {
         let t = &mut self.tree;
-        let root = t.column(
-            None,
-            Style::new()
-                .padding(self.theme.spacing.md)
-                .gap(self.theme.spacing.md)
-                .align(CrossAlign::Stretch)
-                .background(Surface::Background),
-        )?;
+        let content = Style::new()
+            .padding(self.theme.spacing.md)
+            .gap(self.theme.spacing.md)
+            .align(CrossAlign::Stretch)
+            .background(Surface::Background);
+        let ins = self.insets;
+        // On a screen with rounded corners the page sits inside a frame of the screen's own background, so nothing
+        // lands where the corners cut it off. On a rectangle there is no frame.
+        let root = if ins.max() == 0 {
+            t.column(None, content)?
+        } else {
+            let frame = t.column(
+                None,
+                Style::new()
+                    .align(CrossAlign::Stretch)
+                    .background(Surface::Background),
+            )?;
+            t.spacer(Some(frame), Style::new().height(Length::Fixed(ins.top)))?;
+            let mid = t.row(
+                Some(frame),
+                Style::new()
+                    .height(Length::Fill(1))
+                    .align(CrossAlign::Stretch),
+            )?;
+            t.spacer(Some(mid), Style::new().width(Length::Fixed(ins.left)))?;
+            let page = t.column(Some(mid), content.width(Length::Fill(1)))?;
+            t.spacer(Some(mid), Style::new().width(Length::Fixed(ins.right)))?;
+            t.spacer(Some(frame), Style::new().height(Length::Fixed(ins.bottom)))?;
+            page
+        };
         let header = t.row(
             Some(root),
             Style::new()
@@ -953,6 +981,18 @@ impl App for Showcase {
         self.tree.selected_text()
     }
 
+    fn shape(&mut self, shape: fusuma::Shape) {
+        let (w, h) = (self.bounds.w, self.bounds.h);
+        let insets = shape.safe_insets(w, h);
+        if insets != self.insets {
+            self.insets = insets;
+            self.shape = shape;
+            self.rebuild();
+        } else {
+            self.shape = shape;
+        }
+    }
+
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
@@ -962,6 +1002,7 @@ impl App for Showcase {
             self.scale = scale;
             self.class = class;
             self.open = false;
+            self.insets = self.shape.safe_insets(width, height);
             self.theme = theme(self.dark).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();
@@ -1690,5 +1731,113 @@ mod tests {
             close(&mut s);
             s.frame(&mut r).unwrap();
         }
+    }
+
+    /// Whether the point (x, y) is on the visible part of a `w` x `h` screen with rounded corners of radius `r`.
+    fn visible(x: i32, y: i32, w: i32, h: i32, r: i32) -> bool {
+        let (cx, cy) = (x.clamp(r, w - r), y.clamp(r, h - r));
+        let (dx, dy) = (i64::from(x - cx), i64::from(y - cy));
+        x >= 0 && y >= 0 && x < w && y < h && dx * dx + dy * dy <= i64::from(r) * i64::from(r)
+    }
+
+    #[test]
+    fn on_a_rounded_screen_every_widget_corner_is_on_the_visible_part() {
+        for r in [40u32, 60, 90] {
+            let mut s = Showcase::new(410, 502);
+            App::shape(&mut s, fusuma::Shape::Rounded(r));
+            let mut screen = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+            s.frame(&mut screen).unwrap();
+            let mut ids = std::vec![s.theme_button().unwrap()];
+            ids.extend(Page::ALL.iter().filter_map(|p| s.tile(*p)));
+            let window = s.rect_of(s.content.unwrap()).unwrap();
+            for id in ids {
+                // What is scrolled out of its window is clipped there; judge the part that shows.
+                let rc = s.rect_of(id).unwrap();
+                let rc = if id == s.theme_button().unwrap() {
+                    rc
+                } else {
+                    rc.intersect(&window)
+                };
+                if rc.w == 0 || rc.h == 0 {
+                    continue;
+                }
+                for (x, y) in [
+                    (rc.x, rc.y),
+                    (rc.right() - 1, rc.y),
+                    (rc.x, rc.bottom() - 1),
+                    (rc.right() - 1, rc.bottom() - 1),
+                ] {
+                    assert!(
+                        visible(x, y, 410, 502, r as i32),
+                        "radius {r}: corner ({x}, {y}) of {rc:?} is cut off"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_rectangular_screen_is_laid_out_exactly_as_before() {
+        let (mut plain, _) = watch();
+        let before = plain.rect_of(plain.theme_button().unwrap()).unwrap();
+        App::shape(&mut plain, fusuma::Shape::Rect);
+        assert_eq!(plain.rect_of(plain.theme_button().unwrap()), Some(before));
+        let mut round = Showcase::new(410, 502);
+        App::shape(&mut round, fusuma::Shape::Rounded(60));
+        let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+        round.frame(&mut r).unwrap();
+        let moved = round.rect_of(round.theme_button().unwrap()).unwrap();
+        assert!(
+            moved.x < before.x && moved.y > before.y,
+            "{moved:?} against {before:?}"
+        );
+        assert!(
+            moved.right() < before.right(),
+            "the button moved in from the right edge"
+        );
+    }
+
+    #[test]
+    fn the_shape_survives_a_resize_and_a_page_open_and_works_on_a_circle() {
+        let mut s = Showcase::new(466, 466);
+        App::shape(&mut s, fusuma::Shape::Circle);
+        let mut r = fusuma::renderers::vello_cpu::new(466, 466).unwrap();
+        s.frame(&mut r).unwrap();
+        let tile = s.tile(Page::Buttons).unwrap();
+        let rc = s.rect_of(tile).unwrap();
+        assert!(visible(rc.x, rc.y, 466, 466, 233), "{rc:?} on a circle");
+        open(&mut s, Page::Buttons);
+        App::resized(&mut s, 466, 466, 100);
+        s.frame(&mut r).unwrap();
+        let b = s.rect_of(s.theme_button().unwrap()).unwrap();
+        assert!(
+            visible(b.right() - 1, b.y, 466, 466, 233),
+            "{b:?} still inside after a resize"
+        );
+    }
+
+    #[test]
+    fn the_rounded_watch_pictures_are_written_when_asked() {
+        let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") else {
+            return;
+        };
+        let mut s = Showcase::new(410, 502);
+        App::shape(&mut s, fusuma::Shape::Rounded(70));
+        let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
+        s.frame(&mut r).unwrap();
+        // The glass: what is outside the rounded corners is black, as on the real screen.
+        for y in 0..502 {
+            for x in 0..410 {
+                if !visible(x, y, 410, 502, 70) {
+                    r.fill_rect(Rect::new(x, y, 1, 1), 0, fusuma::render::Color::BLACK)
+                        .unwrap();
+                }
+            }
+        }
+        std::fs::write(
+            std::format!("{dir}/watch-rounded-home.png"),
+            fusuma::renderers::vello_cpu::png(&r).unwrap(),
+        )
+        .unwrap();
     }
 }
