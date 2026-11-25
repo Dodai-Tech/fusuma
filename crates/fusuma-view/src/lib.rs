@@ -6,6 +6,8 @@ mod container;
 mod host;
 mod leaf;
 mod msgs;
+mod program;
+mod task;
 
 pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
@@ -13,9 +15,12 @@ pub use blocks::{
 pub use container::{Column, Container, Named, Row, Show, card, column, named, row, show};
 pub use host::Host;
 pub use leaf::{
-    Button, Checkbox, Progress, Spacer, Text, button, checkbox, progress, spacer, text, text_fmt,
+    Button, Checkbox, Progress, Spacer, Text, Toast, button, checkbox, progress, spacer, text,
+    text_fmt, toast,
 };
 pub use msgs::{Handler, Msgs};
+pub use program::{Program, QUEUE, Runner, TIMERS};
+pub use task::{Effect, Recipe, SUB_CAP, Sub, TASK_CAP, Task};
 
 use fusuma_ui::{BuildError, NodeId, Tree};
 

@@ -293,3 +293,28 @@ impl<M> ViewMarker for Button<'_, M> {}
 impl<M> ViewMarker for Checkbox<'_, M> {}
 impl ViewMarker for Progress {}
 impl ViewMarker for Spacer {}
+
+/// A message that shows for a while (see `Task::toast`), out of the flow. Give it a name with `named` so a task can find
+/// it.
+#[derive(Clone, Copy, Debug)]
+pub struct Toast;
+
+/// A toast, hidden until a task shows one.
+#[must_use]
+pub const fn toast() -> Toast {
+    Toast
+}
+
+impl<M: Clone> View<M> for Toast {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        cx.tree.toast(parent)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, _: &mut Cx<'_, M, N, K>, _: NodeId) {}
+}
+
+impl ViewMarker for Toast {}
