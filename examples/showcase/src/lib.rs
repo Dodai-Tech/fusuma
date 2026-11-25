@@ -267,6 +267,8 @@ pub struct Showcase {
     /// The tab that is chosen, and how many swipes the card has seen.
     tab: usize,
     swipes: u32,
+    /// Whether a page that is chosen slides in (off in the tests that take pictures).
+    slide: bool,
 }
 
 impl Showcase {
@@ -303,6 +305,7 @@ impl Showcase {
             typed: fusuma::InputText::new("Hello"),
             tab: 0,
             swipes: 0,
+            slide: true,
         };
         // The tree has room for all of it; a build failure would leave a smaller screen, not a crash.
         let _ = s.build();
@@ -622,10 +625,11 @@ impl Showcase {
         }
         let body = t.row(Some(root), body_style)?;
         self.body = Some(body);
-        let side = t.column(
+        let side = t.scroll(
             Some(body),
             Style::new()
                 .width(Length::Fixed(scaled(240, self.scale)))
+                .height(Length::Fill(1))
                 .padding(self.theme.spacing.sm)
                 .gap(self.theme.spacing.xs)
                 .align(CrossAlign::Stretch)
@@ -936,7 +940,7 @@ impl Showcase {
             }
             let _ = self.build_page();
             // The new page comes in from the right.
-            if let Some(c) = self.content {
+            if let Some(c) = self.content.filter(|_| self.slide) {
                 let distance = scaled(48, self.scale);
                 self.tree.slide_in(c, fusuma::Edge::Right, distance);
             }
@@ -1358,6 +1362,7 @@ mod tests {
 
     fn app() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
         let mut s = Showcase::new(1024, 600);
+        s.slide = false;
         let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
         assert!(s.frame(&mut r).unwrap().is_some());
         (s, r)
@@ -1375,6 +1380,8 @@ mod tests {
 
     fn go(s: &mut Showcase, page: Page) {
         let id = s.sidebar_item(page).unwrap();
+        // The sidebar scrolls: bring the entry into view first.
+        let _ = s.tree.focus(id);
         tap(s, id);
         assert_eq!(s.page(), page);
     }
@@ -1790,6 +1797,7 @@ mod tests {
 
     fn phone() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
         let mut s = Showcase::new(600, 800);
+        s.slide = false;
         let mut r = fusuma::renderers::vello_cpu::new(600, 800).unwrap();
         s.frame(&mut r).unwrap();
         (s, r)
@@ -1910,6 +1918,7 @@ mod tests {
 
     fn watch() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
         let mut s = Showcase::new(410, 502);
+        s.slide = false;
         let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
         s.frame(&mut r).unwrap();
         (s, r)
@@ -2318,6 +2327,7 @@ mod tests {
     #[test]
     fn the_new_page_slides_in_from_the_right_and_settles_in_its_place() {
         let (mut s, mut r) = app();
+        s.slide = true;
         go(&mut s, Page::Navigation);
         s.frame(&mut r).unwrap();
         let c = s.content.unwrap();
