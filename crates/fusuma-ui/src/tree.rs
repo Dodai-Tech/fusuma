@@ -426,6 +426,8 @@ pub(crate) struct Node {
     pub(crate) disabled: bool,
     /// Disabled itself or through an ancestor.
     pub(crate) disabled_eff: bool,
+    /// Which gestures the node listens for (see `gesture`).
+    pub(crate) gestures: u8,
 }
 
 impl Node {
@@ -452,6 +454,7 @@ impl Node {
         active: false,
         disabled: false,
         disabled_eff: false,
+        gestures: 0,
     };
 }
 
@@ -474,6 +477,12 @@ pub enum ActionKind {
     /// A radio button or a list item was chosen by the user. It is not sent when the one already
     /// chosen is activated again, nor for changes made with [`Tree::set_checked`].
     Selected,
+    /// A press stayed where it was for the long-press time on a widget that asked for it
+    /// ([`Tree::set_long_press`]). The press is then over: its release is not a click.
+    LongPressed,
+    /// A press travelled far enough along one axis on a widget that asked for it ([`Tree::set_swipe`]). The press is
+    /// then over: its release is not a click, and a scroll container under it stops following the finger.
+    Swiped(crate::gesture::SwipeDir),
 }
 
 /// Something that happened in the tree, for the application to handle.
@@ -521,6 +530,8 @@ pub struct Tree<const N: usize> {
     pub(crate) clock: u32,
     /// The last press on a field: which, where and when, to see a double click.
     pub(crate) last_press: Option<(NodeId, i32, u32)>,
+    /// The press that may become a long press or a swipe.
+    pub(crate) track: Option<crate::gesture::Track>,
     pub(crate) hovered: Option<NodeId>,
     /// The widget the keyboard acts on.
     pub(crate) focus: Option<NodeId>,
@@ -574,6 +585,7 @@ impl<const N: usize> Tree<N> {
             history: crate::textedit::History::new(),
             clock: 0,
             last_press: None,
+            track: None,
             hovered: None,
             focus: None,
             focus_visible: false,
@@ -1295,6 +1307,7 @@ impl<const N: usize> Tree<N> {
             let f = self.nodes[usize::from(r)].sub;
             f.has(Flags::LAYOUT) || f.has(Flags::PAINT) || f.has(Flags::ANIM)
         }) || self.disabled_dirty
+            || self.gesture_waiting()
     }
 }
 

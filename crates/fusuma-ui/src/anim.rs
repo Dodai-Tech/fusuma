@@ -21,7 +21,8 @@ impl<const N: usize> Tree<N> {
         // Before the buttons: their pass rebuilds the "something below is animated" flags from what is still running.
         let toasts = self.advance_toasts(theme, dt_ms);
         let fading = self.advance_buttons(theme, dt_ms);
-        scrolling || bars || fading || toasts
+        let held = self.advance_gesture(dt_ms);
+        scrolling || bars || fading || toasts || held
     }
 
     fn advance_buttons(&mut self, theme: &Theme, dt_ms: u32) -> bool {

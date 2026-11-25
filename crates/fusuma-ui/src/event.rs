@@ -171,6 +171,7 @@ impl<const N: usize> Tree<N> {
         match event {
             Pointer::Move(p) => {
                 self.pointer = Some(p);
+                self.gesture_move(p);
                 self.drag_scroll(p);
                 // A slider that holds the press follows the pointer, even outside its bounds.
                 if let Some(held) = self.captured.and_then(|id| self.slot(id))
@@ -194,6 +195,7 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Down(p) => {
                 self.pointer = Some(p);
+                self.gesture_down(p);
                 // A press on a container that is flinging or bouncing stops it, and the lift is not a click.
                 self.caught = self.catch_motion();
                 self.drag = self.scroll_at(p).map(|s| {
@@ -219,6 +221,7 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Up(p) => {
                 self.pointer = Some(p);
+                self.gesture_end();
                 let released = self.drag.take();
                 let h = self.hit(p);
                 let caught = core::mem::take(&mut self.caught);
@@ -251,6 +254,7 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Leave => {
                 self.pointer = None;
+                self.gesture_end();
                 self.drag = None;
                 if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {
                     // A press that the pointer walks away from is cancelled, not a click.
