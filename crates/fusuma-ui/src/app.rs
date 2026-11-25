@@ -75,4 +75,11 @@ pub trait App {
     /// # Errors
     /// The renderer's error.
     fn frame<R: Renderer>(&mut self, renderer: &mut R) -> Result<Option<Rect>, R::Error>;
+
+    /// The separate rectangles the last [`frame`](Self::frame) drew, inside the one it returned. A platform that
+    /// pays for every pixel it sends (a panel on a bus) shows these one by one instead of the whole rectangle,
+    /// which spares what lies between them. Empty (the default) means: show the rectangle `frame` returned.
+    fn frame_rects(&self) -> &[Rect] {
+        &[]
+    }
 }

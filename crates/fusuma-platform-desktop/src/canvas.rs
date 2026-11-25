@@ -85,9 +85,13 @@ impl Canvas {
                 let r: &mut VelloCpu = r;
                 r.with_scene(vello_cpu::Scene::reset);
                 let region = log_err(shell.frame(now_ms, r))?;
-                // Only what changed is rasterised.
+                // Only what changed is rasterised: the toolkit announced each separate rectangle itself, and a
+                // single one is announced here.
+                let single = shell.frame_rects().len() < 2;
                 r.with_scene(|s| {
-                    vello_cpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
+                    if single {
+                        vello_cpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
+                    }
                     blit(s.pixels(), width, region, frame);
                 });
                 Some(region)

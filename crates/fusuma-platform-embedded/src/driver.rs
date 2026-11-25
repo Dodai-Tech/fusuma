@@ -144,9 +144,24 @@ impl<A: App, B: Board> Driver<A, B> {
             t2 = self.board.now_us();
             self.surface.rasterise();
             t3 = self.board.now_us();
-            self.board
-                .present(region, &mut self.surface)
-                .map_err(DriverError::Board)?;
+            // Several separate rectangles are sent one by one, so what lies between them costs nothing on the bus.
+            let mut parts = [Rect::new(0, 0, 0, 0); fusuma::MAX_PIECES];
+            let mut n = 0;
+            for r in self.shell.frame_rects().iter().take(parts.len()) {
+                let r = r.intersect(&self.screen);
+                if r.w > 0 && r.h > 0 {
+                    parts[n] = r;
+                    n += 1;
+                }
+            }
+            if n < 2 {
+                (parts[0], n) = (region, 1);
+            }
+            for part in &parts[..n] {
+                self.board
+                    .present(*part, &mut self.surface)
+                    .map_err(DriverError::Board)?;
+            }
             t4 = self.board.now_us();
         }
         let span = |a: Option<u64>, b: Option<u64>| {
@@ -252,6 +267,85 @@ mod tests {
                 }
             }
             Ok(())
+        }
+    }
+
+    /// An app with a label at the top and one at the bottom of a tall screen, and nothing between them, whose two
+    /// labels change together.
+    struct Ends {
+        tree: fusuma::Tree<8>,
+        top: fusuma::NodeId,
+        bottom: fusuma::NodeId,
+        n: u32,
+    }
+
+    impl Ends {
+        fn new() -> Self {
+            use fusuma::{Length, Style, TextRole};
+            let mut tree = fusuma::Tree::<8>::new();
+            let root = tree.column(None, Style::new()).unwrap();
+            let top = tree.label(Some(root), "0", TextRole::Body).unwrap();
+            tree.spacer(Some(root), Style::new().height(Length::Fill(1)))
+                .unwrap();
+            let bottom = tree.label(Some(root), "0", TextRole::Body).unwrap();
+            Self {
+                tree,
+                top,
+                bottom,
+                n: 0,
+            }
+        }
+    }
+
+    impl App for Ends {
+        fn pointer(&mut self, _: fusuma::Pointer) {}
+        fn key(&mut self, _: fusuma::Key) {}
+        fn tick(&mut self, _: u32) -> bool {
+            false
+        }
+        fn frame<R: fusuma::render::Renderer>(
+            &mut self,
+            r: &mut R,
+        ) -> Result<Option<Rect>, R::Error> {
+            let bounds = Rect::new(0, 0, 200, 300);
+            let theme = fusuma::Theme::DARK;
+            self.tree.update(r, &theme, bounds);
+            self.tree.paint_frame(r, &theme, bounds)
+        }
+        fn frame_rects(&self) -> &[Rect] {
+            self.tree.frame_rects()
+        }
+    }
+
+    #[test]
+    fn two_far_apart_changes_are_shown_as_two_rectangles_and_the_middle_is_not_sent() {
+        for backend in backends() {
+            let mut d = Driver::new(Ends::new(), Fake::new(200, 300), backend).unwrap();
+            d.step(0).unwrap();
+            d.board_mut().shown.clear();
+            // Change both labels through the shell's app.
+            {
+                let ends = &mut d.shell_mut().app;
+                ends.n += 1;
+                let (top, bottom, n) = (ends.top, ends.bottom, ends.n);
+                let text = if n % 2 == 1 { "1" } else { "2" };
+                ends.tree.set_text(top, text);
+                ends.tree.set_text(bottom, text);
+            }
+            let step = d.step(16).unwrap();
+            let shown = d.board().shown.clone();
+            assert_eq!(shown.len(), 2, "{backend:?}: {shown:?}");
+            let bounding = step.shown.unwrap();
+            let sent: u32 = shown.iter().map(|r| r.w * r.h).sum();
+            assert!(
+                sent * 4 < bounding.w * bounding.h,
+                "{backend:?}: sent {sent} px of {}",
+                bounding.w * bounding.h
+            );
+            // Both changed labels are on the screen, and what was between them kept its pixels.
+            for r in &shown {
+                assert!(bounding.intersect(r) == *r);
+            }
         }
     }
 

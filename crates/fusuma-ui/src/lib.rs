@@ -10,6 +10,7 @@ mod event;
 mod focus;
 mod layout;
 mod paint;
+mod pieces;
 #[cfg(test)]
 mod scroll;
 mod scrollbar;
@@ -25,6 +26,7 @@ mod widgets;
 pub use app::App;
 pub use event::Pointer;
 pub use focus::Key;
+pub use pieces::{MAX_PIECES, Pieces};
 pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use textinput::{Edit, INPUT_CAP, InputText};

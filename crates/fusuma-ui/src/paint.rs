@@ -59,6 +59,7 @@ impl<const N: usize> Tree<N> {
         self.paint_dialogs(renderer, theme, None)?;
         self.clear_flag(Flags::PAINT);
         self.damage = None;
+        self.pieces.clear();
         self.rest = None;
         Ok(())
     }
@@ -200,6 +201,7 @@ impl<const N: usize> Tree<N> {
         if covered {
             self.clear_flag(Flags::PAINT);
             self.damage = None;
+            self.pieces.clear();
             self.rest = None;
         }
         Ok(())

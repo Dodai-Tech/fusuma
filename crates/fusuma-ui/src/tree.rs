@@ -470,6 +470,10 @@ pub struct Tree<const N: usize> {
     pub(crate) disabled_dirty: bool,
     /// The area that needs painting again: everything that changed, as one bounding rectangle.
     pub(crate) damage: Option<Rect>,
+    /// The same damage as a few separate rectangles (see `pieces`), so a frame can skip what lies between them.
+    pub(crate) pieces: crate::pieces::Pieces,
+    /// The rectangles the last frame drew, cut to the screen.
+    pub(crate) drawn: crate::pieces::Pieces,
     /// The part of the damage that is a change and not the move of a scroll (see `scrollshift`).
     pub(crate) rest: Option<Rect>,
     /// A scroll container whose pixels are moved instead of redrawn.
@@ -513,6 +517,8 @@ impl<const N: usize> Tree<N> {
             bounds: None,
             disabled_dirty: false,
             damage: None,
+            pieces: crate::pieces::Pieces::new(),
+            drawn: crate::pieces::Pieces::new(),
             rest: None,
             shift: None,
             shift_laid: false,
@@ -624,6 +630,7 @@ impl<const N: usize> Tree<N> {
             self.cancel_shift();
         }
         self.damage = Some(self.damage.map_or(rect, |d| d.union(&rect)));
+        self.pieces.add(rect);
         self.rest = Some(self.rest.map_or(rect, |d| d.union(&rect)));
     }
 
@@ -631,6 +638,7 @@ impl<const N: usize> Tree<N> {
     pub(crate) fn add_present_damage(&mut self, rect: Rect) {
         if !rect.is_empty() {
             self.damage = Some(self.damage.map_or(rect, |d| d.union(&rect)));
+            self.pieces.add(rect);
         }
     }
 
@@ -1180,7 +1188,15 @@ impl<const N: usize> Tree<N> {
     pub fn take_damage(&mut self) -> Option<Rect> {
         self.cancel_shift();
         self.rest = None;
+        self.pieces.clear();
         self.damage.take()
+    }
+
+    /// The separate rectangles the last [`paint_frame`](Self::paint_frame) drew, cut to the screen. One rectangle
+    /// when the changes were close together or a scroll moved pixels (then it is the rectangle to show).
+    #[must_use]
+    pub fn frame_rects(&self) -> &[Rect] {
+        self.drawn.as_slice()
     }
 
     /// Like [`take_damage`](Self::take_damage), limited to `limit` (the surface or the screen), so a
@@ -1189,6 +1205,7 @@ impl<const N: usize> Tree<N> {
     pub fn take_damage_in(&mut self, limit: Rect) -> Option<Rect> {
         self.cancel_shift();
         self.rest = None;
+        self.pieces.clear();
         let clipped = self.damage.take()?.intersect(&limit);
         (!clipped.is_empty()).then_some(clipped)
     }

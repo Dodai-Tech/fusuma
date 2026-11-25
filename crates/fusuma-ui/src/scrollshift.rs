@@ -178,6 +178,9 @@ impl<const N: usize> Tree<N> {
         let shift = self.shift.take();
         self.shift_laid = false;
         let rest = self.rest.take();
+        let pieces = self.pieces;
+        self.pieces.clear();
+        self.drawn.clear();
         let Some(present) = self
             .damage
             .take()
@@ -189,6 +192,12 @@ impl<const N: usize> Tree<N> {
         // The parts to draw: the whole changed area, unless the pixels of a scroll could be moved.
         let mut draws = [None; 6];
         draws[0] = Some(present);
+        // Several separate changes are drawn apart, so what lies between them is left alone.
+        if pieces.as_slice().len() > 1 {
+            for (slot, part) in draws.iter_mut().zip(pieces.as_slice()) {
+                *slot = Some(part.intersect(&screen)).filter(|p| p.w > 0 && p.h > 0);
+            }
+        }
         if let Some(plan) = shift.and_then(|s| self.shift_plan(s, theme)) {
             let moved = plan.dy == 0 || renderer.shift_area(plan.window, plan.dy);
             if moved {
@@ -202,6 +211,7 @@ impl<const N: usize> Tree<N> {
         }
         let mut result = Ok(());
         for part in draws.into_iter().flatten() {
+            self.drawn.add(part);
             renderer.will_draw(part);
             result = result.and_then(|()| renderer.save());
             result = result.and_then(|()| renderer.clip(part));
@@ -717,6 +727,37 @@ mod tests {
         same(&r, &full(&mut u), "old API");
     }
 
+    fn two_distant_changes_are_drawn_apart_and_the_picture_stays_exact<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
+        frame(&mut u, &mut r);
+        let root = u.t.root().unwrap();
+        let first = u.t.children(root).next().unwrap();
+        let last = u.t.children(root).last().unwrap();
+        u.t.set_text(first, "Head!");
+        u.t.set_text(last, "Foot!");
+        let shown = frame(&mut u, &mut r).unwrap();
+        let rects = u.t.frame_rects().to_vec();
+        assert_eq!(rects.len(), 2, "{rects:?}");
+        let area: u64 = rects.iter().map(|d| u64::from(d.w) * u64::from(d.h)).sum();
+        assert!(
+            area * 2 < u64::from(shown.w) * u64::from(shown.h),
+            "{rects:?} in {shown:?}"
+        );
+        assert_eq!(r.draws, rects, "each piece was announced and drawn alone");
+        same(&r, &full(&mut u), "two pieces");
+        // Many more changes than there is room for still draw everything that changed.
+        for k in 0..30 {
+            let row = u.t.children(u.sc).nth(k % 5).unwrap();
+            u.t.set_text(row, if k % 2 == 0 { "odd" } else { "even" });
+            u.t.set_text(first, if k % 2 == 0 { "A" } else { "B" });
+            u.t.set_text(last, if k % 3 == 0 { "x" } else { "y" });
+            frame(&mut u, &mut r);
+            assert!(u.t.frame_rects().len() <= crate::MAX_PIECES);
+            same(&r, &full(&mut u), &format!("run {k}"));
+        }
+    }
+
     fn a_tree_with_nothing_to_do_draws_nothing<B: Back>() {
         let mut u = ui::<B>(10, plain());
         let mut r = Spy::<B>::new(true);
@@ -726,6 +767,7 @@ mod tests {
     }
 
     on_both!(
+        two_distant_changes_are_drawn_apart_and_the_picture_stays_exact,
         a_scroll_moves_the_pixels_and_redraws_only_the_strip_and_the_scrollbar,
         the_picture_is_exactly_a_full_redraw_for_every_distance_and_direction,
         scrolling_back_up_and_across_many_frames_stays_exact,

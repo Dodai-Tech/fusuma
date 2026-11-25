@@ -7,7 +7,6 @@ Waveshare ESP32-S3-Touch-AMOLED-2.06 (410x502), the P4 the Waveshare ESP32-P4 7"
 ## Order of work
 
 1. **GUI renderers** (mostly done): the integer renderer gets Vello's look at its own speed on microcontrollers.
-   Open: [smooth strokes and paths](#renderers), images with alpha.
 2. **UI components and logic** (next): icons in widgets, tabs, menu, toast, gestures, layout of only what changed.
    See [Toolkit](#toolkit).
 3. **TUI**: cells in the toolkit, then running apps in a terminal, a serial console and on a panel. See
@@ -19,7 +18,7 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 |---|---|---|---|
 | Vello CPU with Inter | 558 ms | 47 ms | 311 ms |
 | Integer renderer, bitmap text (before the work below) | 97 ms | 7 ms | 88 ms |
-| Integer renderer, smooth text and shapes (now) | 92 ms | not measured | not measured |
+| Integer renderer, smooth text, shapes and paths, pixel-shift scrolling (now) | 92 ms | 11 ms (small updates, average of 351 in a scripted run, worst 12) | 35 ms (a scroll step, average of 107, worst 40) |
 
 ## Decisions
 
@@ -98,8 +97,13 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   tick, a chevron, a slanted line, a triangle and a curve (ink within 4 %, pixels within 8 %)
 - [x] **Images with alpha on the integer renderer**: each pixel mixed into the frame (`Blend::blend_colors`); held to
   Vello within 16 per channel (RGB565 keeps 5 or 6 bits)
-- [ ] Pixel-shift scrolling on the integer renderer (a full redraw of the window today)
-- [ ] Several damage rectangles, so a hover and a status line do not repaint everything between them
+- [x] **Pixel-shift scrolling on the integer renderer** (`Blend::shift_rows`, `Frame` moves the rows): the 14 scroll
+  tests run on both renderers; on the S3 watch a scroll step went 88 -> 35 ms average (40 worst; the scripted `demo`
+  firmware feature scrolls and taps with nobody touching)
+- [x] **Several damage rectangles** (`Pieces`, up to four, joined when near or when full): `paint_frame` draws each
+  apart, `App::frame_rects` and the embedded driver send each apart; Vello CPU is told each with `will_draw`. A test
+  on both renderers and a driver test (two labels at the ends of a tall screen: 2 rectangles, under a quarter of the
+  pixels of their bounding box)
 - [ ] The GPU backend drawing to a window surface with no read-back
 - [ ] Vello multithreading on the desktop (`vello_cpu`'s `multithreading` feature; unknown whether the partial
   render path uses the threads)

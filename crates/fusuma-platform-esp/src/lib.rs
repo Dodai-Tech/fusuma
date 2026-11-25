@@ -2,6 +2,8 @@
 
 mod backlight;
 mod board;
+#[cfg(feature = "demo")]
+mod demo;
 mod display;
 mod panel;
 mod touch;
@@ -193,8 +195,12 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
     let mut stages = [0u64; 4];
     let mut slowest: Option<(u32, fusuma::render::Rect, fusuma_platform_embedded::Timing)> = None;
 
+    #[cfg(feature = "demo")]
+    let mut demo = demo::Demo::new(w, h);
     loop {
         let now = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        #[cfg(feature = "demo")]
+        demo.drive(&mut driver, now);
         let begun = Instant::now();
         match driver.step(now) {
             Ok(step) if step.shown.is_some() => {

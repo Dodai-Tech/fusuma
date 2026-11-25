@@ -1099,6 +1099,10 @@ impl Showcase {
 }
 
 impl App for Showcase {
+    fn frame_rects(&self) -> &[Rect] {
+        self.tree.frame_rects()
+    }
+
     fn pointer(&mut self, event: Pointer) {
         Self::pointer(self, event);
     }

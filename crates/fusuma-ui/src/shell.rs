@@ -240,6 +240,12 @@ impl<A: App> Shell<A> {
         self.busy = wants || matches!(drawn, Ok(Some(_)) | Err(_));
         drawn
     }
+
+    /// The separate rectangles the last frame drew (see [`App::frame_rects`]); empty when the app does not say.
+    #[must_use]
+    pub fn frame_rects(&self) -> &[Rect] {
+        self.app.frame_rects()
+    }
 }
 
 #[cfg(test)]
