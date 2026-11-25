@@ -267,10 +267,11 @@ mod tests {
             );
         }
         for f in FAMILIES {
-            let licence = if f.role == Role::Icons {
-                "Apache License"
-            } else {
-                "SIL OPEN FONT LICENSE Version 1.1"
+            let licence = match f.id {
+                "lucide" => "ISC License",
+                "phosphor" => "MIT License",
+                _ if f.role == Role::Icons => "Apache License",
+                _ => "SIL OPEN FONT LICENSE Version 1.1",
             };
             assert!(f.licence.contains(licence), "{}", f.id);
             assert_eq!(
@@ -310,6 +311,45 @@ mod tests {
         assert_eq!(
             FontSet::choose(None, None, None, Some("material-symbols")),
             Ok(set)
+        );
+    }
+
+    /// The same icon names in every icon family, so an app can switch families without changing a name.
+    #[cfg(all(feature = "material-symbols", feature = "lucide", feature = "phosphor"))]
+    #[test]
+    fn the_icon_families_answer_to_the_same_names() {
+        let sets: std::vec::Vec<(&str, FontSet)> = ["material-symbols", "lucide", "phosphor"]
+            .into_iter()
+            .map(|id| (id, FontSet::choose(None, None, None, Some(id)).unwrap()))
+            .collect();
+        let names = |s: &FontSet| -> std::vec::Vec<&'static str> {
+            s.icons.unwrap().icons.iter().map(|(n, _)| *n).collect()
+        };
+        let base = names(&sets[0].1);
+        assert!(base.len() >= 90);
+        for (id, set) in &sets {
+            assert_eq!(set.icons.unwrap().id, *id);
+            assert_eq!(names(set), base, "{id}: the same names");
+            assert!(
+                set.icon("home").is_some() && set.icon("home") != set.icon("settings"),
+                "{id}"
+            );
+            assert_eq!(set.icon("nope"), None);
+        }
+        // Different drawings: the characters differ between families (each has its own private-use codes).
+        let (m, l, p) = (&sets[0].1, &sets[1].1, &sets[2].1);
+        assert!(
+            m.icon("settings") != l.icon("settings") || l.icon("settings") != p.icon("settings")
+        );
+        // A family is chosen by its id, and a text family is not an icon family.
+        assert_eq!(
+            FontSet::choose(None, None, None, Some("lucide"))
+                .unwrap()
+                .file(Face::Icons)
+                .unwrap()
+                .1
+                .family,
+            "lucide"
         );
     }
 

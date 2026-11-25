@@ -27,7 +27,7 @@ fusuma-render = { workspace = true, features = ["conformance"] }
 # The reference smooth text is held to: Vello drawing the same fonts.
 fusuma-render-vello-cpu = { workspace = true, features = ["std", "text"] }
 # The tests draw with the default preset.
-fusuma-fonts = { workspace = true, features = ["preset-fusuma", "material-symbols", "atlas"] }
+fusuma-fonts = { workspace = true, features = ["preset-fusuma", "material-symbols", "lucide", "phosphor", "atlas"] }
 
 [lints]
 workspace = true

@@ -6,8 +6,9 @@ documentation = "https://docs.rs/fusuma-fonts"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-# The code is MIT; the font files are under the SIL Open Font License 1.1 (their texts are in `fonts/`).
-license = "MIT AND OFL-1.1"
+# The code is MIT; the font files are under the SIL Open Font License 1.1, the icon fonts under Apache 2.0 (Material Symbols),
+# ISC (Lucide) and MIT (Phosphor); their texts are in `fonts/`.
+license = "MIT AND OFL-1.1 AND Apache-2.0 AND ISC"
 authors.workspace = true
 repository.workspace = true
 keywords = ["fonts", "inter", "roboto", "embedded", "no-std"]
@@ -34,6 +35,9 @@ ibm-plex-mono = []
 noto-sans-mono = []
 # Icons: Material Symbols Rounded, the catalog's 90 icons (17 KB), drawn by name (`FontSet::icon`). Apache 2.0.
 material-symbols = []
+# Opt-in icon families with the same icon names as Material Symbols (the catalog's aliases): line and outline styles.
+lucide = []
+phosphor = []
 
 # Presets: a sans and a mono that go together (the catalog's `[[preset]]`).
 preset-fusuma = ["inter", "jetbrains-mono"]

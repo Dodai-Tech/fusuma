@@ -22,14 +22,36 @@ export def weights [family: record]: nothing -> list<string> {
     if $family.role == "sans" { ["regular" "bold"] } else { ["regular"] }
 }
 
-# An icon family's names with their codepoints (hex), from the `.codepoints` text (`name hex` a line), in the
-# catalog's order. Error naming the first name the font does not have.
-export def icon_codes [names: list<string>, codepoints: string]: nothing -> list<record> {
-    let table = $codepoints | lines | where { |l| $l | is-not-empty } | parse "{name} {hex}"
-    $names | each { |n|
-        let hit = $table | where name == $n
-        if ($hit | is-empty) { error make { msg: $"icon '($n)' is not in the font" } }
-        { name: $n, hex: ($hit | first | get hex) }
+# The name table of an icon font as rows `name`, `hex`, from the text its `codepoints_url` serves, in its `format`:
+# `codepoints` (`name hex` a line, Material), `lucide` (lucide-static's info.json, `encodedCode` per icon) or `css`
+# (a stylesheet with `.ph-name:before { content: "\e900" }` rules, Phosphor).
+export def parse_codepoints [text: string, format: string = "codepoints"]: nothing -> table<name: string, hex: string> {
+    match $format {
+        "codepoints" => { $text | lines | where { |l| $l | is-not-empty } | parse "{name} {hex}" }
+        "lucide" => {
+            $text | from json | transpose name info | each { |r|
+                { name: $r.name, hex: ($r.info.encodedCode | str replace --regex '^\\' '' | str lowercase) }
+            }
+        }
+        "css" => {
+            $text | parse --regex '\.ph-(?P<name>[a-z0-9-]+):before\s*\{\s*content:\s*"\\(?P<hex>[0-9a-fA-F]+)"' | each { |r| { name: $r.name, hex: ($r.hex | str lowercase) } }
+        }
+        _ => { error make { msg: $"unknown codepoints format '($format)'; codepoints, lucide or css" } }
+    }
+}
+
+# An icon family's names with their codepoints (hex), in the catalog's order. An entry is a name the font has, or
+# `logical=actual`: the app asks for `logical` (a Material name such as `home`) and the font calls it `actual` (`house`).
+# Error naming the first name the font does not have.
+export def icon_codes [names: list<string>, codepoints: string, format: string = "codepoints"]: nothing -> list<record> {
+    let table = parse_codepoints $codepoints $format
+    $names | each { |entry|
+        let parts = $entry | split row "="
+        let logical = $parts | first
+        let actual = if ($parts | length) > 1 { $parts | get 1 } else { $logical }
+        let hit = $table | where name == $actual
+        if ($hit | is-empty) { error make { msg: $"icon '($actual)' is not in the font" } }
+        { name: $logical, hex: ($hit | first | get hex) }
     }
 }
 
@@ -63,9 +85,15 @@ export def instance_args [input: string, output: string, axes: record]: nothing 
 }
 
 # The `pyftsubset` arguments that cut a font to `coverage` ("U+0020-007E, U+00A0-017F, ...").
-export def subset_args [input: string, output: string, coverage: string]: nothing -> list<string> {
+export def subset_args [input: string, output: string, coverage: string, layout: string = "*"]: nothing -> list<string> {
     let unicodes = $coverage | str replace --all " " ""
-    [$input $"--unicodes=($unicodes)" "--layout-features=*" "--drop-tables+=DSIG" $"--output-file=($output)"]
+    [$input $"--unicodes=($unicodes)" $"--layout-features=($layout)" "--drop-tables+=DSIG" $"--output-file=($output)"]
+}
+
+# The `fonttools ttx` arguments that write a font as XML without the tables a family lists in `drop_tables` (a font whose
+# GSUB fonttools cannot read is cut by dropping it first; an icon font is addressed by character and needs none).
+export def ttx_dump_args [input: string, output: string, tables: list<string>]: nothing -> list<string> {
+    ["ttx" "-x" ($tables | str join ",") "-o" $output $input]
 }
 
 # Where the licence of a family is next to its font file.
@@ -87,7 +115,7 @@ def fetch_one [family: record, coverage: string, force: bool] {
     mkdir $dir
     let tmp = mktemp -d
     let coverage = if $family.role == "icons" {
-        let codes = icon_codes $family.icons (http get --raw $family.codepoints_url | into string)
+        let codes = icon_codes $family.icons (http get --raw $family.codepoints_url | into string) ($family.codepoints_format? | default "codepoints")
         $codes | each { |c| $"($c.name) ($c.hex)" } | str join "\n" | $in + "\n" | save -f ($dir | path join names.txt)
         icon_coverage $codes
     } else { $coverage }
@@ -108,7 +136,16 @@ def fetch_one [family: record, coverage: string, force: bool] {
             }
             _ => { http get --raw $src.url | save -f $raw }
         }
-        ^pyftsubset ...(subset_args $raw ($dir | path join $"($w).ttf") $coverage)
+        let raw = if ($family.drop_tables? | is-not-empty) {
+            let xml = $tmp | path join $"($w).ttx"
+            let stripped = $tmp | path join $"($w)-stripped.ttf"
+            ^fonttools ...(ttx_dump_args $raw $xml $family.drop_tables)
+            ^fonttools ttx -o $stripped $xml
+            $stripped
+        } else { $raw }
+        # An icon font is addressed by character, so it keeps no layout features (some have ligature tables fonttools cannot cut).
+        let layout = if $family.role == "icons" { "" } else { "*" }
+        ^pyftsubset ...(subset_args $raw ($dir | path join $"($w).ttf") $coverage $layout)
     }
     let lic = licence_url $family
     let lic_file = if ($family.licence_url? != null) { "LICENSE.txt" } else { "OFL.txt" }

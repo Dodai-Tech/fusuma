@@ -22,6 +22,15 @@ pub struct AtlasGlyph {
     pub at: u32,
 }
 
+/// The kerning of a face: how much closer or further apart two characters sit than their advances say.
+#[derive(Clone, Copy, Debug)]
+pub struct Kerning {
+    /// The font's units per em, which the adjustments are in.
+    pub upm: u16,
+    /// `(first << 16 | second, adjustment)` for the printable ASCII pairs that have one, sorted by the key.
+    pub pairs: &'static [(u32, i16)],
+}
+
 /// A face at one line height.
 #[derive(Clone, Copy, Debug)]
 pub struct Atlas {
@@ -33,6 +42,10 @@ pub struct Atlas {
     pub line: u16,
     /// The baseline, from the top of the line.
     pub baseline: u16,
+    /// The font's em in 1/64 pixel at this line height (the scale of the kerning).
+    pub em64: u16,
+    /// The face's kerning.
+    pub kern: &'static Kerning,
     /// The glyphs, sorted by character.
     pub glyphs: &'static [AtlasGlyph],
     /// Coverage, 4 bits a pixel (high nibble first), each glyph's rows padded to a whole byte.
@@ -72,15 +85,38 @@ impl Atlas {
         }
     }
 
-    /// The width of `text` in pixels, rounded up: the pen's travel.
+    /// How far the pen moves before `second` when it follows `first`, in 1/64 pixel (negative: closer). The
+    /// characters are the ones drawn, a missing one being the question mark.
+    #[must_use]
+    pub fn kern(&self, first: char, second: char) -> i32 {
+        let drawn = |c: char| if self.glyph(c).is_some() { c } else { '?' };
+        let (a, b) = (drawn(first), drawn(second));
+        if a as u32 > 0xffff || b as u32 > 0xffff || self.kern.pairs.is_empty() {
+            return 0;
+        }
+        let key = (a as u32) << 16 | b as u32;
+        let Ok(i) = self.kern.pairs.binary_search_by_key(&key, |p| p.0) else {
+            return 0;
+        };
+        i32::from(self.kern.pairs[i].1) * i32::from(self.em64) / i32::from(self.kern.upm.max(1))
+    }
+
+    /// The width of `text` in pixels, rounded up: the pen's travel, kerning included.
     #[must_use]
     pub fn width(&self, text: &str) -> u32 {
-        let total: u32 = text
-            .chars()
-            .filter_map(|c| self.glyph_or_replacement(c))
-            .map(|g| u32::from(g.advance))
-            .sum();
-        total.div_ceil(64)
+        let mut total: i64 = 0;
+        let mut prev: Option<char> = None;
+        for c in text.chars() {
+            let Some(g) = self.glyph_or_replacement(c) else {
+                continue;
+            };
+            if let Some(p) = prev {
+                total += i64::from(self.kern(p, c));
+            }
+            total += i64::from(g.advance);
+            prev = Some(c);
+        }
+        (total.max(0) as u32).div_ceil(64)
     }
 
     /// The atlas of `family` (bold or not) that best fits a line of `size` pixels: the largest not above it, else the
@@ -137,7 +173,11 @@ mod tests {
                     assert!(
                         i32::from(g.top) >= 0
                             && i32::from(g.top) + i32::from(g.height) <= i32::from(a.line),
-                        "{name}"
+                        "{} {} {name}: top {} height {}",
+                        a.family,
+                        a.line,
+                        g.top,
+                        g.height
                     );
                     assert!(
                         g.width > 0 && u32::from(g.width) <= u32::from(a.line) + 1,

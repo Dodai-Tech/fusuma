@@ -123,9 +123,16 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 - [x] Atlas sizes from `[fonts] sizes` (read at build time through `FUSUMA_SETTINGS`); the watch firmware asks for its
   theme's 15, 20, 24 and 30
 - [x] Wrapped labels and a multi-line text view (see Toolkit)
-- [ ] Kerning in the atlases; sizes other than those built
+- [x] **Kerning in the atlases**: each face's GPOS `kern` pairs among the printable ASCII (Inter: about 1,050 pairs,
+  6 KB a face) read at build time, applied when measuring and drawing; five lines of Inter at 10, 15 and 20 px are
+  now exactly as wide as Vello's (2 to 5 px narrower than the sum of advances)
+- [ ] Sizes other than those built
 - [ ] System fonts through Fontique on desktop and phone; Greek and Cyrillic subsets as an option
-- [ ] Lucide and Phosphor icons (each a catalog entry); filled icons (the `FILL` axis)
+- [x] **Lucide and Phosphor icons**, opt-in (`icons-lucide`, `icons-phosphor`; `[fonts] icons = "lucide"`): the same 90 names as
+  Material Symbols through aliases in the catalog (`home=house`), 30 KB and 23 KB, name tables read from the three
+  formats (`codepoints`, lucide's `info.json`, a stylesheet); Phosphor's dip below the baseline is lifted so every icon
+  stays in its square; held to Vello for all three families on the integer renderer
+- [ ] Filled icons (the `FILL` axis)
 - [x] The text field: drag and word selection, undo, a placeholder, longer text (a feature)
 - [ ] The text field: caret and selection from Parley's clusters (right-to-left and complex scripts)
 - [ ] The bitmap font (the fallback without `fonts`) is ASCII only: `é` and `ș` draw as `?` there

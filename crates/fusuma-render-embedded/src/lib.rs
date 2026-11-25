@@ -342,10 +342,16 @@ impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
         let opacity = u32::from(style.color.a);
         let mut buf = [0u8; 256];
         let mut pen: i64 = 0;
+        let mut prev: Option<char> = None;
         for ch in text.chars() {
             let Some(g) = atlas.glyph_or_replacement(ch) else {
                 continue;
             };
+            // The pair's kerning, as a shaper would apply it.
+            if let Some(p) = prev {
+                pen += i64::from(atlas.kern(p, ch));
+            }
+            prev = Some(ch);
             let gx = i64::from(origin.x) + (pen + 32) / 64 + i64::from(g.left);
             let gy = i64::from(origin.y) + i64::from(g.top);
             pen += i64::from(g.advance);
@@ -1432,6 +1438,99 @@ mod atlas_text_tests {
             assert_eq!((m.w, m.h), (size, size), "{name}: a square");
             let mv = v.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
             assert_eq!((mv.w, mv.h), (size, size), "{name}: Vello's square");
+        }
+    }
+
+    /// Kerning: pairs such as "AV" and "To" sit closer, as a shaper sets them, so a line is as wide as Vello's.
+    #[test]
+    fn kerned_text_is_as_wide_as_vellos() {
+        let set = fusuma_fonts::FontSet::default_set();
+        let mut closer = 0;
+        for (text, size) in [
+            ("AVATAR", 20u32),
+            ("To We Vo", 20),
+            ("Typography AV", 15),
+            ("WAVE Yo", 20),
+            ("Tel. 02-AV", 10),
+        ] {
+            let mut a = screen(200, 40);
+            a.set_fonts(set);
+            let mut v = fusuma_render_vello_cpu::new(200, 40).unwrap();
+            v.set_fonts(set);
+            let style = TextStyle::new(size, Color::WHITE).font(Font::Sans);
+            let (wa, wv) = (
+                a.measure_text(text, &style).w,
+                v.measure_text(text, &style).w,
+            );
+            // What it would be with no kerning: the advances alone.
+            let atlas =
+                fusuma_fonts::atlas::Atlas::for_face(&set, fusuma_fonts::Face::Sans, size).unwrap();
+            let plain: u32 = text
+                .chars()
+                .filter_map(|c| atlas.glyph_or_replacement(c))
+                .map(|g| u32::from(g.advance))
+                .sum::<u32>()
+                .div_ceil(64);
+            std::println!("{text:?} {size}: atlas {wa}, without kerning {plain}, Vello {wv}");
+            assert!(
+                wa < plain,
+                "{text:?}: kerning closes a pair ({wa} against {plain})"
+            );
+            assert!(
+                wa.abs_diff(wv) <= 2,
+                "{text:?} at {size}: {wa} px against Vello's {wv}"
+            );
+            if wa.abs_diff(wv) < plain.abs_diff(wv) {
+                closer += 1;
+            }
+        }
+        assert_eq!(closer, 5, "every line is nearer Vello's with kerning");
+    }
+
+    /// Every icon family, drawn by the integer renderer from its atlas and by Vello from its outlines: the same ink in
+    /// the same square. (Phosphor's icons dip below the baseline and are lifted to stay inside it.)
+    #[test]
+    fn icons_of_every_family_fill_their_square_like_vellos() {
+        for id in ["material-symbols", "lucide", "phosphor"] {
+            let set = fusuma_fonts::FontSet::choose(None, None, None, Some(id)).unwrap();
+            for (name, size) in [
+                ("settings", 20u32),
+                ("home", 15),
+                ("wifi", 10),
+                ("bolt", 20),
+                ("delete", 15),
+                ("search", 10),
+            ] {
+                let ch = set.icon(name).unwrap_or_else(|| panic!("{id} has {name}"));
+                let mut text = [0u8; 4];
+                let text = ch.encode_utf8(&mut text);
+                let (w, h) = (40u32, 40u32);
+                let (mut a, mut v) = (
+                    screen(w as u16, h as u16),
+                    fusuma_render_vello_cpu::new(w, h).unwrap(),
+                );
+                a.set_fonts(set);
+                v.set_fonts(set);
+                paint(&mut a, text, Font::Icons, size);
+                paint(&mut v, text, Font::Icons, size);
+                let (pa, pv) = (grey(&a, w, h), grey(&v, w, h));
+                let ink = |p: &[u8]| p.iter().map(|&g| u64::from(g)).sum::<u64>();
+                assert!(ink(&pv) > 0, "{id} {name} {size}: Vello drew nothing");
+                let ratio = ink(&pa) as f64 / ink(&pv) as f64;
+                assert!(
+                    (0.75..1.25).contains(&ratio),
+                    "{id} {name} {size}: ink {ratio:.3}"
+                );
+                for y in 0..h {
+                    for x in 0..w {
+                        let inside = (2..2 + size).contains(&x) && (2..2 + size).contains(&y);
+                        assert!(
+                            inside || pa[(y * w + x) as usize] == 0,
+                            "{id} {name} {size}: ink at ({x}, {y})"
+                        );
+                    }
+                }
+            }
         }
     }
 

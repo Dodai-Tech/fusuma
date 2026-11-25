@@ -49,6 +49,9 @@ fonts-noto = ["fonts", "fusuma-fonts/preset-noto"]
 fonts-all = ["fonts", "fusuma-fonts/all-families"]
 # Icons drawn like text (`Tree::icon`, `fonts::FontSet::icon`): Material Symbols Rounded, the catalog's 90 icons.
 icons = ["fonts", "fusuma-fonts/material-symbols"]
+# Lucide and Phosphor as icon families too (opt-in; `[fonts] icons = "lucide"` picks one): the same names as `icons`.
+icons-lucide = ["fonts", "fusuma-fonts/lucide"]
+icons-phosphor = ["fonts", "fusuma-fonts/phosphor"]
 # `png()` for the CPU Vello renderer: the surface as a PNG file.
 png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 
