@@ -330,7 +330,7 @@ mod tests {
         };
         assert!(
             text_from(a, THEME.spacing.md + THEME.text.icon + THEME.spacing.sm - 1).unwrap()
-                >= tb as i32 + (THEME.text.icon + THEME.spacing.sm) as i32 - 1,
+                >= tb + (THEME.text.icon + THEME.spacing.sm) as i32 - 1,
             "the text is pushed right by the icon and the gap"
         );
     }

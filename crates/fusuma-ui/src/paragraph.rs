@@ -413,7 +413,7 @@ mod tests {
         t.update(&screen(10, 10), &THEME, Rect::new(0, 0, 100, 300));
         assert_eq!(
             t.rect(p).unwrap().h,
-            line * 1 + 0,
+            line,
             "the text changed, so did the height"
         );
     }

@@ -510,9 +510,9 @@ mod tests {
         let s = "0123456789".repeat(30);
         u.t.type_text(&s);
         assert_eq!(state(&u).0.len(), s.len().min(INPUT_CAP));
-        assert!(INPUT_CAP >= 64 && INPUT_CAP <= 250);
+        const { assert!(INPUT_CAP >= 64 && INPUT_CAP <= 250) };
         if cfg!(feature = "long-text") {
-            assert!(INPUT_CAP >= 240, "room for a sentence or two");
+            const { assert!(INPUT_CAP >= 240) };
         }
     }
 
