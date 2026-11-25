@@ -26,6 +26,7 @@ mod textedit;
 mod textinput;
 mod theme;
 mod toast;
+mod transition;
 mod tree;
 mod widgets;
 
@@ -41,6 +42,7 @@ pub use theme::{
     Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, MotionBudget,
     MotionTimes, Palette, Radii, Round, Spacing, Surface, TextRole, TextSizes, Theme, ThemeError,
 };
+pub use transition::Edge;
 pub use tree::{
     Action, ActionKind, Axis, BuildError, CrossAlign, Length, NodeId, SmallText, Style, TEXT_CAP,
     Tree,

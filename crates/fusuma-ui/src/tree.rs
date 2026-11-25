@@ -488,6 +488,8 @@ pub enum ActionKind {
     /// A press stayed where it was for the long-press time on a widget that asked for it
     /// ([`Tree::set_long_press`]). The press is then over: its release is not a click.
     LongPressed,
+    /// A node finished sliding out ([`Tree::slide_out`]): it is off its place now, and the app can remove it.
+    Exited,
     /// A press travelled far enough along one axis on a widget that asked for it ([`Tree::set_swipe`]). The press is
     /// then over: its release is not a click, and a scroll container under it stops following the finger.
     Swiped(crate::gesture::SwipeDir),
@@ -540,6 +542,8 @@ pub struct Tree<const N: usize> {
     pub(crate) last_press: Option<(NodeId, i32, u32)>,
     /// The press that may become a long press or a swipe.
     pub(crate) track: Option<crate::gesture::Track>,
+    /// The slides in progress (see `transition`).
+    pub(crate) moves: [Option<crate::transition::Slide>; crate::transition::MAX_SLIDES],
     pub(crate) hovered: Option<NodeId>,
     /// The widget the keyboard acts on.
     pub(crate) focus: Option<NodeId>,
@@ -596,6 +600,7 @@ impl<const N: usize> Tree<N> {
             clock: 0,
             last_press: None,
             track: None,
+            moves: [None; crate::transition::MAX_SLIDES],
             hovered: None,
             focus: None,
             focus_visible: false,
@@ -1327,6 +1332,7 @@ impl<const N: usize> Tree<N> {
             f.has(Flags::LAYOUT) || f.has(Flags::PAINT) || f.has(Flags::ANIM)
         }) || self.disabled_dirty
             || self.gesture_waiting()
+            || self.moves.iter().any(Option::is_some)
     }
 }
 
