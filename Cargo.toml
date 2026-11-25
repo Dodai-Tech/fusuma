@@ -13,6 +13,7 @@ members = [
     "crates/fusuma-platform-embedded",
     "crates/fusuma-cells",
     "crates/fusuma-platform-tui",
+    "crates/fusuma-platform-console",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-vello-cpu",
     "crates/fusuma-render-vello",

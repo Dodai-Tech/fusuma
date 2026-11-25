@@ -977,6 +977,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-platform-console"
+version = "0.2.0"
+dependencies = [
+ "fusuma-cells",
+ "fusuma-render",
+ "fusuma-showcase",
+ "fusuma-ui",
+]
+
+[[package]]
 name = "fusuma-platform-desktop"
 version = "0.2.0"
 dependencies = [

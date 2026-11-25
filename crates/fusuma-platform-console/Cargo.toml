@@ -1,0 +1,25 @@
+[package]
+name = "fusuma-platform-console"
+description = "Fusuma on a serial console: the cells of a text UI written as ANSI to any fmt::Write (a UART, a USB serial port), and the bytes that come back turned into Fusuma input (no_std, no allocator)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform-console"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["tui", "serial", "console", "uart", "no-std"]
+categories = ["command-line-interface", "embedded", "no-std"]
+publish = false
+
+[dependencies]
+fusuma-ui.workspace = true
+fusuma-cells.workspace = true
+fusuma-render.workspace = true
+
+[dev-dependencies]
+fusuma-showcase = { path = "../../examples/showcase" }
+
+[lints]
+workspace = true
