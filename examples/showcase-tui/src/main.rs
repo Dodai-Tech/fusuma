@@ -28,7 +28,13 @@ fn main() -> io::Result<()> {
     let mut last = 0u64;
     loop {
         let waiting = app.tree().needs_frame();
-        let timeout = Duration::from_millis(if waiting { 16 } else { 250 });
+        // Frames while something moves; otherwise sleep until the app's next deadline (a message that hides), or a
+        // quarter of a second at most.
+        let timeout = Duration::from_millis(match (waiting, app.deadline()) {
+            (true, _) => 16,
+            (false, Some(ms)) => u64::from(ms).clamp(1, 250),
+            (false, None) => 250,
+        });
         let mut quit = false;
         if event::poll(timeout)? {
             loop {

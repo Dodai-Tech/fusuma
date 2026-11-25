@@ -166,9 +166,15 @@ impl<const N: usize> Tree<N> {
         self.track = Some(t);
         if t.held >= LONG_PRESS_MS {
             self.gesture_fire(i, ActionKind::LongPressed);
-            return false;
         }
-        true
+        // Nothing moves while a press is timed: the deadline says when to wake (see `Tree::deadline`).
+        false
+    }
+
+    /// Milliseconds until the press being timed becomes a long press, if one is.
+    pub(crate) fn gesture_deadline(&self) -> Option<u32> {
+        let t = self.track.filter(|_| self.gesture_waiting())?;
+        Some(LONG_PRESS_MS.saturating_sub(t.held))
     }
 
     /// Whether a press is being timed for a long press.
@@ -284,11 +290,9 @@ mod tests {
         u.t.set_long_press(u.button, true);
         let p = centre(&u.t, u.button);
         u.t.pointer(Pointer::Down(p));
-        assert!(
-            u.t.advance(&THEME, LONG_PRESS_MS - 1),
-            "still waiting: frames are wanted"
-        );
-        assert!(u.t.needs_frame());
+        // Nothing moves while the press is timed: no frames, but a deadline to wake at.
+        assert!(!u.t.advance(&THEME, LONG_PRESS_MS - 1));
+        assert_eq!(u.t.deadline(), Some(1), "one millisecond to go");
         assert_eq!(kinds(&mut u.t), []);
         u.t.advance(&THEME, 2);
         let a = u.t.pop_action().unwrap();

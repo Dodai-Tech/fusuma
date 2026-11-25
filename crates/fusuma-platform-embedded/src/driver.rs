@@ -15,6 +15,8 @@ pub struct Step {
     /// Whether the app wants another frame soon (an animation, a change not drawn yet). When false a runtime can
     /// sleep until touch arrives, or the next poll if it has no interrupt.
     pub wants_frame: bool,
+    /// When to run the next frame (see [`fusuma::Wake`]): now, at a deadline, or only when something arrives.
+    pub wake: fusuma::Wake,
     /// How long each stage took, when the board has a clock ([`Board::now_us`]) and something was shown.
     pub timing: Option<Timing>,
 }
@@ -119,6 +121,12 @@ impl<A: App, B: Board> Driver<A, B> {
         self.shell.wants_frame()
     }
 
+    /// When the runtime should run the next frame, given the monotonic time `now_ms`.
+    #[must_use]
+    pub fn wake(&self, now_ms: u64) -> fusuma::Wake {
+        self.shell.wake(now_ms)
+    }
+
     /// One step at the monotonic time `now_ms`: the touch panel is read and turned into pointer events, a frame
     /// runs, and the part that changed is shown. A touch panel that fails is treated as a lifted finger, so a
     /// flaky bus cannot leave a button pressed.
@@ -178,6 +186,7 @@ impl<A: App, B: Board> Driver<A, B> {
         Ok(Step {
             shown,
             wants_frame: self.shell.wants_frame(),
+            wake: self.shell.wake(now_ms),
             timing,
         })
     }
@@ -299,6 +308,49 @@ mod tests {
                     "{backend:?}: {r:?} inside {bounding:?}"
                 );
             }
+        }
+    }
+
+    /// A press held on the card of the Navigation page: nothing moves while it waits to become a long press, so the
+    /// runtime is told when to wake (and may sleep until then), and the wake comes true.
+    #[test]
+    fn a_held_press_sleeps_until_its_deadline_and_then_fires() {
+        for backend in backends() {
+            let mut app = Showcase::new(1024, 600);
+            app.set_start(Some("Navigation"), None, None, true, false);
+            let mut d = Driver::new(app, Fake::new(1024, 600), backend).unwrap();
+            d.step(0).unwrap();
+            d.step(100).unwrap();
+            assert_eq!(
+                d.step(200).unwrap().wake,
+                fusuma::Wake::Never,
+                "{backend:?}: idle"
+            );
+            let card = d.shell().app.widgets().card.unwrap();
+            let r = d.shell().app.rect_of(card).unwrap();
+            let p = Point::new(r.x + 20, r.y + (r.h / 2) as i32);
+            d.input(Input::Pointer(fusuma::Pointer::Down(p)));
+            d.step(300).unwrap();
+            let held = d.step(332).unwrap();
+            assert!(
+                !held.wants_frame,
+                "{backend:?}: nothing moves while it is timed"
+            );
+            let fusuma::Wake::At(ms) = held.wake else {
+                panic!("{backend:?}: expected a deadline, got {:?}", held.wake);
+            };
+            assert!(
+                (300..=500).contains(&ms),
+                "{backend:?}: about half a second to go: {ms}"
+            );
+            // The runtime sleeps until the deadline and runs a frame: the long press fires, with no frames between.
+            let at = 332 + u64::from(ms);
+            d.resume(at);
+            d.step(at).unwrap();
+            assert!(
+                d.shell().app.toast_shown(),
+                "{backend:?}: the long press showed its toast"
+            );
         }
     }
 

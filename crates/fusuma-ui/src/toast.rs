@@ -42,6 +42,14 @@ fn look(phase: Phase, t: u32, theme: &Theme) -> (u8, i32) {
     (alpha, slide)
 }
 
+/// The phase of a toast node (a helper to read it without holding a borrow of the whole node).
+fn phase_now(kind: &Kind) -> &Phase {
+    match kind {
+        Kind::Toast { phase, .. } => phase,
+        _ => &Phase::Hidden,
+    }
+}
+
 impl<const N: usize> Tree<N> {
     /// Adds a toast under `parent` (usually the root), hidden. Show a message with [`show_toast`](Self::show_toast).
     ///
@@ -157,7 +165,11 @@ impl<const N: usize> Tree<N> {
             if hidden || before.0 != after.0 {
                 flags |= Flags::LAYOUT;
             }
-            if !hidden {
+            // Coming in and going out move; holding does not, so it only has a deadline (`Tree::deadline`).
+            if matches!(
+                *phase_now(&self.nodes[i].kind),
+                Phase::Entering | Phase::Leaving
+            ) {
                 self.nodes[i].own.insert(Flags::ANIM);
                 running = true;
             } else {
@@ -174,6 +186,22 @@ impl<const N: usize> Tree<N> {
             }
         }
         running
+    }
+
+    /// Milliseconds until the next toast that is holding hides, if one is.
+    pub(crate) fn toast_deadline(&self) -> Option<u32> {
+        (0..N)
+            .filter(|&i| self.nodes[i].alive)
+            .filter_map(|i| match self.nodes[i].kind {
+                Kind::Toast {
+                    phase: Phase::Holding,
+                    t,
+                    hold,
+                    ..
+                } => Some(hold.saturating_sub(t)),
+                _ => None,
+            })
+            .min()
     }
 
     /// The place of toast `i` and the pixels it slides through.
@@ -349,8 +377,9 @@ mod tests {
         // Through the entrance: it gets more opaque at every step, and every frame equals a full redraw.
         let mut last = 0u32;
         while waited < normal {
-            assert!(u.t.advance(&THEME, 20));
+            let moving = u.t.advance(&THEME, 20);
             waited += 20;
+            assert!(moving || waited >= normal, "moving until it is in");
             frame(&mut u, &mut s);
             assert_eq!(pixels(&s), full(&mut u), "entering, {waited} ms");
             let p = s.pixel(spot.0, spot.1).unwrap();
@@ -361,15 +390,19 @@ mod tests {
         }
         assert!(seen_partial, "it faded in, it did not pop");
         assert_eq!(s.pixel(spot.0, spot.1), Some(THEME.colors.text), "fully in");
-        // Holding: no change, no frames wanted for the picture, but the clock runs.
-        assert!(u.t.advance(&THEME, 200));
+        // Holding: nothing moves and no frame is wanted, but the clock runs: a deadline says when it goes.
+        assert!(!u.t.advance(&THEME, 200));
+        assert!(!u.t.needs_frame());
+        assert_eq!(u.t.deadline(), Some(200), "400 held, 200 gone");
         frame(&mut u, &mut s);
         assert_eq!(
             s.pixel(spot.0, spot.1),
             Some(THEME.colors.text),
             "still there"
         );
-        // Out.
+        // Out: the deadline is reached, and it fades.
+        assert!(u.t.advance(&THEME, 200), "leaving moves again");
+        assert_eq!(u.t.deadline(), None);
         let mut steps = 0;
         while u.t.advance(&THEME, 20) {
             frame(&mut u, &mut s);

@@ -33,6 +33,7 @@ mod toast;
 mod transition;
 mod tree;
 mod virtual_list;
+mod wake;
 mod widgets;
 
 pub use app::App;
@@ -58,3 +59,4 @@ pub use tree::{
     Tree,
 };
 pub use virtual_list::Window;
+pub use wake::Wake;

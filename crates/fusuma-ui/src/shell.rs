@@ -172,6 +172,8 @@ pub struct Shell<A> {
     pending: bool,
     /// The last frame left the app with more to do (an animation, a change not yet drawn).
     busy: bool,
+    /// The time at which the app asked to be woken (its [`deadline`](App::deadline) added to the last frame's time).
+    due: Option<u64>,
     /// How the frames are going.
     pub stats: Stats,
 }
@@ -185,6 +187,7 @@ impl<A: App> Shell<A> {
             pending: false,
             // The first frame has to be drawn.
             busy: true,
+            due: None,
             stats: Stats {
                 frames: 0,
                 busy_ms: 0,
@@ -203,8 +206,29 @@ impl<A: App> Shell<A> {
     /// platform runs from its start instead of jumping by seconds. Call it when waking from a wait, before
     /// the frame. An app that needs real time to pass while idle (a timer) returns `true` from
     /// [`App::tick`] for as long as it is pending, which keeps the platform awake.
+    ///
+    /// The exception is time the app asked for: while it waits on a [`deadline`](App::deadline) (a toast that will hide, a
+    /// press that will become a long press) the time asleep is time it needs, so it is kept.
     pub fn resume(&mut self, now_ms: u64) {
-        let _ = self.clock.dt(now_ms);
+        if self.due.is_none() {
+            let _ = self.clock.dt(now_ms);
+        }
+    }
+
+    /// When the platform should run the next frame: [`Wake::Now`] when something arrived or is moving, [`Wake::At`] when
+    /// nothing moves but the app waits on the clock, [`Wake::Never`] when only an input will do. It replaces polling
+    /// [`wants_frame`](Self::wants_frame) and sleeping a fixed time.
+    #[must_use]
+    pub fn wake(&self, now_ms: u64) -> crate::Wake {
+        if self.wants_frame() {
+            return crate::Wake::Now;
+        }
+        match self.due {
+            Some(due) => {
+                crate::Wake::At(u32::try_from(due.saturating_sub(now_ms)).unwrap_or(u32::MAX))
+            }
+            None => crate::Wake::Never,
+        }
     }
 
     /// Whether a frame is worth running now: something arrived since the last one, or the app said it has
@@ -238,6 +262,10 @@ impl<A: App> Shell<A> {
         self.pending = false;
         let drawn = self.app.frame(renderer);
         self.busy = wants || matches!(drawn, Ok(Some(_)) | Err(_));
+        self.due = self
+            .app
+            .deadline()
+            .map(|ms| now_ms.saturating_add(u64::from(ms)));
         drawn
     }
 
@@ -604,5 +632,66 @@ mod tests {
                 && shell.app.selected_text().is_none()
                 && shell.app.text_cursor().is_none()
         );
+    }
+
+    /// An app that is idle but has a deadline (a message that hides in 400 ms): the shell says when to wake, and the
+    /// time asleep until then counts, so the deadline is reached by the time the platform comes back.
+    struct Timed {
+        left: u32,
+        ticks: u32,
+    }
+
+    impl App for Timed {
+        fn pointer(&mut self, _: Pointer) {}
+        fn key(&mut self, _: crate::Key) {}
+        fn tick(&mut self, dt_ms: u32) -> bool {
+            self.ticks += 1;
+            self.left = self.left.saturating_sub(dt_ms);
+            false
+        }
+        fn deadline(&self) -> Option<u32> {
+            (self.left > 0).then_some(self.left)
+        }
+        fn frame<R: fusuma_render::Renderer>(
+            &mut self,
+            _: &mut R,
+        ) -> Result<Option<Rect>, R::Error> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn an_idle_app_with_a_deadline_sleeps_until_it_and_the_time_asleep_counts() {
+        let mut r = fusuma_render_vello_cpu::new(8, 8).unwrap();
+        let mut s = Shell::new(Timed {
+            left: 400,
+            ticks: 0,
+        });
+        assert_eq!(s.wake(0), crate::Wake::Now, "the first frame is wanted");
+        s.frame(1000, &mut r).unwrap();
+        assert!(!s.wants_frame());
+        assert_eq!(s.wake(1000), crate::Wake::At(400));
+        assert_eq!(
+            s.wake(1150),
+            crate::Wake::At(250),
+            "it counts down as time passes"
+        );
+        assert_eq!(
+            s.wake(5000),
+            crate::Wake::At(0),
+            "late is now, not negative"
+        );
+        // The platform slept 400 ms and calls `resume`: the 400 ms are kept, so the app's time is up.
+        s.resume(1400);
+        s.frame(1400, &mut r).unwrap();
+        assert_eq!(s.app.left, 0, "the sleep was not thrown away");
+        assert_eq!(s.wake(1400), crate::Wake::Never, "nothing left to wait for");
+        // With nothing pending the time asleep is thrown away, as before.
+        s.resume(9000);
+        s.frame(9000, &mut r).unwrap();
+        assert_eq!(s.app.ticks, 3);
+        // An input is a frame now.
+        s.input(Input::Pointer(Pointer::Leave));
+        assert_eq!(s.wake(9000), crate::Wake::Now);
     }
 }

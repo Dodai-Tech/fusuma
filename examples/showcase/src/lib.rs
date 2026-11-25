@@ -1456,6 +1456,18 @@ impl Showcase {
         self.handle_actions();
     }
 
+    /// Whether the Navigation page's toast is on the screen.
+    #[must_use]
+    pub fn toast_shown(&self) -> bool {
+        self.live.toast.is_some_and(|t| self.tree.is_toast_shown(t))
+    }
+
+    /// Milliseconds until time has to pass for something that is not moving (a toast that hides, a long press).
+    #[must_use]
+    pub fn deadline(&self) -> Option<u32> {
+        self.tree.deadline()
+    }
+
     /// Time passes by `dt_ms`: animations run and the progress bar fills while it is running. Returns
     /// whether anything wants a frame.
     pub fn tick(&mut self, dt_ms: u32) -> bool {
@@ -1471,6 +1483,9 @@ impl Showcase {
             self.show_progress();
         }
         let moving = self.tree.advance(&self.theme, dt_ms);
+        // What time itself caused (a long press that came due, a slide that finished) is answered now, not at the next
+        // input.
+        self.handle_actions();
         moving || self.tree.needs_frame()
     }
 
@@ -1494,6 +1509,10 @@ impl Showcase {
 }
 
 impl App for Showcase {
+    fn deadline(&self) -> Option<u32> {
+        Showcase::deadline(self)
+    }
+
     fn frame_rects(&self) -> &[Rect] {
         self.tree.frame_rects()
     }

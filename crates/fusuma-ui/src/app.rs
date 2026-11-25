@@ -35,6 +35,13 @@ pub trait App {
         false
     }
 
+    /// Milliseconds until the app next needs time to have passed even though nothing is moving (a message that hides, a
+    /// press that becomes a long press), or `None` for no such thing. A platform sleeps until then instead of polling;
+    /// the default says there is nothing.
+    fn deadline(&self) -> Option<u32> {
+        None
+    }
+
     /// Where the next character will appear, so the platform can place an input method's candidate window.
     fn text_cursor(&self) -> Option<Rect> {
         None

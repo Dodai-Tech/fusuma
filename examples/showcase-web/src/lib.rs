@@ -152,10 +152,20 @@ fn frame(state: &Shared) {
             }
         }
         sync_text_area(s);
-        s.shell.wants_frame()
+        (s.shell.wants_frame(), s.shell.wake(now))
     };
-    if again {
-        schedule(state);
+    match again {
+        (true, _) => schedule(state),
+        // Nothing moves but the clock matters (a message that hides): one wake-up at the deadline, no polling.
+        (false, fusuma::Wake::At(ms)) => {
+            let st = state.clone();
+            let cb = Closure::once_into_js(move || schedule(&st));
+            let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(
+                cb.unchecked_ref(),
+                i32::try_from(ms).unwrap_or(i32::MAX),
+            );
+        }
+        (false, _) => {}
     }
 }
 

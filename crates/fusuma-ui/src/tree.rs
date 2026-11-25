@@ -1334,8 +1334,18 @@ impl<const N: usize> Tree<N> {
             let f = self.nodes[usize::from(r)].sub;
             f.has(Flags::LAYOUT) || f.has(Flags::PAINT) || f.has(Flags::ANIM)
         }) || self.disabled_dirty
-            || self.gesture_waiting()
             || self.moves.iter().any(Option::is_some)
+    }
+
+    /// Milliseconds until time has to pass for something that is not moving: a toast that is holding hides, a press
+    /// becomes a long press. `None` when nothing waits on the clock. A platform sleeps until then (see
+    /// [`Wake`](crate::Wake)) and runs a frame, which advances the time.
+    #[must_use]
+    pub fn deadline(&self) -> Option<u32> {
+        match (self.toast_deadline(), self.gesture_deadline()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 }
 

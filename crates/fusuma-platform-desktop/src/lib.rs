@@ -54,11 +54,12 @@ const FRAME_MS: u64 = 16;
 /// When the event loop should wake next: in a frame's time while the app has more to do, and not until the
 /// next event otherwise, so an idle window costs no wake-ups.
 #[must_use]
-fn next_wake(wants_frame: bool, now: Instant) -> ControlFlow {
-    if wants_frame {
-        ControlFlow::WaitUntil(now + Duration::from_millis(FRAME_MS))
-    } else {
-        ControlFlow::Wait
+fn next_wake(wake: fusuma::Wake, now: Instant) -> ControlFlow {
+    match wake {
+        fusuma::Wake::Now => ControlFlow::WaitUntil(now + Duration::from_millis(FRAME_MS)),
+        // Nothing moves but the clock matters (a message that hides): sleep exactly until then.
+        fusuma::Wake::At(ms) => ControlFlow::WaitUntil(now + Duration::from_millis(u64::from(ms))),
+        fusuma::Wake::Never => ControlFlow::Wait,
     }
 }
 
@@ -427,14 +428,16 @@ impl<A: App> ApplicationHandler for Handler<A> {
         let Some(st) = self.state.as_mut() else {
             return;
         };
-        if st.shell.wants_frame()
+        let now_ms = u64::try_from(st.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        // A frame now, or the deadline the app asked to be woken at has come.
+        if st.shell.wake(now_ms) <= fusuma::Wake::At(0)
             && let Err(e) = st.step(false)
         {
             self.fail(el, e);
             return;
         }
-        let wants = st.shell.wants_frame();
-        el.set_control_flow(next_wake(wants, Instant::now()));
+        let now_ms = u64::try_from(st.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        el.set_control_flow(next_wake(st.shell.wake(now_ms), Instant::now()));
     }
 }
 
@@ -445,8 +448,13 @@ mod wake_tests {
     #[test]
     fn an_app_with_nothing_to_do_sleeps_until_an_event_and_one_animating_wakes_in_a_frame() {
         let now = Instant::now();
-        assert_eq!(next_wake(false, now), ControlFlow::Wait);
-        match next_wake(true, now) {
+        assert_eq!(next_wake(fusuma::Wake::Never, now), ControlFlow::Wait);
+        assert_eq!(
+            next_wake(fusuma::Wake::At(400), now),
+            ControlFlow::WaitUntil(now + Duration::from_millis(400)),
+            "a deadline is slept until, not polled"
+        );
+        match next_wake(fusuma::Wake::Now, now) {
             ControlFlow::WaitUntil(t) => {
                 let ms = t.duration_since(now).as_millis();
                 assert!((10..=20).contains(&ms), "about a frame: {ms} ms");
