@@ -507,10 +507,13 @@ mod tests {
     #[test]
     fn long_text_is_kept_up_to_the_capacity() {
         let mut u = ui("");
-        let s = "0123456789".repeat(12);
+        let s = "0123456789".repeat(30);
         u.t.type_text(&s);
         assert_eq!(state(&u).0.len(), s.len().min(INPUT_CAP));
-        assert!(INPUT_CAP >= 120, "room for a sentence or two");
+        assert!(INPUT_CAP >= 64 && INPUT_CAP <= 250);
+        if cfg!(feature = "long-text") {
+            assert!(INPUT_CAP >= 240, "room for a sentence or two");
+        }
     }
 
     fn press_x(u: &Ui, n: usize, text: &str) -> (i32, i32) {

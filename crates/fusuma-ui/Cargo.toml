@@ -12,6 +12,10 @@ repository.workspace = true
 keywords = ["gui", "toolkit", "layout", "embedded", "no-std"]
 categories = ["gui", "embedded", "no-std"]
 
+[features]
+# Text fields keep 250 bytes instead of 64. Every node of a tree grows by the difference, so leave it off on a chip.
+long-text = []
+
 [dependencies]
 fusuma-anim.workspace = true
 fusuma-render.workspace = true

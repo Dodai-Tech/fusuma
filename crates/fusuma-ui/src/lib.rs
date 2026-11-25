@@ -15,6 +15,7 @@ mod menu;
 mod paint;
 mod paragraph;
 mod pieces;
+mod screen;
 #[cfg(test)]
 mod scroll;
 mod scrollbar;
@@ -35,6 +36,7 @@ pub use event::Pointer;
 pub use focus::Key;
 pub use gesture::{LONG_PRESS_MS, SWIPE_PX, Swipe, SwipeDir};
 pub use pieces::{MAX_PIECES, Pieces};
+pub use screen::{Class, PHONE_BELOW, Screen, TABLET_BELOW, WATCH_BELOW};
 pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use textinput::{Edit, INPUT_CAP, InputText};

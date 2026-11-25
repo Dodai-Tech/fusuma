@@ -59,50 +59,7 @@ const fn scaled(v: u32, percent: u32) -> u32 {
     }
 }
 
-/// Screens narrower than this, in logical pixels, are a watch: a grid of big tiles, one small page at a time.
-pub const WATCH_BELOW: u32 = 480;
-
-/// Screens narrower than this are a phone: no sidebar, a Previous and Next row, pages in one column.
-pub const PHONE_BELOW: u32 = 640;
-
-/// Screens narrower than this are a tablet (the 7-inch board): a sidebar and one page. Wider is a desktop window.
-pub const TABLET_BELOW: u32 = 1100;
-
-/// The class of screen, by logical width, which decides the layout. Differences between devices are layout, never
-/// different widgets.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Class {
-    /// A watch: a grid of tiles, then one small page with a back button.
-    Watch,
-    /// A phone or a narrow window: a Previous and Next row.
-    Phone,
-    /// A tablet or a small window: a sidebar.
-    Tablet,
-    /// A desktop window: a sidebar and room.
-    Desktop,
-}
-
-impl Class {
-    /// The class of a screen `logical_width` pixels wide.
-    #[must_use]
-    pub const fn of(logical_width: u32) -> Self {
-        if logical_width < WATCH_BELOW {
-            Self::Watch
-        } else if logical_width < PHONE_BELOW {
-            Self::Phone
-        } else if logical_width < TABLET_BELOW {
-            Self::Tablet
-        } else {
-            Self::Desktop
-        }
-    }
-
-    /// Whether the screen is too small for a sidebar.
-    #[must_use]
-    pub const fn is_compact(self) -> bool {
-        matches!(self, Self::Watch | Self::Phone)
-    }
-}
+pub use fusuma::{Class, PHONE_BELOW, TABLET_BELOW, WATCH_BELOW};
 
 /// The icons the Typography page shows, by name.
 #[cfg(feature = "fonts")]
@@ -1160,13 +1117,13 @@ impl App for Showcase {
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
-        let class = Class::of(width.saturating_mul(100) / scale);
+        let class = fusuma::Screen::new(width, self.bounds.h).with_scale(scale).class();
         if scale != self.scale || class != self.class {
             // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
             self.scale = scale;
             self.class = class;
             self.open = false;
-            self.insets = self.shape.safe_insets(width, height);
+            self.insets = fusuma::Screen::new(width, height).with_shape(self.shape).insets();
             self.theme = theme(self.dark, &self.palette).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();

@@ -7,8 +7,10 @@ use crate::paint::centred;
 use crate::theme::Theme;
 use crate::tree::{Action, ActionKind, Flags, Kind, NodeId, Tree};
 
-/// How many bytes of text a text field keeps. Longer text typed or pasted is cut at a character boundary.
-pub const INPUT_CAP: usize = 128;
+/// How many bytes of text a text field keeps: 64, or 250 with the `long-text` feature (every widget of the tree
+/// takes the room of the biggest, so a chip keeps the small one). Longer text typed or pasted is cut at a character
+/// boundary.
+pub const INPUT_CAP: usize = if cfg!(feature = "long-text") { 250 } else { 64 };
 
 /// Text stored inline, like `SmallText` but long enough for a name, a search or a Wi-Fi password.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -743,7 +745,7 @@ mod tests {
         u.t.type_text("a\nb\tc\r\u{7f}");
         assert_eq!(state(&u).0, "abc");
         let mut u = ui("");
-        u.t.type_text(&"é".repeat(100));
+        u.t.type_text(&"é".repeat(INPUT_CAP));
         let (s, c, _) = state(&u);
         assert_eq!(s.len(), INPUT_CAP);
         assert!(s.chars().all(|ch| ch == 'é') && c == INPUT_CAP);
