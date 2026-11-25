@@ -13,6 +13,7 @@ impl<const N: usize> Tree<N> {
     /// [`MotionTimes::fast_ms`](crate::theme::MotionTimes); a scroll container goes on after a flick and springs back
     /// from an end.
     pub fn advance(&mut self, theme: &Theme, dt_ms: u32) -> bool {
+        self.clock = self.clock.saturating_add(dt_ms);
         // Scroll containers fling and bounce; a finger dragging one needs frames too.
         let scrolling = self.advance_scroll(dt_ms);
         // After the scroll step, so a bar that a fling moved this frame is shown, not faded.

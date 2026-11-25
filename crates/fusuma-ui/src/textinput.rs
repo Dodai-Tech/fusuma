@@ -8,7 +8,7 @@ use crate::theme::Theme;
 use crate::tree::{Action, ActionKind, Flags, Kind, NodeId, Tree};
 
 /// How many bytes of text a text field keeps. Longer text typed or pasted is cut at a character boundary.
-pub const INPUT_CAP: usize = 64;
+pub const INPUT_CAP: usize = 128;
 
 /// Text stored inline, like `SmallText` but long enough for a name, a search or a Wi-Fi password.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,6 +101,14 @@ pub enum Edit {
     End(bool),
     /// Select all the text.
     SelectAll,
+    /// Move the cursor to the start of the previous word; `true` extends the selection (Ctrl+Left).
+    WordLeft(bool),
+    /// Move the cursor to the end of the next word; `true` extends the selection (Ctrl+Right).
+    WordRight(bool),
+    /// Take back the last edit or run of edits (Ctrl+Z).
+    Undo,
+    /// Put back what an undo took back (Ctrl+Y, or Ctrl+Shift+Z).
+    Redo,
 }
 
 /// The start of the character before byte `at` in `s`.
@@ -183,6 +191,7 @@ impl<const N: usize> Tree<N> {
             text,
             cursor,
             anchor,
+            ..
         } = &self.nodes[i].kind
         else {
             return None;
@@ -214,6 +223,7 @@ impl<const N: usize> Tree<N> {
             text,
             cursor,
             anchor,
+            ..
         } = &mut self.nodes[i].kind
         else {
             return;
@@ -242,10 +252,12 @@ impl<const N: usize> Tree<N> {
         };
         self.preedit = InputText::EMPTY;
         let before = self.input_text_at(i);
+        self.record(i, crate::textedit::Group::Typing);
         let Kind::TextInput {
             text,
             cursor,
             anchor,
+            ..
         } = &mut self.nodes[i].kind
         else {
             return;
@@ -272,10 +284,23 @@ impl<const N: usize> Tree<N> {
         };
         self.preedit = InputText::EMPTY;
         let before = self.input_text_at(i);
+        if matches!(e, Edit::Undo | Edit::Redo) {
+            if self.undo_redo(e == Edit::Redo) {
+                self.after_edit(i, before);
+            }
+            return;
+        }
+        if matches!(e, Edit::Backspace | Edit::Delete) {
+            self.record(i, crate::textedit::Group::Deleting);
+        } else {
+            // A move or a selection ends a run of typing.
+            self.history.break_run();
+        }
         let Kind::TextInput {
             text,
             cursor,
             anchor,
+            ..
         } = &mut self.nodes[i].kind
         else {
             return;
@@ -316,6 +341,9 @@ impl<const N: usize> Tree<N> {
                 },
                 x,
             ),
+            Edit::WordLeft(x) => (crate::textedit::prev_word(text.as_str(), c), x),
+            Edit::WordRight(x) => (crate::textedit::next_word(text.as_str(), c), x),
+            Edit::Undo | Edit::Redo => return,
             Edit::Home(x) => (0, x),
             Edit::End(x) => (len, x),
             Edit::SelectAll => {
@@ -374,7 +402,9 @@ impl<const N: usize> Tree<N> {
     /// position is worked out at the next layout.
     pub(crate) fn input_press(&mut self, i: usize, x: i32) {
         if matches!(self.nodes[i].kind, Kind::TextInput { .. }) {
-            self.pending_click = Some((self.id_of(i), x));
+            let click = self.click_kind(i, x);
+            self.pending_click = Some((self.id_of(i), x, click));
+            self.history.break_run();
             self.request(i, Flags::LAYOUT);
         }
     }
@@ -412,7 +442,7 @@ impl<const N: usize> Tree<N> {
 
     /// At layout: puts the cursor where a press landed, and works out where the caret is.
     pub(crate) fn resolve_input<R: Renderer>(&mut self, r: &R, theme: &Theme) {
-        if let Some((id, x)) = self.pending_click.take()
+        if let Some((id, x, click)) = self.pending_click.take()
             && let Some(i) = self.input_index(id)
         {
             let (shift, _) = self.input_metrics(i, r, theme);
@@ -423,6 +453,7 @@ impl<const N: usize> Tree<N> {
                 text,
                 cursor,
                 anchor,
+                ..
             } = &mut self.nodes[i].kind
             else {
                 return;
@@ -442,7 +473,18 @@ impl<const N: usize> Tree<N> {
                 }
                 at = next_boundary(s, at);
             }
-            (*cursor, *anchor) = (best as u8, best as u8);
+            match click {
+                crate::textedit::Click::Place => (*cursor, *anchor) = (best as u8, best as u8),
+                crate::textedit::Click::Extend => *cursor = best as u8,
+                crate::textedit::Click::Word => {
+                    let (a, b) = (
+                        crate::textedit::word_start(s, best),
+                        crate::textedit::word_end(s, best),
+                    );
+                    (*anchor, *cursor) = (a as u8, b as u8);
+                }
+            }
+            self.request(i, Flags::PAINT);
         }
         self.caret = self.focused_input().map(|i| {
             let (shift, caret) = self.input_metrics(i, r, theme);
@@ -469,6 +511,7 @@ impl<const N: usize> Tree<N> {
             text,
             cursor,
             anchor,
+            placeholder,
         } = n.kind
         else {
             return Ok(());
@@ -544,6 +587,9 @@ impl<const N: usize> Tree<N> {
                 r.fill_rect(underline, 0, c.primary)?;
                 let tail = px.saturating_add(i32::try_from(pw).unwrap_or(0));
                 r.draw_text(&s[cur..], Point::new(tail, top), &style)?;
+            } else if s.is_empty() && !placeholder.is_empty() {
+                let muted = TextStyle::new(theme.text.body, c.text_muted).font(theme.fonts.body);
+                r.draw_text(placeholder, Point::new(at(0, r), top), &muted)?;
             } else {
                 r.draw_text(s, Point::new(at(0, r), top), &style)?;
             }
@@ -699,10 +745,10 @@ mod tests {
         let mut u = ui("");
         u.t.type_text(&"é".repeat(100));
         let (s, c, _) = state(&u);
-        assert_eq!(s.len(), 64);
-        assert!(s.chars().all(|ch| ch == 'é') && c == 64);
+        assert_eq!(s.len(), INPUT_CAP);
+        assert!(s.chars().all(|ch| ch == 'é') && c == INPUT_CAP);
         u.t.type_text("x");
-        assert_eq!(state(&u).0.len(), 64, "full is full");
+        assert_eq!(state(&u).0.len(), INPUT_CAP, "full is full");
     }
 
     #[test]
@@ -795,6 +841,8 @@ mod tests {
             (r.x + 3, 0),
             (r.right() - 2, 6),
         ] {
+            // Time passes between presses: two quick ones near each other are a double click.
+            u.t.advance(&THEME, 1000);
             u.t.pointer(Pointer::Down(Point::new(x, y)));
             u.t.pointer(Pointer::Up(Point::new(x, y)));
             relayout(&mut u);

@@ -21,6 +21,7 @@ mod scrollphys;
 mod scrollshift;
 mod shape;
 mod shell;
+mod textedit;
 mod textinput;
 mod theme;
 mod toast;

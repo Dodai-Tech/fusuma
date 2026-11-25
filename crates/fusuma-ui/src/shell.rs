@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn long_text_is_sent_in_pieces_that_rejoin_to_the_original() {
-        let text = "é".repeat(100) + "tail";
+        let text = "é".repeat(200) + "tail";
         let pieces: Vec<Input> = text_inputs(&text).collect();
         assert!(pieces.len() >= 4);
         let joined: String = pieces

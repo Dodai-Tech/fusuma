@@ -257,6 +257,8 @@ pub(crate) enum Kind {
         text: InputText,
         cursor: u8,
         anchor: u8,
+        /// Shown, muted, while the field is empty (empty: none).
+        placeholder: &'static str,
     },
     /// A modal panel centred over the screen and drawn on top of everything: a column of its own, out of the flow of
     /// its parent. Closed until [`Tree::open_dialog`].
@@ -512,7 +514,13 @@ pub struct Tree<const N: usize> {
     /// What an input method is composing, shown at the cursor of the focused text field.
     pub(crate) preedit: InputText,
     /// A press on a text field, to put its cursor at the next layout (which has a renderer to measure with).
-    pub(crate) pending_click: Option<(NodeId, i32)>,
+    pub(crate) pending_click: Option<(NodeId, i32, crate::textedit::Click)>,
+    /// The edits of the text fields that can be undone and redone.
+    pub(crate) history: crate::textedit::History,
+    /// Milliseconds the animation clock has run, to tell a double click from two clicks.
+    pub(crate) clock: u32,
+    /// The last press on a field: which, where and when, to see a double click.
+    pub(crate) last_press: Option<(NodeId, i32, u32)>,
     pub(crate) hovered: Option<NodeId>,
     /// The widget the keyboard acts on.
     pub(crate) focus: Option<NodeId>,
@@ -563,6 +571,9 @@ impl<const N: usize> Tree<N> {
             caret: None,
             preedit: InputText::EMPTY,
             pending_click: None,
+            history: crate::textedit::History::new(),
+            clock: 0,
+            last_press: None,
             hovered: None,
             focus: None,
             focus_visible: false,
@@ -950,6 +961,7 @@ impl<const N: usize> Tree<N> {
                 text,
                 cursor: end,
                 anchor: end,
+                placeholder: "",
             },
             Style::DEFAULT,
         )
@@ -1161,10 +1173,12 @@ impl<const N: usize> Tree<N> {
             text: t,
             cursor,
             anchor,
+            ..
         } = &mut self.nodes[i].kind
         {
             if t.as_str() != InputText::new(text).as_str() {
                 t.set(text);
+                self.history.forget(id);
                 // The cursor goes to the end, like a field filled in by the program.
                 let end = t.as_str().len() as u8;
                 (*cursor, *anchor) = (end, end);

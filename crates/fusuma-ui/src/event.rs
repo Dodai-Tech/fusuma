@@ -179,6 +179,12 @@ impl<const N: usize> Tree<N> {
                 {
                     self.slider_to_x(held, p.x);
                 }
+                // A text field that holds the press extends its selection to the pointer.
+                if let Some(held) = self.captured.and_then(|id| self.slot(id))
+                    && self.nodes[held].active
+                {
+                    self.input_drag(held, p.x);
+                }
                 // While a scroll waits to be laid out the rows are not where they will be: the hover is worked out
                 // after the layout, in `update`.
                 if self.shift.is_none() {
