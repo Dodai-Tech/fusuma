@@ -1,0 +1,46 @@
+Gallery
+  BBBBBBB
+a caption
+  DDDDDDDDD
+wide: 日本語 and é
+◆
+[ Save ] [ Cancel ] [ Off ]
+  BBBBBBBB.UUUUUUUUUU.DDDDDDD
+[◆ Settings ]
+[x] Notify
+  BBB
+[ ] Track
+[x] Locked
+  BBB.DDDDDD
+( ) Small
+(•) Large
+  BBB
+[ ON ] Wi-Fi
+  BBBBBB
+[OFF ] Bluetooth
+███████░░░░░░░░░░░░░
+━━━━━━━━━━━━━●──────
+ Ana Maria
+  B.........RBBBBBBBBBBBBB
+ Search
+  .DDDDDD
+[ Home ] s Find
+  U.UUUU.U
+  Aurora       █
+▸ Birch        │
+  BBBBBBBBBBBBBBBD
+  Cedar        │
+  ...............D
+A paragraph wraps
+to the room it
+has.
+
+
+
+
+
+
+
+
+
+

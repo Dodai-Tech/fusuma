@@ -3,6 +3,7 @@
 
 mod anim;
 mod app;
+mod cells;
 #[cfg(test)]
 mod damage;
 mod dialog;
@@ -34,6 +35,7 @@ mod virtual_list;
 mod widgets;
 
 pub use app::App;
+pub use cells::{CellMeasure, CellSink, CellTheme, Emphasis, Glyphs};
 pub use event::Pointer;
 pub use focus::Key;
 pub use gesture::{LONG_PRESS_MS, SWIPE_PX, Swipe, SwipeDir};

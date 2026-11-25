@@ -1088,6 +1088,7 @@ name = "fusuma-ui"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-cells",
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-cpu",

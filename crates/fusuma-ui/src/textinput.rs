@@ -425,7 +425,12 @@ impl<const N: usize> Tree<N> {
 
     /// How far the text is scrolled left so that the caret is in view, and the caret's x from the start of
     /// the text, in pixels.
-    fn input_metrics<M: fusuma_render::Measure>(&self, i: usize, r: &M, theme: &Theme) -> (u32, u32) {
+    fn input_metrics<M: fusuma_render::Measure>(
+        &self,
+        i: usize,
+        r: &M,
+        theme: &Theme,
+    ) -> (u32, u32) {
         let Kind::TextInput { text, cursor, .. } = &self.nodes[i].kind else {
             return (0, 0);
         };

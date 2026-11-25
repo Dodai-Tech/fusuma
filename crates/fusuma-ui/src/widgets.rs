@@ -330,7 +330,12 @@ impl<const N: usize> Tree<N> {
     }
 
     /// The size the widget wants, from its content and the theme.
-    pub(crate) fn measure_widget<M: fusuma_render::Measure>(&self, i: usize, r: &M, theme: &Theme) -> Size {
+    pub(crate) fn measure_widget<M: fusuma_render::Measure>(
+        &self,
+        i: usize,
+        r: &M,
+        theme: &Theme,
+    ) -> Size {
         let body = TextStyle::new(theme.text.body, Color::BLACK).font(theme.fonts.body);
         let text = |t: &str| r.measure_text(t, &body);
         match self.nodes[i].kind {
@@ -344,19 +349,27 @@ impl<const N: usize> Tree<N> {
                     theme.indicator
                 };
                 let w = box_w.saturating_add(theme.spacing.md).saturating_add(t.w);
-                Size::new(w, t.h.max(theme.indicator).max(theme.control_height))
+                // A box is as high as it is wide, except in cells, where it is a word of the line.
+                let box_h = if theme.cells { 0 } else { theme.indicator };
+                Size::new(w, t.h.max(box_h).max(theme.control_height))
             }
             Kind::Tab { text: t, icon, .. } => {
                 let t = Self::measure_icon_text(r, theme, icon, t.as_str()).size();
+                // In cells a tab has a space inside its brackets.
+                let extra = if theme.cells { 2 } else { 0 };
                 Size::new(
-                    t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
+                    t.w.saturating_add(theme.spacing.md.saturating_mul(2))
+                        .saturating_add(extra),
                     t.h.max(theme.control_height),
                 )
             }
             Kind::ListItem { text: t, icon, .. } => {
                 let t = Self::measure_icon_text(r, theme, icon, t.as_str()).size();
+                // In cells a row has a marker in front of its text.
+                let extra = if theme.cells { 2 } else { 0 };
                 Size::new(
-                    t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
+                    t.w.saturating_add(theme.spacing.md.saturating_mul(2))
+                        .saturating_add(extra),
                     t.h.max(theme.control_height),
                 )
             }
@@ -369,9 +382,11 @@ impl<const N: usize> Tree<N> {
                 )
             }
             Kind::Progress { .. } => Size::new(0, theme.track_height),
+            Kind::TextInput { .. } if theme.cells => Size::new(24, 1),
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)
             }
+            Kind::Slider { .. } if theme.cells => Size::new(theme.indicator.saturating_mul(6), 1),
             Kind::Slider { .. } => Size::new(
                 theme.indicator.saturating_mul(6),
                 theme.indicator.max(theme.track_height),

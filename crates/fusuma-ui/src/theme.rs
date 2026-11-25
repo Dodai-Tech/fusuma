@@ -123,6 +123,8 @@ pub struct Theme {
     pub motion: MotionTimes,
     /// Functions that replace how a kind of widget looks (see [`Hooks`]).
     pub hooks: Hooks,
+    /// Lengths are in character cells, not pixels (see [`Theme::CELLS`]): a few widgets measure themselves in cells.
+    pub cells: bool,
 }
 
 /// Where a design system plugs in. Tokens (colours, radii, sizes) restyle most of what a theme says; a hook is a
@@ -772,6 +774,49 @@ impl Theme {
             bar_fade_ms: 250,
         },
         hooks: Hooks::NONE,
+        cells: false,
+    };
+
+    /// The dark default measured in character cells, for a text UI: a cell is the unit of every length (a line is 1,
+    /// a gap is 1 column), outlines are a cell, corners are square. Draw it with
+    /// [`Tree::paint_cells`](crate::Tree::paint_cells).
+    pub const CELLS: Self = Self {
+        spacing: Spacing {
+            xs: 0,
+            sm: 0,
+            md: 1,
+            lg: 1,
+        },
+        radii: Radii {
+            sm: 0,
+            md: 0,
+            lg: 0,
+        },
+        text: TextSizes {
+            title: 1,
+            body: 1,
+            caption: 1,
+            icon: 1,
+        },
+        fonts: Fonts {
+            body: Font::Bitmap,
+            title: Font::Bitmap,
+            mono: Font::Bitmap,
+            icons: Font::Bitmap,
+        },
+        control_height: 1,
+        border_width: 1,
+        indicator: 3,
+        track_height: 1,
+        motion: MotionTimes {
+            fast_ms: 0,
+            normal_ms: 0,
+            slow_ms: 0,
+            bar_hold_ms: 0,
+            bar_fade_ms: 0,
+        },
+        cells: true,
+        ..Self::DARK
     };
 
     /// The light default: the same shapes with light colours.

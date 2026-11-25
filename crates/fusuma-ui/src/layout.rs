@@ -246,8 +246,11 @@ impl<const N: usize> Tree<N> {
             }
             Kind::Button { text, icon, .. } => {
                 let t = Self::measure_icon_text(renderer, theme, icon, text.as_str()).size();
+                // In cells a button has brackets and a space inside each.
+                let extra = if theme.cells { 2 } else { 0 };
                 Size::new(
-                    t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
+                    t.w.saturating_add(theme.spacing.md.saturating_mul(2))
+                        .saturating_add(extra),
                     t.h.saturating_add(theme.spacing.sm.saturating_mul(2))
                         .max(theme.control_height),
                 )
