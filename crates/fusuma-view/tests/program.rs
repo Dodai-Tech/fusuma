@@ -290,3 +290,93 @@ fn a_running_program_asks_the_allocator_for_nothing() {
     assert!(run.state().saves > 2);
     let _ = Rect::new(0, 0, 1, 1);
 }
+
+mod animated {
+    use super::*;
+    use fusuma_anim::SpringConfig;
+    use fusuma_view::animate;
+
+    #[derive(Clone, Copy, Debug)]
+    enum M2 {
+        Toggle,
+    }
+
+    struct Panel;
+
+    impl Program for Panel {
+        type State = bool;
+        type Msg = M2;
+        fn init() -> bool {
+            false
+        }
+        fn update(s: &mut bool, m: M2) -> Task<M2> {
+            match m {
+                M2::Toggle => *s = !*s,
+            }
+            Task::none()
+        }
+        fn view<'a>(open: &'a bool, _: &Screen) -> impl Children<M2> + 'a {
+            (
+                button("toggle").on_press(M2::Toggle),
+                animate(
+                    card((text_fmt(format_args!("panel")),)).padding(6),
+                    (if *open { 0 } else { 120 }, 0),
+                    SpringConfig::STIFF,
+                ),
+            )
+        }
+    }
+
+    #[test]
+    fn a_view_moves_a_node_on_a_spring_without_running_the_view_every_frame() {
+        let mut run = Runner::<Panel, 16, 8>::new(240, 200);
+        let mut r = screen();
+        run.frame(&mut r).unwrap();
+        let panel = |run: &Runner<Panel, 16, 8>| {
+            let id = run
+                .tree()
+                .semantics()
+                .find(|s| s.name == "panel")
+                .unwrap()
+                .id;
+            run.tree().rect(id).unwrap().x
+        };
+        let away = panel(&run);
+        // A node that was just built is at its target: nothing moves at the start.
+        assert!(!run.tick(16));
+        let id = run
+            .tree()
+            .semantics()
+            .find(|s| s.name == "toggle")
+            .unwrap()
+            .id;
+        let rect = run.tree().rect(id).unwrap();
+        let p = Point::new(rect.x + 3, rect.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            run.pointer(e);
+        }
+        run.frame(&mut r).unwrap();
+        let mut frames = 0;
+        let mut xs = vec![panel(&run)];
+        while run.tick(16) {
+            run.frame(&mut r).unwrap();
+            xs.push(panel(&run));
+            frames += 1;
+            assert!(frames < 300);
+        }
+        run.frame(&mut r).unwrap();
+        assert!(frames > 3, "it travelled over frames: {xs:?}");
+        assert_eq!(panel(&run), away - 120, "and ended on its target");
+        assert!(
+            xs.windows(2).all(|w| w[1] <= w[0] + 1),
+            "towards it, with no jumps back: {xs:?}"
+        );
+        assert_eq!(run.state(), &true);
+        // The view ran for the one message, not once a frame: the log holds the one message.
+        assert_eq!(
+            run.log().count(),
+            0,
+            "this runner keeps no log, and nothing else was sent"
+        );
+    }
+}

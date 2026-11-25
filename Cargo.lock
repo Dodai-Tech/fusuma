@@ -1162,6 +1162,7 @@ name = "fusuma-view"
 version = "0.2.0"
 dependencies = [
  "allocation-counter",
+ "fusuma-anim",
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-cpu",

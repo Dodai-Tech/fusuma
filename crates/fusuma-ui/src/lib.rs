@@ -29,6 +29,7 @@ mod scrollshift;
 mod semantic;
 mod shape;
 mod shell;
+mod springs;
 mod textedit;
 mod textinput;
 mod theme;
@@ -51,6 +52,7 @@ pub use screen::{Class, PHONE_BELOW, Screen, TABLET_BELOW, WATCH_BELOW};
 pub use semantic::{Role, Semantic};
 pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
+pub use springs::MAX_SPRINGS;
 pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{
     Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, Hooks, ItemStyle,

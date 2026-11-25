@@ -105,7 +105,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Moves node `i` to `to` from where its parent puts it, and places it again.
-    fn set_shift(&mut self, i: usize, to: (i32, i32)) {
+    pub(crate) fn set_shift(&mut self, i: usize, to: (i32, i32)) {
         // A slide is a few hundred pixels at most: two bytes an axis are plenty, and a longer one is cut.
         let to16 = |v: i32| i16::try_from(v).unwrap_or(if v < 0 { i16::MIN } else { i16::MAX });
         let to = (to16(to.0), to16(to.1));

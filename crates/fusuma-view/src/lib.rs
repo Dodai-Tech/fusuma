@@ -14,7 +14,9 @@ mod widgets;
 pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
 };
-pub use container::{Column, Container, Named, Row, Show, card, column, named, row, show};
+pub use container::{
+    Animated, Column, Container, Named, Row, Show, animate, card, column, named, row, show,
+};
 pub use host::Host;
 pub use keyed::{Custom, Each, Imperative, Memo, each, imperative, memo};
 pub use leaf::{

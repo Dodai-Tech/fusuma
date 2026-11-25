@@ -577,6 +577,8 @@ pub struct Tree<const N: usize> {
     pub(crate) track: Option<crate::gesture::Track>,
     /// The slides in progress (see `transition`).
     pub(crate) moves: [Option<crate::transition::Slide>; crate::transition::MAX_SLIDES],
+    /// The nodes on a spring (see `springs`).
+    pub(crate) springs: [Option<crate::springs::NodeSpring>; crate::springs::MAX_SPRINGS],
     /// The virtual lists (see `virtual_list`).
     pub(crate) virts: [Option<crate::virtual_list::Virt>; crate::virtual_list::MAX_LISTS],
     /// The names the app gave to nodes (see `ids`).
@@ -638,6 +640,7 @@ impl<const N: usize> Tree<N> {
             last_press: None,
             track: None,
             moves: [None; crate::transition::MAX_SLIDES],
+            springs: [None; crate::springs::MAX_SPRINGS],
             virts: [None; crate::virtual_list::MAX_LISTS],
             names: crate::ids::Names::new(),
             hovered: None,
@@ -1405,6 +1408,7 @@ impl<const N: usize> Tree<N> {
             f.has(Flags::LAYOUT) || f.has(Flags::PAINT) || f.has(Flags::ANIM)
         }) || self.disabled_dirty
             || self.moves.iter().any(Option::is_some)
+            || self.springs.iter().any(Option::is_some)
     }
 
     /// Milliseconds until time has to pass for something that is not moving: a toast that is holding hides, a press

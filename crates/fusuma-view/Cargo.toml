@@ -15,6 +15,7 @@ categories = ["gui", "embedded", "no-std"]
 [dependencies]
 fusuma-ui.workspace = true
 fusuma-render.workspace = true
+fusuma-anim.workspace = true
 
 [dev-dependencies]
 fusuma-render-vello-cpu = { workspace = true, features = ["std"] }

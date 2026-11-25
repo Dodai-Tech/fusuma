@@ -193,3 +193,38 @@ impl<M: Clone, V: View<M>> View<M> for Named<V> {
 impl<C> ViewMarker for Container<C> {}
 impl<V> ViewMarker for Show<V> {}
 impl<V> ViewMarker for Named<V> {}
+
+/// A view whose node sits `to` pixels from where its parent puts it, getting there on a spring. When the target changes the
+/// toolkit carries the node there with physics, from wherever it is, keeping its speed: the app's `view` runs once for the
+/// new target, not every frame. A node that is just built starts at its target.
+#[derive(Clone, Copy, Debug)]
+pub struct Animated<V> {
+    view: V,
+    to: (i32, i32),
+    spring: fusuma_anim::SpringConfig,
+}
+
+/// `view`, moved by `to` on a spring (see [`fusuma_anim::SpringConfig`] for the presets).
+#[must_use]
+pub const fn animate<V>(view: V, to: (i32, i32), spring: fusuma_anim::SpringConfig) -> Animated<V> {
+    Animated { view, to, spring }
+}
+
+impl<M: Clone, V: View<M>> View<M> for Animated<V> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = self.view.build(cx, parent)?;
+        cx.tree.set_offset(node, self.to);
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.view.rebuild(cx, node);
+        cx.tree.animate_to(node, self.to, self.spring);
+    }
+}
+
+impl<V> ViewMarker for Animated<V> {}
