@@ -6,9 +6,8 @@ Waveshare ESP32-S3-Touch-AMOLED-2.06 (410x502), the P4 the Waveshare ESP32-P4 7"
 
 ## Order of work
 
-1. **GUI renderers** (mostly done): the integer renderer gets Vello's look at its own speed on microcontrollers.
-2. **UI components and logic** (next): icons in widgets, tabs, menu, toast, gestures, layout of only what changed.
-   See [Toolkit](#toolkit).
+1. **GUI renderers** (done): the integer renderer has Vello's look at its own speed on microcontrollers.
+2. **UI components and logic** (done, see [Toolkit](#toolkit)).
 3. **TUI**: cells in the toolkit, then running apps in a terminal, a serial console and on a panel. See
    [Text UI](#text-ui); the `fusuma-cells` and `fusuma-platform-tui` scaffolds wait until then.
 
@@ -120,11 +119,12 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   `FontSet::icon("settings")`, `Tree::icon`, `TextRole::Icon`; an icon fills a square on both renderers
 - [x] Atlas sizes from `[fonts] sizes` (read at build time through `FUSUMA_SETTINGS`); the watch firmware asks for its
   theme's 15, 20, 24 and 30
-- [ ] Wrapped and multi-line labels, a multi-line text view
+- [x] Wrapped labels and a multi-line text view (see Toolkit)
 - [ ] Kerning in the atlases; sizes other than those built
 - [ ] System fonts through Fontique on desktop and phone; Greek and Cyrillic subsets as an option
 - [ ] Lucide and Phosphor icons (each a catalog entry); filled icons (the `FILL` axis)
-- [ ] The text field: caret and selection from Parley's clusters; drag and word selection, undo, longer text
+- [x] The text field: drag and word selection, undo, a placeholder, longer text (a feature)
+- [ ] The text field: caret and selection from Parley's clusters (right-to-left and complex scripts)
 - [ ] The bitmap font (the fallback without `fonts`) is ASCII only: `é` and `ș` draw as `?` there
 
 ## Theming
@@ -135,7 +135,7 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   on any other; `[theme]` in `fusuma.toml`, switched at run time. Every combination keeps the contrast rules
   (text 7:1, muted 4.5:1, text on the main action 4.5:1, the main action 3:1 on the page), checked by tests
 - [x] Material-style scrollbar: hidden at rest, shown while content moves, faded after 300 ms over 250 ms
-- [ ] Per-widget style hooks so a design system can restyle a widget beyond the tokens
+- [x] Per-widget style hooks (`Hooks`)
 - [ ] `dodai-fusuma` in `dodai-ui`: a first adapter exists on an unpushed local branch there; waits for that repo's
   facade work. A Fusuma target for `dodai-gen` would keep adapters in step
 - [ ] One source for motion: `fusuma-anim` (fixed point) and `dodai-core::motion` (`f32`) do the same job; map the
@@ -160,16 +160,33 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   outside or Escape; nested dialogs
 - [x] Screen shape (`Rect`, `Rounded`, `Circle`) with safe insets; size classes in the showcase (watch, phone,
   tablet, desktop by logical width)
-- [ ] Icons in buttons, list items and tabs
-- [ ] Tabs, menu, toast
-- [ ] Gestures: long press and swipe (tap, drag and fling exist inside widgets)
-- [ ] Layout only the changed subtrees (today any change lays out the whole tree; unmeasured)
-- [ ] A compose pass: scroll offsets without a layout
-- [ ] Animation wired into widgets: `enter`, `exit`, node offset and opacity, page transitions, a dialog entrance,
-  an animation budget per chip (`fusuma-anim` has the vocabulary: spring tokens and `Clip`)
-- [ ] Size classes and shape handling moved from the showcase into the toolkit
-- [ ] Virtualised lists (hundreds of rows with a fixed node capacity)
-- [ ] A semantic tree (read-only kind, text, state, rectangle, focus, children): the text UI and accessibility need it
+- [x] **Icons in buttons, list items and tabs** (`button_with_icon`, `list_item_with_icon`, `tab`): the icon is sized and
+  placed with the text; tests count the width it adds and look for its ink
+- [x] **Tabs** (`tab_bar`, `tab`: a group like list items, `Selected`, a bar under the chosen one), **menus** (`menu`,
+  `open_menu`: a popover that hangs below its button or above it, keeps on screen, closes itself on a row or a press
+  outside, no dimming layer), **toasts** (`toast`, `show_toast`: out of the flow, over dialogs, fades and slides in and
+  out; the picture after it is gone equals the page)
+- [x] **Gestures**: `set_long_press` (500 ms, `LongPressed`) and `set_swipe` (`Swiped(dir)` at 40 px, mostly along
+  one axis), opt in; the press then ends without a click and a scroll under it lets go
+- [x] **Layout only what changed**: a node whose subtree did not change keeps its size (a test counts the measurements:
+  one label changed, one measure), and a scroll only places its children (0 measures); a test compares 80 random
+  changes with a layout from scratch. Watch, a scripted run: see the table above
+- [x] **Wrapped text**: `paragraph`, `paragraph_static`, `text_view`; words, newlines and over-wide words, with the
+  renderer's own measuring (Parley on Vello, atlases on the integer renderer, not Parley's own line breaking)
+- [x] **Text field**: drag and double-click (word) selection, Ctrl+arrows by word, undo and redo (four steps, typing
+  and deleting grouped), a placeholder, and 250 bytes with the `long-text` feature (64 otherwise: every node takes the
+  room of the biggest)
+- [x] **Animation in widgets**: dialogs fade the screen and slide in and out (`shown`), pages slide in and out
+  (`slide_in`, `slide_out`, `Exited`, a node `shift` that only re-places), toasts; `MotionBudget` (`Full`,
+  `Reduced`, `Off`) on the theme, and the showcase's watch uses `Reduced`
+- [x] **Size classes and screen shape in the toolkit**: `Class`, `Screen` (size, scale, shape, `class()`,
+  `safe_bounds()`, `theme()`)
+- [x] **Virtual lists** (`virtual_list`, `virtual_window`): 300 rows in 11 nodes, the picture at any offset equal to
+  the real list's, through drag and fling
+- [x] **A semantic tree** (`semantics`, `semantic`: role, name, state, value, rectangle, depth, focus; closed dialogs
+  and hidden toasts left out)
+- [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
+  of the default; a test draws with all five
 - [ ] Accessibility with `AccessKit`
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature; a view layer diffed into the tree
 - [ ] Port the Hibari OS launcher to Fusuma widgets
