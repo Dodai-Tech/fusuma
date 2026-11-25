@@ -335,6 +335,10 @@ showcase-esp-restore port="":
 showcase-esp-log port="/dev/ttyACM0" seconds="15":
     nu -c "^stty -F {{ port }} 115200 raw -echo -hupcl; ^timeout {{ seconds }} cat {{ port }}"
 
+# Run the components showcase in the terminal (Ctrl+C quits); e.g. just showcase-tui --ascii, or --dump 80x24 Navigation
+showcase-tui *args:
+    cargo run -q -p fusuma-showcase-tui -- {{ args }}
+
 # Run the components showcase in a window; the renderer is chosen for you, or: just showcase-desktop --renderer vello-cpu
 showcase-desktop *args:
     cargo run -q -p fusuma-showcase-desktop -- {{ args }}

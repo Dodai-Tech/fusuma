@@ -18,6 +18,7 @@ members = [
     "crates/fusuma-render-vello",
     "examples/showcase",
     "examples/showcase-desktop",
+    "examples/showcase-tui",
 ]
 
 # The firmware needs the ESP toolchain, so it builds on its own (scripts/showcase.nu).

@@ -56,6 +56,7 @@ png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 fusuma-ui.workspace = true
 fusuma-render.workspace = true
 fusuma-anim.workspace = true
+fusuma-cells.workspace = true
 fusuma-platform.workspace = true
 fusuma-text = { workspace = true, optional = true }
 fusuma-fonts = { workspace = true, optional = true, default-features = false }

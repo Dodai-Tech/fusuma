@@ -61,6 +61,9 @@ const fn scaled(v: u32, percent: u32) -> u32 {
 
 pub use fusuma::{Class, PHONE_BELOW, TABLET_BELOW, WATCH_BELOW};
 
+/// How many logical pixels a column of a text UI counts for, when it picks a layout by width.
+const CELL_PX: u32 = 9;
+
 /// The icons the Typography page shows, by name.
 #[cfg(feature = "fonts")]
 const ICONS: [&str; 8] = [
@@ -269,6 +272,8 @@ pub struct Showcase {
     swipes: u32,
     /// Whether a page that is chosen slides in (off in the tests that take pictures).
     slide: bool,
+    /// A text UI: every length is in character cells (see [`Showcase::new_cells`]).
+    cells: bool,
 }
 
 impl Showcase {
@@ -306,10 +311,39 @@ impl Showcase {
             tab: 0,
             swipes: 0,
             slide: true,
+            cells: false,
         };
         // The tree has room for all of it; a build failure would leave a smaller screen, not a crash.
         let _ = s.build();
         s
+    }
+
+    /// The app for a text UI of `cols` x `rows` character cells: the same widgets and pages, laid out in cells
+    /// (`Theme::CELLS`) and drawn with [`frame_cells`](Self::frame_cells).
+    #[must_use]
+    pub fn new_cells(cols: u32, rows: u32) -> Self {
+        let mut s = Self::new(1, 1);
+        s.cells = true;
+        s.bounds = Rect::new(0, 0, cols, rows);
+        s.class = Class::of(cols.saturating_mul(CELL_PX));
+        s.theme = s.make_theme();
+        s.tree.clear();
+        s.sidebar = [None; 9];
+        s.nav = [None; 3];
+        s.tiles = [None; 9];
+        s.back = None;
+        s.content = None;
+        let _ = s.build();
+        s
+    }
+
+    /// Lays out in cells and draws the page, dialogs and toasts into `sink` (a text UI's frame). Call
+    /// [`App::tick`] first for the time that passed.
+    pub fn frame_cells<S: fusuma::CellSink>(&mut self, sink: &mut S, cells: &fusuma::CellTheme) {
+        self.handle_actions();
+        self.tree
+            .update(&fusuma::CellMeasure, &self.theme, self.bounds);
+        self.tree.paint_cells(sink, &self.theme, cells);
     }
 
     /// The page on show.
@@ -457,7 +491,8 @@ impl Showcase {
 
     /// The confirmation dialog: a child of the root, closed until the Delete button opens it.
     fn build_dialog(&mut self) -> Result<(), fusuma::BuildError> {
-        let (sp, scale) = (self.theme.spacing, self.scale);
+        let sp = self.theme.spacing;
+        let dialog_w = self.wide(300);
         let Some(root) = self.tree.root() else {
             return Ok(());
         };
@@ -465,7 +500,7 @@ impl Showcase {
         let d = t.dialog(
             Some(root),
             Style::new()
-                .width(Length::Fixed(scaled(300, scale)))
+                .width(Length::Fixed(dialog_w))
                 .padding(sp.lg)
                 .gap(sp.md)
                 .align(CrossAlign::Stretch),
@@ -483,6 +518,7 @@ impl Showcase {
     }
 
     fn build_screen(&mut self) -> Result<(), fusuma::BuildError> {
+        let side_w = self.wide(240);
         let t = &mut self.tree;
         let content = Style::new()
             .padding(self.theme.spacing.md)
@@ -628,7 +664,7 @@ impl Showcase {
         let side = t.scroll(
             Some(body),
             Style::new()
-                .width(Length::Fixed(scaled(240, self.scale)))
+                .width(Length::Fixed(side_w))
                 .height(Length::Fill(1))
                 .padding(self.theme.spacing.sm)
                 .gap(self.theme.spacing.xs)
@@ -653,6 +689,15 @@ impl Showcase {
         let body = self.body;
         let permille = self.permille();
         let scale = self.scale;
+        let cells = self.cells;
+        let wide = |px: u32| {
+            if cells {
+                px / CELL_PX
+            } else {
+                scaled(px, scale)
+            }
+        };
+        let tall = |px: u32| if cells { px / 20 } else { scaled(px, scale) };
         let class = self.class;
         let compact = class.is_compact();
         // A watch shows a few things at a time: the header names the page, and the extras are left out.
@@ -736,9 +781,9 @@ impl Showcase {
                         .width(if compact {
                             Length::Fill(1)
                         } else {
-                            Length::Fixed(scaled(360, scale))
+                            Length::Fixed(wide(360))
                         })
-                        .height(Length::Fixed(scaled(if lite { 150 } else { 260 }, scale)))
+                        .height(Length::Fixed(tall(if lite { 150 } else { 260 })))
                         .gap(sp.xs)
                         .align(CrossAlign::Stretch),
                 )?;
@@ -868,7 +913,7 @@ impl Showcase {
                 let (view, para) = t.text_view(
                     Some(c),
                     READING,
-                    Style::new().height(Length::Fixed(scaled(if lite { 150 } else { 120 }, scale))),
+                    Style::new().height(Length::Fixed(tall(if lite { 150 } else { 120 }))),
                 )?;
                 live.reading = [Some(view), Some(para)];
             }
@@ -922,6 +967,27 @@ impl Showcase {
         fusuma::render::Point::new(self.bounds.w as i32 - 3, self.bounds.h as i32 - 3)
     }
 
+    /// Shows `page` (the layout that has a sidebar or a Previous and Next row; on a watch's tile grid it opens the
+    /// page). For a host that picks a page by name.
+    pub fn choose_page(&mut self, page: Page) {
+        if self.class == Class::Watch {
+            self.page = page;
+            self.open = true;
+            self.rebuild();
+        } else {
+            self.set_page(page);
+        }
+    }
+
+    /// A width of `px` pixels at the screen's scale, or the columns a text UI gives it.
+    fn wide(&self, px: u32) -> u32 {
+        if self.cells {
+            px / CELL_PX
+        } else {
+            scaled(px, self.scale)
+        }
+    }
+
     fn permille(&self) -> u16 {
         (self.fill_ms.min(FILL_MS) * 1000 / FILL_MS) as u16
     }
@@ -938,10 +1004,16 @@ impl Showcase {
             if let Some(l) = self.nav[1] {
                 self.tree.set_text(l, page.name());
             }
+            // The sidebar shows the page that is on.
+            for (slot, p) in self.sidebar.iter().zip(Page::ALL) {
+                if let Some(id) = *slot {
+                    self.tree.set_checked(id, p == page);
+                }
+            }
             let _ = self.build_page();
             // The new page comes in from the right.
             if let Some(c) = self.content.filter(|_| self.slide) {
-                let distance = scaled(48, self.scale);
+                let distance = self.wide(48);
                 self.tree.slide_in(c, fusuma::Edge::Right, distance);
             }
         }
@@ -954,6 +1026,9 @@ impl Showcase {
         } else {
             fusuma::MotionBudget::Full
         };
+        if self.cells {
+            return Theme::CELLS.with_colors(self.palette.colors(self.dark));
+        }
         theme(self.dark, &self.palette)
             .scaled(self.scale)
             .with_motion(budget)
@@ -1199,7 +1274,7 @@ impl Showcase {
 
     /// Lays out the widgets without drawing, so a pointer event right after a change (a new page) finds
     /// them where they will be drawn. [`frame`](Self::frame) does this too.
-    pub fn layout<R: Renderer>(&mut self, renderer: &R) {
+    pub fn layout<M: fusuma::render::Measure>(&mut self, renderer: &M) {
         self.tree.update(renderer, &self.theme, self.bounds);
     }
 
@@ -1278,9 +1353,13 @@ impl App for Showcase {
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
-        let class = fusuma::Screen::new(width, self.bounds.h)
-            .with_scale(scale)
-            .class();
+        let class = if self.cells {
+            Class::of(width.saturating_mul(CELL_PX))
+        } else {
+            fusuma::Screen::new(width, self.bounds.h)
+                .with_scale(scale)
+                .class()
+        };
         if scale != self.scale || class != self.class {
             // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
             self.scale = scale;
@@ -2437,5 +2516,90 @@ mod tests {
         settle(&mut ph);
         ph.frame(&mut pr).unwrap();
         assert_eq!(ph.page(), Page::Reading);
+    }
+
+    /// The text of a frame of the text UI, a row to a line.
+    fn cells_text(s: &mut Showcase, cols: u16, rows: u16) -> std::string::String {
+        let mut g = fusuma::cells::Grid::new(
+            cols,
+            rows,
+            std::vec![fusuma::cells::Cell::BLANK; usize::from(cols) * usize::from(rows)],
+        )
+        .unwrap();
+        s.frame_cells(&mut g, &fusuma::CellTheme::UNICODE);
+        let mut out = std::string::String::new();
+        for y in 0..rows {
+            let line: std::string::String = g
+                .row(y)
+                .unwrap()
+                .iter()
+                .filter(|c| !c.is_tail())
+                .map(|c| c.ch)
+                .collect();
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
+
+    fn tap_cells(s: &mut Showcase, id: NodeId) {
+        s.layout(&fusuma::CellMeasure);
+        let r = s.rect_of(id).unwrap();
+        let p = Point::new(r.x + (r.w / 2) as i32, r.y + (r.h / 2) as i32);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            s.pointer(e);
+        }
+    }
+
+    #[test]
+    fn the_text_ui_draws_every_page_at_a_few_sizes() {
+        for (cols, rows) in [(80u16, 24u16), (100, 30), (50, 24)] {
+            let mut s = Showcase::new_cells(u32::from(cols), u32::from(rows));
+            let want_class = Class::of(u32::from(cols) * CELL_PX);
+            assert_eq!(s.class(), want_class, "{cols}x{rows}");
+            for p in Page::ALL {
+                if want_class == Class::Watch {
+                    // The tile grid: open the page by its tile.
+                    s.open = false;
+                    s.rebuild();
+                    s.layout(&fusuma::CellMeasure);
+                    if let Some(t) = s.tile(p) {
+                        let _ = s.tree.focus(t);
+                        tap_cells(&mut s, t);
+                    }
+                } else {
+                    s.set_page(p);
+                }
+                App::tick(&mut s, 1000);
+                let text = cells_text(&mut s, cols, rows);
+                if want_class == Class::Watch {
+                    assert!(text.contains(p.name()), "{cols}x{rows} {p:?}:\n{text}");
+                } else {
+                    assert!(text.contains("Fusuma"), "{cols}x{rows} {p:?}:\n{text}");
+                }
+                if !want_class.is_compact() {
+                    assert!(
+                        text.contains(p.name()),
+                        "{cols}x{rows}: the page's name\n{text}"
+                    );
+                }
+                if p == Page::Selection && !want_class.is_compact() {
+                    assert!(
+                        text.contains("[x] Notifications") && text.contains("(•) Medium"),
+                        "{text}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_text_ui_takes_taps_in_cells() {
+        let mut s = Showcase::new_cells(100, 30);
+        let click = s.widgets().click_me.unwrap();
+        tap_cells(&mut s, click);
+        assert_eq!(s.clicks(), 1);
+        let text = cells_text(&mut s, 100, 30);
+        assert!(text.contains("Clicked 1 times"), "{text}");
     }
 }

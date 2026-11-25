@@ -7,6 +7,10 @@ pub use fusuma_ui::*;
 /// The drawing layer: the `Renderer` trait, geometry, colour, text and images.
 pub use fusuma_render as render;
 
+/// The text-cell output: a cell grid, a diff of two frames, an ANSI encoder and a key decoder, for a terminal, a
+/// serial console or a character panel.
+pub use fusuma_cells as cells;
+
 /// Animation: easing, tweens, keyframes, springs and decay.
 pub use fusuma_anim as anim;
 

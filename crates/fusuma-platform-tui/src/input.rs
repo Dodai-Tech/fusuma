@@ -35,10 +35,23 @@ fn map_key(k: &KeyEvent, wants_text: bool) -> Option<Input> {
         .modifiers
         .intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER);
     let edit = |e: Edit| wants_text.then_some(Input::Edit(e));
+    let word = k
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
     match k.code {
         KeyCode::Char(c) if command => {
-            (c.eq_ignore_ascii_case(&'a') && wants_text).then_some(Input::Edit(Edit::SelectAll))
+            if !wants_text {
+                return None;
+            }
+            match c.to_ascii_lowercase() {
+                'a' => Some(Input::Edit(Edit::SelectAll)),
+                'z' => Some(Input::Edit(if shift { Edit::Redo } else { Edit::Undo })),
+                'y' => Some(Input::Edit(Edit::Redo)),
+                _ => None,
+            }
         }
+        KeyCode::Left if wants_text && word => Some(Input::Edit(Edit::WordLeft(shift))),
+        KeyCode::Right if wants_text && word => Some(Input::Edit(Edit::WordRight(shift))),
         KeyCode::Char(c) => {
             let mut buf = [0u8; 4];
             Some(Input::Text(InputText::new(c.encode_utf8(&mut buf))))
@@ -174,5 +187,42 @@ mod tests {
             })
         );
         assert_eq!(map_event(&Event::FocusLost, false), None);
+    }
+
+    #[test]
+    fn undo_redo_and_word_moves_follow_ctrl_and_alt() {
+        let k = |code, mods| map_event(&key(code, mods), true);
+        assert_eq!(
+            k(KeyCode::Char('z'), KeyModifiers::CONTROL),
+            Some(Input::Edit(Edit::Undo))
+        );
+        assert_eq!(
+            k(
+                KeyCode::Char('Z'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT
+            ),
+            Some(Input::Edit(Edit::Redo))
+        );
+        assert_eq!(
+            k(KeyCode::Char('y'), KeyModifiers::CONTROL),
+            Some(Input::Edit(Edit::Redo))
+        );
+        assert_eq!(
+            k(KeyCode::Left, KeyModifiers::CONTROL),
+            Some(Input::Edit(Edit::WordLeft(false)))
+        );
+        assert_eq!(
+            k(KeyCode::Right, KeyModifiers::ALT | KeyModifiers::SHIFT),
+            Some(Input::Edit(Edit::WordRight(true)))
+        );
+        assert_eq!(
+            k(KeyCode::Left, KeyModifiers::NONE),
+            Some(Input::Edit(Edit::Left(false)))
+        );
+        // Without a field they mean nothing (or move the focus).
+        assert_eq!(
+            map_event(&key(KeyCode::Char('z'), KeyModifiers::CONTROL), false),
+            None
+        );
     }
 }

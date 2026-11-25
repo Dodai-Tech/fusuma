@@ -939,6 +939,7 @@ name = "fusuma"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-cells",
  "fusuma-fonts",
  "fusuma-platform",
  "fusuma-render",
@@ -1071,6 +1072,16 @@ dependencies = [
  "anyhow",
  "env_logger",
  "fusuma-platform-desktop",
+ "fusuma-showcase",
+]
+
+[[package]]
+name = "fusuma-showcase-tui"
+version = "0.2.0"
+dependencies = [
+ "crossterm",
+ "fusuma",
+ "fusuma-platform-tui",
  "fusuma-showcase",
 ]
 
