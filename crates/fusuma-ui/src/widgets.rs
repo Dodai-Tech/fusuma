@@ -360,6 +360,14 @@ impl<const N: usize> Tree<N> {
                     t.h.max(theme.control_height),
                 )
             }
+            Kind::Toast { text: t, .. } => {
+                let t = text(t.as_str());
+                Size::new(
+                    t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
+                    t.h.saturating_add(theme.spacing.sm.saturating_mul(2))
+                        .max(theme.control_height),
+                )
+            }
             Kind::Progress { .. } => Size::new(0, theme.track_height),
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)

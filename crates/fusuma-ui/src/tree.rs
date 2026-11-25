@@ -260,6 +260,16 @@ pub(crate) enum Kind {
         /// in it is pressed or the user presses outside. `None` for an ordinary dialog.
         popover: Option<Popover>,
     },
+    /// A message that shows for a while at the bottom of the screen, out of the flow, drawn over everything: it
+    /// fades and slides in, stays, then fades out ([`Tree::show_toast`]).
+    Toast {
+        text: SmallText,
+        phase: crate::toast::Phase,
+        /// Milliseconds into the phase.
+        t: u32,
+        /// How long it stays once in, in milliseconds.
+        hold: u32,
+    },
     /// A column that shows a window onto content taller than itself: `offset` pixels scrolled, of
     /// `content` pixels of children.
     Scroll {
@@ -298,6 +308,12 @@ pub(crate) struct Drag {
 }
 
 impl Kind {
+    /// Whether the node sits outside the flow of its parent (a dialog, a menu, a toast): it takes no room there and is
+    /// drawn on top of everything after the rest.
+    pub(crate) const fn out_of_flow(&self) -> bool {
+        matches!(self, Self::Dialog { .. } | Self::Toast { .. })
+    }
+
     /// Whether the widget reacts to the pointer and the keyboard (it can be pressed and focused).
     pub(crate) const fn pressable(&self) -> bool {
         matches!(

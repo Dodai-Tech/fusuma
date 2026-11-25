@@ -22,6 +22,7 @@ mod shape;
 mod shell;
 mod textinput;
 mod theme;
+mod toast;
 mod tree;
 mod widgets;
 

@@ -57,6 +57,7 @@ impl<const N: usize> Tree<N> {
         self.shift = None;
         self.paint_walk(root, renderer, theme, None)?;
         self.paint_dialogs(renderer, theme, None)?;
+        self.paint_toasts(renderer, theme, None)?;
         self.clear_flag(Flags::PAINT);
         self.damage = None;
         self.pieces.clear();
@@ -100,7 +101,7 @@ impl<const N: usize> Tree<N> {
                 result = result.and(done);
             }
             // A dialog is drawn after everything else, on top (see `paint_dialogs`), not here in its tree order.
-            if i != root && matches!(self.nodes[i].kind, Kind::Dialog { .. }) {
+            if i != root && self.nodes[i].kind.out_of_flow() {
                 cur = self.after_subtree(i, root);
                 continue;
             }
@@ -193,6 +194,9 @@ impl<const N: usize> Tree<N> {
         if result.is_ok() {
             result = self.paint_dialogs(renderer, theme, Some(region));
         }
+        if result.is_ok() {
+            result = self.paint_toasts(renderer, theme, Some(region));
+        }
         let restored = renderer.restore();
         result?;
         restored?;
@@ -244,7 +248,7 @@ impl<const N: usize> Tree<N> {
                 }
                 Ok(())
             }
-            Kind::Spacer => Ok(()),
+            Kind::Spacer | Kind::Toast { .. } => Ok(()),
             Kind::Dialog { open, .. } => {
                 if open {
                     self.paint_dialog_panel(i, r, theme)

@@ -165,6 +165,10 @@ impl<const N: usize> Tree<N> {
                 };
                 self.set_rect(i, rect);
             }
+            if matches!(self.nodes[i].kind, Kind::Toast { .. }) {
+                let rect = self.toast_rect(i, bounds, margin);
+                self.set_rect(i, rect);
+            }
             self.place_children(i);
             cur = self.preorder_next(i, root);
         }
@@ -194,6 +198,7 @@ impl<const N: usize> Tree<N> {
             | Kind::Progress { .. }
             | Kind::Switch { .. }
             | Kind::Slider { .. }
+            | Kind::Toast { .. }
             | Kind::TextInput { .. } => self.measure_widget(i, renderer, theme),
             Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. } => {
                 let axis = match n.kind {
@@ -205,7 +210,7 @@ impl<const N: usize> Tree<N> {
                 while let Some(ci) = c {
                     let child = &self.nodes[usize::from(ci)];
                     // A dialog under this container is out of its flow: it takes no room here.
-                    if matches!(child.kind, Kind::Dialog { .. }) {
+                    if child.kind.out_of_flow() {
                         c = child.next;
                         continue;
                     }
@@ -254,7 +259,7 @@ impl<const N: usize> Tree<N> {
         let mut c = self.nodes[i].first;
         while let Some(ci) = c {
             let child = &self.nodes[usize::from(ci)];
-            if matches!(child.kind, Kind::Dialog { .. }) {
+            if child.kind.out_of_flow() {
                 c = child.next;
                 continue;
             }
@@ -295,7 +300,7 @@ impl<const N: usize> Tree<N> {
                 let child = &self.nodes[ci];
                 (child.style, child.size, child.next)
             };
-            if matches!(self.nodes[ci].kind, Kind::Dialog { .. }) {
+            if self.nodes[ci].kind.out_of_flow() {
                 c = next;
                 continue;
             }
