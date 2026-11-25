@@ -14,7 +14,8 @@ fusuma = { version = "0.3", features = ["renderer-integer", "toml"] }
 | `fusuma::Tree`, `Button`, ... | the widget tree, layout, theme, events (crate `fusuma-ui`) |
 | `fusuma::render` | the `Renderer` trait, geometry, colour, text (crate `fusuma-render`) |
 | `fusuma::anim` | easing, tweens, springs (crate `fusuma-anim`) |
-| `fusuma::text` | vector text over the bundled fonts, with a cache (crate `fusuma-text`; features `font-inter`, `font-inter-bold`, `font-jetbrains-mono`) |
+| `fusuma::text` | Parley layout over the linked fonts, with a cache (crate `fusuma-text`, feature `text`) |
+| `fusuma::fonts` | the font families, presets and icons linked (crate `fusuma-fonts`): feature `fonts`, presets `fonts-fusuma` (default), `fonts-material`, `fonts-legible`, `fonts-plex`, `fonts-noto`, `fonts-all`, and `icons` |
 | `fusuma::platform` | which renderer a machine draws with, and the settings that override it |
 | `fusuma::renderers::*` | the backends, one feature each: `renderer-integer`, `renderer-vello-cpu`, `renderer-vello-gpu` |
 

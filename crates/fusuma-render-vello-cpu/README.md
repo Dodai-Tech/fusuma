@@ -1,7 +1,5 @@
 # fusuma-render-vello-cpu
 
-[![Crates.io](https://img.shields.io/crates/v/fusuma-render-vello-cpu.svg)](https://crates.io/crates/fusuma-render-vello-cpu)
-[![docs.rs](https://img.shields.io/docsrs/fusuma-render-vello-cpu)](https://docs.rs/fusuma-render-vello-cpu)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 
 The Fusuma renderer backend for machines without a usable GPU, and for screenshots and tests:
@@ -19,7 +17,7 @@ let png = fusuma_render_vello_cpu::png(&r).unwrap();
 assert_eq!(&png[1..4], b"PNG");
 ```
 
-Text is vector (Parley layout, drawn as glyph runs) when built with a font feature (`inter`, `inter-bold`, `jetbrains-mono`, which imply `text`), else the same bitmap fonts as `fusuma-render-embedded`. Vello's glyph runs
+Text is vector (Parley layout, drawn as glyph runs) with the `text` feature and the families `fusuma-fonts` links (`set_fonts` picks them), else the same bitmap fonts as `fusuma-render-embedded`. Vello's glyph runs
 (real fonts, shaping) come with the text stack.
 
 `no_std` with `alloc` for a microcontroller: `default-features = false, features = ["libm"]` (the PNG output needs `std`). Built for the ESP32-S3 and the ESP32-C6 targets, run on the S3.

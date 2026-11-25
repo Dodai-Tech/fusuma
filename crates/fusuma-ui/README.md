@@ -1,7 +1,5 @@
 # fusuma-ui
 
-[![Crates.io](https://img.shields.io/crates/v/fusuma.svg)](https://crates.io/crates/fusuma)
-[![docs.rs](https://img.shields.io/docsrs/fusuma)](https://docs.rs/fusuma)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 
 The core of the [Fusuma](https://github.com/Dodai-Tech/fusuma) toolkit, designed for the smallest

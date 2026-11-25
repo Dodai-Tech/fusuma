@@ -1,7 +1,5 @@
 # fusuma-render-vello
 
-[![Crates.io](https://img.shields.io/crates/v/fusuma-render-vello.svg)](https://crates.io/crates/fusuma-render-vello)
-[![docs.rs](https://img.shields.io/docsrs/fusuma-render-vello)](https://docs.rs/fusuma-render-vello)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 
 The Fusuma renderer backend for machines with a GPU: anti-aliased drawing on

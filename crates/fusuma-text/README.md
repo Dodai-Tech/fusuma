@@ -14,4 +14,5 @@ let laid = engine.layout("Hello", Font::SansBold, 20);       // the glyph runs t
 bitmap font instead. `size` is the line height in pixels, in whatever font, so a layout does not move when a font
 is swapped. The fonts are registered from their `'static` data and not copied.
 
-Which fonts exist is a cargo feature each: `inter` (default), `inter-bold`, `jetbrains-mono`.
+Which fonts exist is decided by `fusuma-fonts`' features (a family or a preset each); which of them draw each role is
+a `FontSet` (`set_fonts`), from `[fonts]` in `fusuma.toml`.

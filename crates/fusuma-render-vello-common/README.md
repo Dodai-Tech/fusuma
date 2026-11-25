@@ -1,7 +1,5 @@
 # fusuma-render-vello-common
 
-[![Crates.io](https://img.shields.io/crates/v/fusuma-render-vello-common.svg)](https://crates.io/crates/fusuma-render-vello-common)
-[![docs.rs](https://img.shields.io/docsrs/fusuma-render-vello-common)](https://docs.rs/fusuma-render-vello-common)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 
 The shared half of the Fusuma Vello backends. `vello_cpu` and `vello_gpu` have the same drawing

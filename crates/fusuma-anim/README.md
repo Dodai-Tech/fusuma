@@ -1,7 +1,5 @@
 # fusuma-anim
 
-[![Crates.io](https://img.shields.io/crates/v/fusuma-anim.svg)](https://crates.io/crates/fusuma-anim)
-[![docs.rs](https://img.shields.io/docsrs/fusuma-anim)](https://docs.rs/fusuma-anim)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 
 Animation for [Fusuma](https://github.com/Dodai-Tech/fusuma), in fixed-point maths so that it runs
