@@ -1,9 +1,14 @@
 //! The Fusuma components showcase in a web page.
 //!
 //! One `<canvas id="fusuma">` and nothing else on the page: the app is `fusuma-showcase`, the same code the window,
-//! the terminal and the watch run, drawn by Vello on the CPU into WebAssembly memory and copied to the canvas, one
-//! changed rectangle at a time. Pointer, touch, wheel and keys come from the page's events; a hidden `<textarea>` that
-//! follows the focused text field takes typing, composition (an input method) and a phone's keyboard.
+//! the terminal and the watch run. Where the browser has WebGPU, Vello draws on the GPU and shows each frame on the
+//! canvas without reading it back; otherwise (or with `?renderer=cpu` in the address) Vello draws on the CPU into
+//! WebAssembly memory and the changed rectangle is copied to the canvas. Pointer, touch, wheel and keys come from the
+//! page's events; a hidden `<textarea>` that follows the focused text field takes typing, composition (an input
+//! method) and a phone's keyboard.
+
+// The crate is WebAssembly only: on any other target it is empty, so the workspace builds everywhere.
+#![cfg(target_arch = "wasm32")]
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,6 +16,7 @@ use std::rc::Rc;
 use fusuma::platform::Settings;
 use fusuma::render::Point;
 use fusuma::renderers::vello_cpu::{self, Scene as _, VelloCpu};
+use fusuma::renderers::vello_gpu::{self, VelloGpu};
 use fusuma::{App, Edit, Input, InputText, Key, Pointer, Shell};
 use fusuma_showcase::Showcase;
 use wasm_bindgen::prelude::*;
@@ -26,11 +32,32 @@ const SETTINGS: &str = include_str!("../fusuma.toml");
 /// Rows of text a wheel notch in lines mode scrolls, in CSS pixels.
 const LINE_PX: f64 = 16.0;
 
+/// What draws and shows the picture.
+enum Gfx {
+    /// Vello on the CPU, copied to a 2D canvas a rectangle at a time.
+    Cpu(Box<Cpu>),
+    /// Vello on WebGPU, shown through the canvas's own surface.
+    Gpu(Box<Gpu>),
+}
+
+/// The CPU side: a Vello surface and the canvas's 2D context.
+struct Cpu {
+    renderer: VelloCpu,
+    ctx: CanvasRenderingContext2d,
+}
+
+/// The WebGPU side: a renderer on the device, and the canvas surface it presents to.
+struct Gpu {
+    renderer: VelloGpu,
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+}
+
 struct State {
     shell: Shell<Showcase>,
-    renderer: VelloCpu,
+    gfx: Gfx,
     canvas: HtmlCanvasElement,
-    ctx: CanvasRenderingContext2d,
     textarea: HtmlTextAreaElement,
     fonts: fusuma::fonts::FontSet,
     /// Device pixels a CSS pixel is.
@@ -56,9 +83,7 @@ fn document() -> Document {
 }
 
 fn now_ms() -> f64 {
-    window()
-        .performance()
-        .map_or(0.0, |p| p.now())
+    window().performance().map_or(0.0, |p| p.now())
 }
 
 /// The size the canvas should have: the window, in device pixels.
@@ -72,19 +97,6 @@ fn wanted_size(dpr: f64) -> (u32, u32) {
     )
 }
 
-/// Sets the canvas to `size` device pixels and makes a surface for it.
-fn make_surface(
-    canvas: &HtmlCanvasElement,
-    size: (u32, u32),
-    fonts: fusuma::fonts::FontSet,
-) -> Option<VelloCpu> {
-    canvas.set_width(size.0);
-    canvas.set_height(size.1);
-    let mut r = vello_cpu::new(size.0, size.1)?;
-    r.set_fonts(fonts);
-    Some(r)
-}
-
 /// Asks the page for a frame, once.
 fn schedule(state: &Shared) {
     if state.borrow().scheduled {
@@ -96,26 +108,47 @@ fn schedule(state: &Shared) {
     let _ = window().request_animation_frame(cb.unchecked_ref());
 }
 
-/// One frame: time passes in the app, what changed is drawn, and that rectangle is shown on the canvas.
+/// One frame: time passes in the app, what changed is drawn, and it is shown on the canvas.
 fn frame(state: &Shared) {
     let again = {
         let mut guard = state.borrow_mut();
         let s = &mut *guard;
         s.scheduled = false;
-        // The scene forgets what it drew before; this frame redraws only the damaged part.
-        s.renderer.with_scene(vello_cpu::Scene::reset);
-        let drawn = s.shell.frame(now_ms() as u64, &mut s.renderer);
-        if let Ok(Some(r)) = drawn {
-            let (w, h) = s.size;
-            let region = r.intersect(&fusuma::render::Rect::new(0, 0, w, h));
-            if region.w > 0 && region.h > 0 {
-                s.renderer.with_scene(|scene| {
-                    vello_cpu::Scene::set_damage(
-                        scene,
-                        (region.x, region.y, region.w, region.h),
-                    );
-                    show(&s.ctx, scene.pixels(), w, region);
-                });
+        let (w, h) = s.size;
+        let now = now_ms() as u64;
+        match &mut s.gfx {
+            Gfx::Cpu(cpu) => {
+                let Cpu { renderer, ctx } = &mut **cpu;
+                // The scene forgets what it drew before; this frame redraws only the damaged part.
+                renderer.with_scene(vello_cpu::Scene::reset);
+                let drawn = s.shell.frame(now, renderer);
+                if let Ok(Some(r)) = drawn {
+                    let region = r.intersect(&fusuma::render::Rect::new(0, 0, w, h));
+                    if region.w > 0 && region.h > 0 {
+                        renderer.with_scene(|scene| {
+                            vello_cpu::Scene::set_damage(
+                                scene,
+                                (region.x, region.y, region.w, region.h),
+                            );
+                            show(ctx, scene.pixels(), w, region);
+                        });
+                    }
+                }
+            }
+            Gfx::Gpu(gpu) => {
+                // The GPU draws the whole picture each frame (its target is cleared), so ask for all of it.
+                s.shell.app.invalidate();
+                gpu.renderer.with_scene(vello_gpu::Scene::reset);
+                if matches!(s.shell.frame(now, &mut gpu.renderer), Ok(Some(_))) {
+                    use wgpu::CurrentSurfaceTexture::{Suboptimal, Success};
+                    match gpu.surface.get_current_texture() {
+                        Success(t) | Suboptimal(t) => {
+                            gpu.renderer.with_scene(|scene| scene.present(&t.texture));
+                            gpu.queue.present(t);
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
         sync_text_area(s);
@@ -139,7 +172,8 @@ fn show(ctx: &CanvasRenderingContext2d, rgba: &[u8], width: u32, region: fusuma:
             None => return,
         }
     }
-    if let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&out), w as u32, h as u32) {
+    if let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&out), w as u32, h as u32)
+    {
         let _ = ctx.put_image_data(&img, x as f64, y as f64);
     }
 }
@@ -154,7 +188,10 @@ fn sync_text_area(s: &mut State) {
             let style = s.textarea.style();
             let _ = style.set_property("left", &format!("{}px", css(c.x)));
             let _ = style.set_property("top", &format!("{}px", css(c.y)));
-            let _ = style.set_property("height", &format!("{}px", (f64::from(c.h) / s.dpr).max(16.0)));
+            let _ = style.set_property(
+                "height",
+                &format!("{}px", (f64::from(c.h) / s.dpr).max(16.0)),
+            );
         }
         let active = document().active_element();
         let ours: &web_sys::Element = s.textarea.as_ref();
@@ -264,20 +301,24 @@ fn install(state: &Shared) {
         let p = at(&st, f64::from(e.client_x()), f64::from(e.client_y()));
         let unit = if e.delta_mode() == 1 { LINE_PX } else { 1.0 };
         let dpr = st.borrow().dpr;
-        let dy = (e.delta_y() * unit * dpr).round().clamp(-100_000.0, 100_000.0) as i32;
+        let dy = (e.delta_y() * unit * dpr)
+            .round()
+            .clamp(-100_000.0, 100_000.0) as i32;
         e.prevent_default();
         send(&st, Input::Pointer(Pointer::Wheel(p, dy)));
     });
 
     // Touch: the first finger is the pointer.
-    for (name, kind) in [("touchstart", 0), ("touchmove", 1), ("touchend", 2), ("touchcancel", 2)] {
+    for (name, kind) in [
+        ("touchstart", 0),
+        ("touchmove", 1),
+        ("touchend", 2),
+        ("touchcancel", 2),
+    ] {
         let st = state.clone();
         listen(target, name, move |e: TouchEvent| {
             e.prevent_default();
-            let touch = e
-                .changed_touches()
-                .item(0)
-                .or_else(|| e.touches().item(0));
+            let touch = e.changed_touches().item(0).or_else(|| e.touches().item(0));
             let Some(t) = touch else { return };
             let p = at(&st, f64::from(t.client_x()), f64::from(t.client_y()));
             match kind {
@@ -326,7 +367,10 @@ fn install(state: &Shared) {
     });
     let st = state.clone();
     listen(&area, "compositionupdate", move |e: CompositionEvent| {
-        send(&st, Input::Preedit(InputText::new(&e.data().unwrap_or_default())));
+        send(
+            &st,
+            Input::Preedit(InputText::new(&e.data().unwrap_or_default())),
+        );
     });
     let st = state.clone();
     listen(&area, "compositionend", move |e: CompositionEvent| {
@@ -366,13 +410,30 @@ fn resize(state: &Shared) {
         let dpr = window().device_pixel_ratio().max(0.5);
         (wanted_size(dpr), dpr, s.fonts)
     };
-    let canvas = state.borrow().canvas.clone();
-    let Some(renderer) = make_surface(&canvas, size, fonts) else {
-        return;
-    };
     {
-        let mut s = state.borrow_mut();
-        s.renderer = renderer;
+        let mut guard = state.borrow_mut();
+        let s = &mut *guard;
+        s.canvas.set_width(size.0);
+        s.canvas.set_height(size.1);
+        match &mut s.gfx {
+            Gfx::Cpu(cpu) => {
+                let Some(mut r) = vello_cpu::new(size.0, size.1) else {
+                    return;
+                };
+                r.set_fonts(fonts);
+                cpu.renderer = r;
+            }
+            Gfx::Gpu(gpu) => {
+                configure(&gpu.surface, &gpu.device, size);
+                let Ok(mut r) =
+                    vello_gpu::from_device(gpu.device.clone(), gpu.queue.clone(), size.0, size.1)
+                else {
+                    return;
+                };
+                r.set_fonts(fonts);
+                gpu.renderer = r;
+            }
+        }
         s.size = size;
         s.dpr = dpr;
         let _ = s.canvas.style().set_property("width", "100vw");
@@ -390,21 +451,121 @@ fn resize(state: &Shared) {
     state.borrow_mut().shell.app.invalidate();
 }
 
+/// Sets up the canvas surface for `size`: the format Vello renders in, so a frame is a copy.
+fn configure(surface: &wgpu::Surface<'_>, device: &wgpu::Device, size: (u32, u32)) {
+    surface.configure(
+        device,
+        &wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            width: size.0,
+            height: size.1,
+            present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::default(),
+        },
+    );
+}
+
+/// Vello on the browser's WebGPU, if the browser has it and can show Vello's format on the canvas.
+async fn try_gpu(
+    canvas: &HtmlCanvasElement,
+    size: (u32, u32),
+    fonts: fusuma::fonts::FontSet,
+) -> Result<Gfx, String> {
+    // No `navigator.gpu`: nothing to ask, and the canvas stays free for the 2D fallback.
+    let has_gpu = js_sys::Reflect::get(&window().navigator(), &JsValue::from_str("gpu"))
+        .map(|g| !g.is_undefined() && !g.is_null())
+        .unwrap_or(false);
+    if !has_gpu {
+        return Err("this browser has no WebGPU".into());
+    }
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::BROWSER_WEBGPU,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let surface = instance
+        .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+        .map_err(|e| format!("no surface: {e}"))?;
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("no adapter: {e}"))?;
+    let (device, queue) = adapter
+        .request_device(&wgpu::DeviceDescriptor {
+            label: Some("fusuma web"),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("no device: {e}"))?;
+    if !surface
+        .get_capabilities(&adapter)
+        .formats
+        .contains(&wgpu::TextureFormat::Rgba8Unorm)
+    {
+        return Err("the canvas cannot show Rgba8Unorm".into());
+    }
+    configure(&surface, &device, size);
+    let mut renderer = vello_gpu::from_device(device.clone(), queue.clone(), size.0, size.1)
+        .map_err(|e| e.to_string())?;
+    renderer.set_fonts(fonts);
+    Ok(Gfx::Gpu(Box::new(Gpu {
+        renderer,
+        surface,
+        device,
+        queue,
+    })))
+}
+
+/// A new canvas in the place of `old`, with the same id: a canvas that has given a WebGPU context cannot give a 2D
+/// one, so after a failed attempt the page gets a fresh one.
+fn fresh_canvas(old: &HtmlCanvasElement) -> Result<HtmlCanvasElement, JsValue> {
+    let new: HtmlCanvasElement = document().create_element("canvas")?.dyn_into()?;
+    new.set_id("fusuma");
+    new.set_attribute("tabindex", "0")?;
+    if let Some(parent) = old.parent_node() {
+        parent.replace_child(&new, old)?;
+    }
+    Ok(new)
+}
+
+/// Which renderer the address asks for: `?renderer=cpu` or `?renderer=gpu`, else whichever works (the GPU first).
+fn wanted_renderer() -> Option<String> {
+    let search = window().location().search().ok()?;
+    web_sys::UrlSearchParams::new_with_str(&search)
+        .ok()?
+        .get("renderer")
+}
+
 /// Builds the page's app and starts the loop.
 ///
 /// # Errors
-/// A JavaScript error when the page has no canvas or the canvas has no 2D context.
+/// A JavaScript error when the page has no canvas.
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
+    wasm_bindgen_futures::spawn_local(async {
+        if let Err(e) = run().await {
+            web_sys::console::error_1(&e);
+            if let Some(b) = document().body() {
+                b.set_text_content(Some(&format!("{e:?}")));
+            }
+        }
+    });
+    Ok(())
+}
+
+async fn run() -> Result<(), JsValue> {
     let doc = document();
-    let canvas: HtmlCanvasElement = doc
+    let mut canvas: HtmlCanvasElement = doc
         .get_element_by_id("fusuma")
         .ok_or("no <canvas id=\"fusuma\"> on the page")?
-        .dyn_into()?;
-    let ctx: CanvasRenderingContext2d = canvas
-        .get_context("2d")?
-        .ok_or("the canvas has no 2d context")?
         .dyn_into()?;
     let settings = Settings::from_toml(SETTINGS).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let fonts = fusuma::fonts::FontSet::choose(
@@ -422,10 +583,47 @@ pub fn start() -> Result<(), JsValue> {
 
     let dpr = window().device_pixel_ratio().max(0.5);
     let size = wanted_size(dpr);
-    let renderer =
-        make_surface(&canvas, size, fonts).ok_or("cannot make a surface of this size")?;
+    canvas.set_width(size.0);
+    canvas.set_height(size.1);
     let _ = canvas.style().set_property("width", "100vw");
     let _ = canvas.style().set_property("height", "100vh");
+
+    let wanted = wanted_renderer();
+    let mut gfx = None;
+    if wanted.as_deref() != Some("cpu") {
+        match try_gpu(&canvas, size, fonts).await {
+            Ok(g) => gfx = Some(g),
+            Err(why) => {
+                web_sys::console::log_1(&JsValue::from_str(&format!("Vello on the CPU: {why}")));
+                // The attempt may have taken the canvas for WebGPU.
+                canvas = fresh_canvas(&canvas)?;
+                canvas.set_width(size.0);
+                canvas.set_height(size.1);
+                let _ = canvas.style().set_property("width", "100vw");
+                let _ = canvas.style().set_property("height", "100vh");
+            }
+        }
+    }
+    let gfx = match gfx {
+        Some(g) => g,
+        None => {
+            let ctx: CanvasRenderingContext2d = canvas
+                .get_context("2d")?
+                .ok_or("the canvas has no 2d context")?
+                .dyn_into()?;
+            let mut renderer = vello_cpu::new(size.0, size.1).ok_or("cannot make a surface")?;
+            renderer.set_fonts(fonts);
+            Gfx::Cpu(Box::new(Cpu { renderer, ctx }))
+        }
+    };
+    let which = match &gfx {
+        Gfx::Cpu(_) => "cpu",
+        Gfx::Gpu(_) => "gpu",
+    };
+    let _ = canvas.set_attribute("data-renderer", which);
+    web_sys::console::log_1(&JsValue::from_str(&format!(
+        "renderer: Vello on the {which}"
+    )));
 
     // The hidden text area: invisible, one pixel wide, and kept where the caret is.
     let textarea: HtmlTextAreaElement = doc.create_element("textarea")?.dyn_into()?;
@@ -462,9 +660,8 @@ pub fn start() -> Result<(), JsValue> {
     });
     let state: Shared = Rc::new(RefCell::new(State {
         shell,
-        renderer,
+        gfx,
         canvas,
-        ctx,
         textarea,
         fonts,
         dpr,

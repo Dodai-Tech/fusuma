@@ -68,10 +68,12 @@ impl core::fmt::Debug for GpuScene {
 }
 
 impl GpuScene {
-    /// A scene on the best available GPU, without a window.
+    /// A scene on the best available GPU, without a window. Not on the web, where a device comes from an
+    /// asynchronous request: make it there and use [`with_device`](Self::with_device).
     ///
     /// # Errors
     /// [`GpuError`] when the size is bad or there is no GPU.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(width: u32, height: u32) -> Result<Self, GpuError> {
         let (w, h) = Self::check(width, height)?;
         let instance = wgpu::Instance::default();
@@ -160,6 +162,57 @@ impl GpuScene {
         &self.texture
     }
 
+    /// Renders the scene and copies the picture into `target` (a texture of the same size and format that the host
+    /// shows, such as the current texture of a window surface or a canvas), with no read-back to the CPU. The
+    /// whole scene is drawn: a frame that draws only part of the screen would leave the rest empty.
+    pub fn present(&mut self, target: &wgpu::Texture) {
+        let (w, h) = self.size;
+        let view = self
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("fusuma present"),
+            });
+        let rendered = self.renderer.render(
+            &self.scene,
+            &mut self.resources,
+            &mut encoder,
+            RenderTarget {
+                view: &view,
+                depth_view: Some(&self.depth),
+            },
+            &self.bindings,
+            RenderOptions::default(),
+        );
+        if rendered.is_err() {
+            return;
+        }
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: target,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: u32::from(w).min(target.width()),
+                height: u32::from(h).min(target.height()),
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit([encoder.finish()]);
+        self.dirty = false;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn render(&mut self) {
         let (w, h) = self.size;
         let view = self
@@ -360,6 +413,9 @@ impl Scene for GpuScene {
     }
 
     fn pixels(&mut self) -> &[u8] {
+        // Read back on a machine that can wait for the GPU. On the web nothing can, and the picture is shown by
+        // `present`: the CPU copy stays as it was.
+        #[cfg(not(target_arch = "wasm32"))]
         if self.dirty {
             self.render();
             self.dirty = false;
@@ -368,15 +424,32 @@ impl Scene for GpuScene {
     }
 }
 
-/// A renderer on a GPU surface of `width` x `height` pixels.
+/// A renderer on a GPU surface of `width` x `height` pixels (not on the web: see [`from_device`]).
 ///
 /// # Errors
 /// [`GpuError`] when the size is bad or there is no usable GPU: use `fusuma-render-vello-cpu` then.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn new(width: u32, height: u32) -> Result<VelloGpu, GpuError> {
     GpuScene::new(width, height).map(Backend::new)
 }
 
+/// A renderer on a device the host made (the browser's WebGPU, a window's `wgpu` device), `width` x `height`. Show a
+/// frame with [`GpuScene::present`].
+///
+/// # Errors
+/// [`GpuError::BadSize`] for a side that is zero or too big.
+pub fn from_device(
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    width: u32,
+    height: u32,
+) -> Result<VelloGpu, GpuError> {
+    let (w, h) = GpuScene::check(width, height)?;
+    Ok(Backend::new(GpuScene::with_device(device, queue, w, h)))
+}
+
 /// Whether a GPU adapter is available, for choosing between this backend and the CPU one.
+#[cfg(not(target_arch = "wasm32"))]
 #[must_use]
 pub fn gpu_available() -> bool {
     pollster::block_on(
@@ -594,5 +667,76 @@ mod tests {
             far * 20 < lit,
             "the two pictures agree: {far} of {lit} pixels differ clearly"
         );
+    }
+
+    /// Showing a frame by copying it into a texture of the host's gives the picture that reading it back gives.
+    #[test]
+    fn a_frame_presented_to_a_texture_is_the_frame_read_back() {
+        let Some(mut r) = gpu(40, 24) else { return };
+        r.clear(Color::rgb(10, 20, 30)).unwrap();
+        r.fill_rect(Rect::new(4, 4, 12, 8), 0, Color::rgb(250, 0, 0))
+            .unwrap();
+        r.fill_circle(Point::new(28, 14), 6, Color::rgb(0, 200, 0))
+            .unwrap();
+        let read_back = r.with_scene(|s| s.pixels().to_vec());
+        let shown = r.with_scene(|s| {
+            let target = s.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("target"),
+                size: wgpu::Extent3d {
+                    width: 40,
+                    height: 24,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            });
+            s.present(&target);
+            // Read the target back by hand.
+            let row = (40u32 * 4).next_multiple_of(256);
+            let buffer = s.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("check"),
+                size: u64::from(row) * 24,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            let mut enc = s
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            enc.copy_texture_to_buffer(
+                target.as_image_copy(),
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(row),
+                        rows_per_image: None,
+                    },
+                },
+                wgpu::Extent3d {
+                    width: 40,
+                    height: 24,
+                    depth_or_array_layers: 1,
+                },
+            );
+            s.queue.submit([enc.finish()]);
+            let (tx, rx) = std::sync::mpsc::channel();
+            buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+                let _ = tx.send(r);
+            });
+            s.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            rx.recv().unwrap().unwrap();
+            let mapped = buffer.slice(..).get_mapped_range().unwrap();
+            let mut out = Vec::new();
+            for y in 0..24usize {
+                out.extend_from_slice(&mapped[y * row as usize..y * row as usize + 160]);
+            }
+            out
+        });
+        assert_eq!(shown, read_back, "the same pixels");
+        assert_eq!(&shown[(4 * 40 + 4) * 4..(4 * 40 + 4) * 4 + 3], &[250, 0, 0]);
     }
 }

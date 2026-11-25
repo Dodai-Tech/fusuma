@@ -9,7 +9,7 @@ Waveshare ESP32-S3-Touch-AMOLED-2.06 (410x502), the P4 the Waveshare ESP32-P4 7"
 1. **GUI renderers** (done): the integer renderer has Vello's look at its own speed on microcontrollers.
 2. **UI components and logic** (done, see [Toolkit](#toolkit)).
 3. **TUI** (done, see [Text UI](#text-ui)): the showcase runs in a terminal, over a serial console and on a panel.
-4. **Web** (see [Boards and platforms](#boards-and-platforms)).
+4. **Web** (done, see [Boards and platforms](#boards-and-platforms)).
 
 Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 
@@ -105,7 +105,8 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   apart, `App::frame_rects` and the embedded driver send each apart; Vello CPU is told each with `will_draw`. A test
   on both renderers and a driver test (two labels at the ends of a tall screen: 2 rectangles, under a quarter of the
   pixels of their bounding box)
-- [ ] The GPU backend drawing to a window surface with no read-back
+- [x] The GPU backend drawing to a surface with no read-back (`GpuScene::present`, `from_device`): used by the web
+  build; the desktop window still reads back
 - [ ] Vello multithreading on the desktop (`vello_cpu`'s `multithreading` feature; unknown whether the partial
   render path uses the threads)
 - [ ] Benchmarks of a complex scene (many paths, blurs) and of the GPU without read-back
@@ -229,14 +230,15 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
 - [ ] The C6 (a board file; `esp-hal` as well as ESP-IDF), a Cortex-M board (RP2040, STM32, nRF), a Linux
   framebuffer or DRM board for kiosks
 - [ ] Android and iOS (`fusuma-platform-mobile`), the platform picked by target
-- [ ] **Web on Vello** (`fusuma-platform-web`, or a web module of the desktop crate: both are `winit` + Vello): one
-  `<canvas>`, no DOM widgets, no CSS. Vello GPU through WebGPU, falling back to Vello CPU in wasm with SIMD128 (the
-  renderer rule already counts wasm as SIMD); Parley and the same font catalog in wasm; `winit`'s web backend for
-  pointer, touch, keys and resize; a hidden `<textarea>` that follows the focused field for typing, IME and the phone
-  keyboard; later the semantic tree mirrored as hidden DOM nodes for screen readers. Unmeasured: the size of the
-  `.wasm` with Vello and Parley. The text UI comes nearly free there: `fusuma-cells`' ANSI into xterm.js. Blitz
-  (DioxusLabs) is the reference for this stack (Vello through `anyrender`, Parley, Taffy, AccessKit), without its
-  HTML and CSS
+- [x] **Web on Vello** (`examples/showcase-web`, `just showcase-web`, a `web` job in CI): the showcase in one
+  `<canvas>`, from WebAssembly (3.6 MB, unoptimised, with Inter, JetBrains Mono and the icons). Checked in a headless
+  browser: every page, clicks, the sidebar's wheel, tabs, the menu, a toast, a swipe, typing and composition.
+  **Vello on WebGPU** when the browser has it (`GpuScene::present` copies the frame into the canvas's texture, no
+  read-back; the whole picture each frame), **Vello on the CPU** as the fallback or with `?renderer=cpu` (a changed
+  rectangle at a time into a 2D canvas). A **hidden `<textarea>`** follows the focused field: typing, an input
+  method's composition (preedit underlined at the caret), paste, copy and cut; the keys edit by word and undo. It is
+  `web-sys` on a canvas, not `winit`'s web backend. Not done: the semantic tree mirrored as hidden DOM for screen
+  readers, `.wasm` size work (`wasm-opt`, `strip = false`), clipboard read for Ctrl+V outside paste events
 - [ ] An `HtmlView` widget, optional and `std` only (desktop, phone, web): HTML or markdown content (help pages,
   documents, rich text) rendered by Blitz into a texture that Fusuma draws. Not the way to build Fusuma's own UI, and
   never on a chip (Stylo is large)
