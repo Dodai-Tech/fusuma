@@ -141,7 +141,7 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 
 - [x] `Theme` (colours, spacing, radii, text sizes, fonts, sizes, motion) with a dark and a light default; every
   widget reads only from it; `Theme::scaled(percent)` for the display scale
-- [x] **Palettes and accents**: fusuma, forest, ocean, petrol, violet for dark and light, and any palette's main action
+- [x] **Palettes and accents**: fusuma, forest, ocean, petrol, violet, ember, graphite for dark and light, and any palette's main action
   on any other; `[theme]` in `fusuma.toml`, switched at run time. Every combination keeps the contrast rules
   (text 7:1, muted 4.5:1, text on the main action 4.5:1, the main action 3:1 on the page), checked by tests
 - [x] Material-style scrollbar: hidden at rest, shown while content moves, faded after 300 ms over 250 ms

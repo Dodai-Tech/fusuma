@@ -73,7 +73,9 @@
             "forest",
             "ocean",
             "petrol",
-            "violet"
+            "violet",
+            "ember",
+            "graphite"
           ],
           "description": "A whole set of colours for the dark and the light theme. Default fusuma."
         },
@@ -83,7 +85,9 @@
             "forest",
             "ocean",
             "petrol",
-            "violet"
+            "violet",
+            "ember",
+            "graphite"
           ],
           "description": "Another palette's main-action colour, put on the palette."
         }

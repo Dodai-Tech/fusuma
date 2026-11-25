@@ -1609,7 +1609,9 @@ mod tests {
         let (mut s, mut r) = app();
         let target = s.palette_button().unwrap();
         assert_eq!(s.tree().text(target), Some("Fusuma"));
-        for want in ["forest", "ocean", "petrol", "violet", "fusuma"] {
+        for want in [
+            "forest", "ocean", "petrol", "violet", "ember", "graphite", "fusuma",
+        ] {
             tap(&mut s, target);
             assert_eq!(s.palette().name, want);
             assert!(s.is_dark(), "the palette does not switch dark and light");

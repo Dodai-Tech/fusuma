@@ -500,13 +500,84 @@ impl Palette {
         },
     };
 
+    /// Warm amber and burnt orange on charcoal brown (dark) or warm paper (light).
+    pub const EMBER: Self = Self {
+        name: "ember",
+        dark: Colors {
+            background: Color::rgb(24, 17, 13),
+            surface: Color::rgb(36, 26, 20),
+            surface_raised: Color::rgb(54, 39, 30),
+            border: Color::rgb(86, 62, 47),
+            border_strong: Color::rgb(150, 116, 92),
+            text: Color::rgb(255, 245, 235),
+            text_muted: Color::rgb(222, 196, 174),
+            text_disabled: Color::rgb(132, 108, 92),
+            primary: Color::rgb(255, 163, 77),
+            primary_hover: Color::rgb(255, 184, 112),
+            primary_active: Color::rgb(240, 138, 48),
+            on_primary: Color::rgb(36, 18, 4),
+            danger: Color::rgb(255, 118, 112),
+        },
+        light: Colors {
+            background: Color::rgb(253, 247, 240),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(249, 236, 222),
+            border: Color::rgb(232, 211, 190),
+            border_strong: Color::rgb(160, 120, 88),
+            text: Color::rgb(58, 32, 14),
+            text_muted: Color::rgb(116, 78, 50),
+            text_disabled: Color::rgb(176, 152, 132),
+            primary: Color::rgb(184, 74, 8),
+            primary_hover: Color::rgb(168, 66, 6),
+            primary_active: Color::rgb(138, 52, 4),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(176, 30, 40),
+        },
+    };
+    /// Neutral greys with a soft white main action: no hue, for a design that brings its own accent.
+    pub const GRAPHITE: Self = Self {
+        name: "graphite",
+        dark: Colors {
+            background: Color::rgb(16, 16, 18),
+            surface: Color::rgb(25, 25, 28),
+            surface_raised: Color::rgb(38, 38, 42),
+            border: Color::rgb(62, 62, 68),
+            border_strong: Color::rgb(120, 120, 130),
+            text: Color::rgb(244, 244, 246),
+            text_muted: Color::rgb(184, 184, 192),
+            text_disabled: Color::rgb(112, 112, 120),
+            primary: Color::rgb(226, 226, 232),
+            primary_hover: Color::rgb(244, 244, 248),
+            primary_active: Color::rgb(198, 198, 206),
+            on_primary: Color::rgb(18, 18, 20),
+            danger: Color::rgb(255, 120, 120),
+        },
+        light: Colors {
+            background: Color::rgb(246, 246, 248),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(236, 236, 240),
+            border: Color::rgb(210, 210, 218),
+            border_strong: Color::rgb(112, 112, 124),
+            text: Color::rgb(24, 24, 28),
+            text_muted: Color::rgb(86, 86, 98),
+            text_disabled: Color::rgb(160, 160, 170),
+            primary: Color::rgb(40, 40, 48),
+            primary_hover: Color::rgb(58, 58, 68),
+            primary_active: Color::rgb(18, 18, 22),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(184, 32, 40),
+        },
+    };
+
     /// Every palette, the default first: the order a switcher steps through.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::FUSUMA,
         Self::FOREST,
         Self::OCEAN,
         Self::PETROL,
         Self::VIOLET,
+        Self::EMBER,
+        Self::GRAPHITE,
     ];
 
     /// The palette called `name`.
@@ -619,12 +690,14 @@ impl Default for Palette {
 
 impl Accent {
     /// Every palette's main action, in the palettes' order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Palette::FUSUMA.accent(),
         Palette::FOREST.accent(),
         Palette::OCEAN.accent(),
         Palette::PETROL.accent(),
         Palette::VIOLET.accent(),
+        Palette::EMBER.accent(),
+        Palette::GRAPHITE.accent(),
     ];
 
     /// The accent called `name`.
@@ -1097,7 +1170,7 @@ mod tests {
         let e = std::format!("{}", ThemeError::UnknownPalette("green"));
         assert_eq!(
             e,
-            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet"
+            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet, ember, graphite"
         );
     }
 
@@ -1109,9 +1182,16 @@ mod tests {
         assert_eq!(Palette::named("forest"), Some(&Palette::FOREST));
         assert_eq!(Palette::named("Forest"), None);
         let names: std::vec::Vec<&str> = Palette::ALL.iter().map(|p| p.name).collect();
-        assert_eq!(names, ["fusuma", "forest", "ocean", "petrol", "violet"]);
+        assert_eq!(
+            names,
+            [
+                "fusuma", "forest", "ocean", "petrol", "violet", "ember", "graphite"
+            ]
+        );
         let mut p = &Palette::ALL[0];
-        for want in ["forest", "ocean", "petrol", "violet", "fusuma"] {
+        for want in [
+            "forest", "ocean", "petrol", "violet", "ember", "graphite", "fusuma",
+        ] {
             p = p.next();
             assert_eq!(p.name, want);
         }
@@ -1143,7 +1223,9 @@ mod tests {
         );
         assert_eq!(
             Accent::ALL.map(|a| a.name),
-            ["fusuma", "forest", "ocean", "petrol", "violet"]
+            [
+                "fusuma", "forest", "ocean", "petrol", "violet", "ember", "graphite"
+            ]
         );
     }
 
