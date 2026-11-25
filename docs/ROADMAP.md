@@ -69,7 +69,9 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 |---|---|---|
 | `fusuma` | the facade an app adds: re-exports the toolkit and, by feature, `render`, `anim`, `platform`, `text`, `fonts` and the backends | with `default-features = false` |
 | `fusuma-ui` | the toolkit: widget tree, layout (measures only what changed), theme, palettes and style hooks, events, focus, scrolling, dialogs, menus, toasts, tabs, text and wrapped text, gestures, slides, virtual lists, hidden nodes, app ids, the semantic tree, the cell paint pass, `Shell`, `App`, `Wake` | yes, no allocator |
-| `fusuma-view` | the Elm-style view layer: typed views, tuples, `show`, `named`, `Host`, the message table | yes, no allocator |
+| `fusuma-view` | the Elm-style view layer: views for every widget, tuples, `show`, `each`, `memo`, `named`, `class`, `animate`, `Host`, `Program`, `Runner`, `Task`, `Sub` | yes, no allocator |
+| `fusuma-test` | the simulator: find, click, activate, type, time, messages, scripts, PNGs, on a program | no |
+| `fusuma-palette` | palettes from a seed colour in OKLCH with readable text guaranteed | no |
 | `fusuma-anim` | fixed-point easing, tweens, keyframes, springs, fling decay, clips, an animator, drag helpers | yes |
 | `fusuma-render` | the `Renderer` trait, geometry, colours, paths, text styles, the conformance suite | yes |
 | `fusuma-render-embedded` | the integer renderer: RGB565, kerned smooth text from glyph atlases, smooth shapes, strokes, paths and images with alpha in integer maths, pixel-shift scrolling | yes |
@@ -231,38 +233,57 @@ Components still missing, by what they need:
 ## View layer
 
 The Elm architecture on the retained tree (design in Decisions). Gates for every step: zero allocations in a running
-session, a node at most 184 bytes (aim 128), a diff pass under 1 ms on the S3, a small update still 12 ms on the watch,
+session, a node at most 184 bytes (aim 128), a view pass under 1 ms on the S3, a small update still 12 ms on the watch,
 the same pixels as the hand-built page, a message log that replays to the same state.
 
-- [x] **Elm-style view layer** (`fusuma-view`, first slice): `update` is the only place state changes, `view(&State)` describes
-  the screen, and the layer makes the tree match it. Views are values made on the stack and thrown away (the tree is the
-  previous state: setters compare first, so only what differs asks for layout or drawing); tuples are children, `Option`
-  and `show` are the conditions, `named` gives a node an app id; messages are values in a fixed table next to the node
-  that sends them (no closures, no paths). The Overview page runs on it. Checked: a counter program is pixel-identical
-  to the hand-built page, a change of one value redraws only that label, a running session makes **0 allocations**, a pass
-  over 11 nodes takes 237 ns on a laptop (release; about 22 ns a node: an estimate of 30 to 60 µs for a 40-node page on the
-  S3, not yet measured there); the Overview page's four screenshots are identical to the hand-built ones. Not yet: `Task`,
-  `Sub`, scoped effects, `.animate`, the simulator, message log and replay, presets, keyed lists
-- [x] **Wake** (`Wake::{Now, At(ms), Never}`, `App::deadline`, `Shell::wake`): a toast that holds or a press being timed
-  no longer keeps frames running; the desktop sleeps until the deadline, the web schedules one timeout, the embedded
-  driver reports it; a long press is answered when it comes due, not at the next input
-- [x] **Hidden nodes** (`set_hidden`): alive, no room, not drawn, no focus or presses, not in the semantic tree, state kept
-  (text, a checkbox, how far a list was scrolled)
-- [x] **App ids** (`set_id`, `find`, `focus_id`; `Semantic::app_id`)
-- [x] **Baselines for the view work:** a running showcase makes 0 allocations on every page (a test with a counting
-  allocator), a node is 184 bytes (budget test; the aim is 128, which needs the text out of the node)
-- [ ] `Program` driver: `update(&mut State, Msg) -> Task<Msg>`, `view(&State, &Screen)`, `subscription(&State)`, as an
-  `App` so it runs on every platform unchanged; the ESP loop sleeps by `Wake` (it still sleeps a fixed 8 ms)
-- [ ] `Task` as a closed enum (after, focus, scroll, toast, save, clipboard) and `Sub` as at most eight recipes diffed by
-  identity (frames, every, resize, key); effects scoped to a view (`auto_dismiss`, `every`) that stop on teardown
-- [ ] `.animate(spring)` on a view (the node owns the spring: no `view` per frame) and springs in state for gestures
-- [ ] Keyed `each::<N>` lists and `memo(data, view)`; `imperative(..)` as the escape hatch so pages migrate one by one
-- [ ] `fusuma-test`: a simulator (`find`, `click`, `type_text`, `messages()`) driven through the semantic tree, a message
-  log with virtual time and replay, presets that generate the screenshot and test matrix, recorded scripts
-- [ ] Move Navigation, then the other pages; measure the diff on the watch; `.class(..)` into `Hooks`; palettes
-  generated from a seed in OKLCH
-- [ ] Node at 128 bytes (text out of the node); a flash-per-added-page report; a build-size report for `riscv32imc` (no
-  C3 board yet: Tier 0 is proven by the allocation test and the size report until there is one)
+- [x] **`fusuma-view`**: `update` is the only place state changes, `view(&State)` describes the screen, and the layer makes
+  the tree match it. Views are values made on the stack and thrown away (the tree is the previous state: setters compare
+  first, so only what differs asks for layout or drawing). Children are tuples, `Option` (the page's shape) and `show`
+  (hidden nodes, state kept); `named` gives a node an app id; messages are `Copy` values in a fixed table next to the node
+  that sends them (no closures, no id paths). Views for every widget: text, buttons, checkbox, radio, switch, slider,
+  text field (controlled), list rows, tabs, paragraph, scroll, dialog, menu, toast, gestures, card, badge, avatar,
+  stepper, divider. Builds `no_std` for RISC-V and Cortex-M0
+- [x] **Every showcase page is a view** (`examples/showcase/src/pages.rs`): ten pages, one `PageMsg`, one `Host`; the
+  45 screenshots (desktop dark and light, phone, watch, dialogs) are **pixel-identical** to the hand-built pages, the 46
+  showcase tests pass, a running showcase makes **0 allocations** on every page. On the S3 watch a pass of a page's view
+  takes **129 to 312 us** (22 nodes 135 us, 32 nodes 205 to 278 us, 40 nodes about 190 us; about 6 to 9 us a node, nothing
+  changed or one value changed alike), a small update stays 11 ms and a scroll step 36 ms
+- [x] **`Program` and `Runner`** (an Elm program is an `App`, so it runs wherever the showcase does): `update -> Task`,
+  `view(&State, &Screen)`, `subscription`, `presets`. **`Task`** is a closed, fixed-size value (send, after, focus,
+  scroll, toast, hide); **`Sub`** is at most four recipes (frames, every) diffed by id after every `update`, so a recipe
+  that is no longer wanted stops by itself; timers and recipes give a `deadline`, so the runner sleeps (`Wake`) between
+  them. Tested: a timer subscription, a toast task, a delayed message, a frame subscription that stops when the
+  state says so, 0 allocations
+- [x] **Message log and replay**: the runner keeps the last `L` messages with their times; `Runner::replay` runs them through
+  `update` from a state with the tasks dropped (what a task caused arrived as messages of its own) and reaches the
+  same state; a runner started from the replayed state shows the same page
+- [x] **Keyed lists** (`each`: rows that stay keep their node, text and focus; new ones are made, gone ones removed, moved
+  ones moved: a 200-step random test against the list), **`memo`** (a 16-bit version of the data; a skipped subtree keeps
+  its messages), **`imperative`** (hand-built subtrees in a view, so pages can move one by one)
+- [x] **Nodes on springs** (`animate_to`, `set_offset`, the `animate` view modifier): the node owns the spring, so the
+  view runs once for a new target, not once a frame; a new target in flight keeps its momentum; every frame equals a
+  full redraw
+- [x] **`fusuma-test`**: find a widget by text, app id or role; click (pointer events) or activate (focus and Enter, as an
+  assistive tool does) through the semantic tree; type; let time pass; read the state and the messages; PNG screenshots;
+  run and record scripts (`click Save`, `type abc`, `wait 500`, `expect Saved`, `shot name`) with the failing line named
+- [x] **Style classes** (`set_class`, `class(..)` on a view): a number every theme hook receives (`button_in`, `item_in`,
+  `tab_in`, `panel_in`, `surface_in`), so a design system restyles a widget by name
+- [x] **Palettes from a seed** (`fusuma-palette`, std): OKLCH, neutrals tinted by the seed's hue, the main action the seed
+  at the lightness that stands out, every text colour searched until it is readable (body 7:1, muted 4.5:1, text on the
+  main action 4.5:1 at rest, hover and pressed); checked over 72 seeds and the greys; `cargo run -p fusuma-palette
+  --example gen -- NAME R G B` prints the Rust of a palette. The shipped palettes are still hand tuned tables
+- [x] **Wake**, **hidden nodes**, **app ids**, **baselines** (0 allocations, node budget): see Decisions and the
+  skill's pitfalls
+- [ ] The ESP loop still sleeps a fixed 8 ms: touch is polled, so `Wake` saves nothing until the panel's interrupt line
+  wakes the loop (the GT911 and FT3168 have one)
+- [ ] The showcase itself is not a `Program` (its header, tiles and dialog are imperative around the page views); a
+  `Program`-based showcase would use `Runner` and the simulator end to end
+- [ ] Node at 128 bytes: needs the text out of the node (a shared arena with compaction); about 7 KB on a 112-node tree
+- [ ] A flash-per-added-page report, and a `riscv32imc` size report (no C3 board here: Tier 0 is proven by the allocation
+  test and the `no_std` builds until there is one)
+- [ ] Scoped effects (`auto_dismiss`, `every` as view modifiers that stop on teardown); `Task::perform` with futures as an
+  optional adapter for desktop and web; a `Sub` for resize and key shortcuts
+- [ ] The simulator on the web build (the same scripts in the browser)
 
 ## Animation
 

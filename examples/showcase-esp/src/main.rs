@@ -56,10 +56,14 @@ fn main() -> anyhow::Result<()> {
     };
     run(
         |w, h| {
-            let mut app = Showcase::new(w, h);
             #[cfg(feature = "demo")]
-            bench_view(&mut app);
-            app
+            {
+                // The demo build waits a few seconds so a log being read after a flash catches the numbers, then times a
+                // pass of the pages' views on an app of its own before the real one starts.
+                std::thread::sleep(std::time::Duration::from_secs(12));
+                bench_view(&mut Showcase::new(w, h));
+            }
+            Showcase::new(w, h)
         },
         Options {
             settings: Some(include_str!("../fusuma.toml")),

@@ -276,6 +276,8 @@ pub struct Showcase {
     quantity: u32,
     /// The Overview page's view, kept in step with its part of the tree.
     pages: fusuma::view::Host<pages::PageMsg, 24>,
+    /// The icon characters, looked up once (a lookup by name is not free on a chip).
+    icons: Option<pages::Icons>,
     /// The state the pages show, besides the ones above.
     notify: bool,
     location: bool,
@@ -329,6 +331,7 @@ impl Showcase {
             swipes: 0,
             quantity: 2,
             pages: fusuma::view::Host::new(),
+            icons: None,
             notify: true,
             location: false,
             size: 1,
@@ -849,7 +852,14 @@ impl Showcase {
     fn sync_pages(&mut self) {
         let Some(c) = self.content else { return };
         let look = self.page_look();
-        let icons = self.page_icons();
+        let icons = match self.icons {
+            Some(i) => i,
+            None => {
+                let i = self.page_icons();
+                self.icons = Some(i);
+                i
+            }
+        };
         let typed = self.typed;
         let state = pages::State {
             clicks: self.clicks,
