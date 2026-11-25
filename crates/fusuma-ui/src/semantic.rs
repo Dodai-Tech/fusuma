@@ -55,6 +55,8 @@ pub enum Role {
 pub struct Semantic<'a> {
     /// The handle of the widget.
     pub id: NodeId,
+    /// The name the app gave it, if it did (see [`Tree::set_id`]).
+    pub app_id: Option<crate::Id>,
     /// What it is.
     pub role: Role,
     /// Its text: a label's text, a button's name, a text field's content, a toast's message.
@@ -256,6 +258,7 @@ impl<const N: usize> Tree<N> {
         };
         Semantic {
             id,
+            app_id: self.id_of_node(id),
             role,
             name,
             hint,
@@ -467,5 +470,16 @@ mod tests {
         u.t.remove(gone);
         assert!(u.t.semantic(gone).is_none());
         assert_eq!(Tree::<4>::new().semantics().count(), 0);
+    }
+
+    #[test]
+    fn the_name_the_app_gave_a_widget_is_in_its_description() {
+        let mut u = ui();
+        assert!(u.t.set_id(u.field, crate::Id::new(42)));
+        let f = u.t.semantic(u.field).unwrap();
+        assert_eq!(f.app_id, Some(crate::Id::new(42)));
+        assert_eq!(u.t.semantic(u.check).unwrap().app_id, None);
+        let named: Vec<_> = u.t.semantics().filter_map(|s| s.app_id).collect();
+        assert_eq!(named, [crate::Id::new(42)]);
     }
 }

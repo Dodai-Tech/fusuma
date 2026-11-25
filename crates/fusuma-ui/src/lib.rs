@@ -13,6 +13,7 @@ mod focus;
 mod gesture;
 mod hidden;
 mod iconed;
+mod ids;
 mod layout;
 mod menu;
 mod paint;
@@ -43,6 +44,7 @@ pub use cells::{CellMeasure, CellSink, CellTheme, CellThemeError, Emphasis, Glyp
 pub use event::Pointer;
 pub use focus::Key;
 pub use gesture::{LONG_PRESS_MS, SWIPE_PX, Swipe, SwipeDir};
+pub use ids::{Id, MAX_IDS};
 pub use pieces::{MAX_PIECES, Pieces};
 pub use screen::{Class, PHONE_BELOW, Screen, TABLET_BELOW, WATCH_BELOW};
 pub use semantic::{Role, Semantic};
