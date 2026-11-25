@@ -208,7 +208,14 @@ mod tests {
             before,
             "the target changed, the node did not"
         );
-        let mut last = before;
+        // The node was moving right: with its speed kept it carries on for a moment before it turns round.
+        t.advance(&THEME, 16);
+        assert!(
+            x_of(&mut t, b) >= before,
+            "momentum is kept: {} after {before}",
+            x_of(&mut t, b)
+        );
+        let mut last = x_of(&mut t, b);
         let mut max_jump = 0;
         while t.advance(&THEME, 16) {
             let x = x_of(&mut t, b);
