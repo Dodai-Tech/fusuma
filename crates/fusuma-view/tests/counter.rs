@@ -309,3 +309,27 @@ fn a_running_program_asks_the_allocator_for_nothing() {
     assert_eq!(info.count_total, 0, "{info:?}");
     assert!(a.state.n > 10, "the session did something: {}", a.state.n);
 }
+
+/// How long a pass of the view layer takes (a rebuild of the whole page against the tree, with nothing changed and with
+/// one value changed), on this machine. Printed for the record; the bound is loose enough to hold in a debug build.
+#[test]
+fn a_pass_of_the_view_layer_is_cheap() {
+    let mut a = App::new();
+    let nodes = a.tree.len();
+    let n = 2_000u32;
+    let start = std::time::Instant::now();
+    for _ in 0..n {
+        a.sync();
+    }
+    let same = start.elapsed() / n;
+    let start = std::time::Instant::now();
+    for k in 0..n {
+        a.state.n = i32::try_from(k).unwrap();
+        a.sync();
+    }
+    let changed = start.elapsed() / n;
+    println!(
+        "{nodes} nodes: a pass with nothing changed {same:?}, with the count changed {changed:?}"
+    );
+    assert!(same < std::time::Duration::from_micros(500), "{same:?}");
+}

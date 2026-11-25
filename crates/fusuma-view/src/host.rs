@@ -3,7 +3,7 @@
 
 use fusuma_ui::{BuildError, NodeId, Tree};
 
-use crate::{Cx, Msgs, View};
+use crate::{Children, Cx, Msgs, View};
 
 /// A view, kept in step with a part of a tree.
 #[derive(Clone, Debug)]
@@ -41,6 +41,31 @@ impl<M: Clone, const K: usize> Host<M, K> {
         match self.root.filter(|&r| cx.tree.contains(r)) {
             Some(root) => view.rebuild(&mut cx, root),
             None => self.root = Some(view.build(&mut cx, parent)?),
+        }
+        Ok(())
+    }
+
+    /// Like [`sync`](Self::sync) for several views that go straight under `parent`, with no node of their own around them: the
+    /// children of a page container, say. `parent` must hold nothing else.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the tree has no room.
+    pub fn sync_children<const N: usize, C: Children<M>>(
+        &mut self,
+        tree: &mut Tree<N>,
+        parent: NodeId,
+        children: &C,
+    ) -> Result<(), BuildError> {
+        self.msgs.clear();
+        let mut cx = Cx {
+            tree,
+            msgs: &mut self.msgs,
+        };
+        if self.root == Some(parent) && cx.tree.contains(parent) {
+            children.rebuild_all(&mut cx, parent);
+        } else {
+            self.root = Some(parent);
+            children.build_all(&mut cx, parent)?;
         }
         Ok(())
     }

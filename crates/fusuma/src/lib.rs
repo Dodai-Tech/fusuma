@@ -11,6 +11,9 @@ pub use fusuma_render as render;
 /// serial console or a character panel.
 pub use fusuma_cells as cells;
 
+/// The Elm-style view layer: describe the screen from your state, and only what changed is touched.
+pub use fusuma_view as view;
+
 /// Animation: easing, tweens, keyframes, springs and decay.
 pub use fusuma_anim as anim;
 

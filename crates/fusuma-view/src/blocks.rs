@@ -2,7 +2,7 @@
 
 use fusuma_ui::{BuildError, NodeId};
 
-use crate::{Cx, Handler, View};
+use crate::{Cx, Handler, View, ViewMarker};
 
 /// A thin line.
 #[derive(Clone, Copy, Debug)]
@@ -180,3 +180,9 @@ impl<M: Clone> View<M> for Stepper<'_, M> {
         self.sync(cx, node);
     }
 }
+
+impl ViewMarker for Divider {}
+impl ViewMarker for Section<'_> {}
+impl ViewMarker for Badge<'_> {}
+impl ViewMarker for Avatar<'_> {}
+impl<M> ViewMarker for Stepper<'_, M> {}

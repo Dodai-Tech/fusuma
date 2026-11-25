@@ -2,7 +2,7 @@
 
 use fusuma_ui::{BuildError, CrossAlign, Id, Length, NodeId, Style, Surface};
 
-use crate::{Children, Cx, View};
+use crate::{Children, Cx, View, ViewMarker};
 
 /// What a container is: a column, a row, or a card.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -189,3 +189,7 @@ impl<M: Clone, V: View<M>> View<M> for Named<V> {
         self.view.rebuild(cx, node);
     }
 }
+
+impl<C> ViewMarker for Container<C> {}
+impl<V> ViewMarker for Show<V> {}
+impl<V> ViewMarker for Named<V> {}

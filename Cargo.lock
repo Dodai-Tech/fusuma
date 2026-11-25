@@ -964,6 +964,7 @@ dependencies = [
  "fusuma-render-vello-cpu",
  "fusuma-text",
  "fusuma-ui",
+ "fusuma-view",
 ]
 
 [[package]]

@@ -1635,7 +1635,12 @@ mod size_budget {
     use super::{Kind, Node, SmallText, Style};
 
     /// The size now, in bytes, and the size a node must reach.
-    const NODE_NOW: usize = 184;
+    /// With `long-text` a text field keeps 250 bytes and every node grows with it (a host with room turns it on).
+    const NODE_NOW: usize = if cfg!(feature = "long-text") {
+        368
+    } else {
+        184
+    };
     const NODE_AIM: usize = 128;
 
     #[test]

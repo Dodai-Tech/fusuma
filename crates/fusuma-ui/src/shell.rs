@@ -215,8 +215,8 @@ impl<A: App> Shell<A> {
         }
     }
 
-    /// When the platform should run the next frame: [`Wake::Now`] when something arrived or is moving, [`Wake::At`] when
-    /// nothing moves but the app waits on the clock, [`Wake::Never`] when only an input will do. It replaces polling
+    /// When the platform should run the next frame: [`crate::Wake::Now`] when something arrived or is moving, [`crate::Wake::At`] when
+    /// nothing moves but the app waits on the clock, [`crate::Wake::Never`] when only an input will do. It replaces polling
     /// [`wants_frame`](Self::wants_frame) and sleeping a fixed time.
     #[must_use]
     pub fn wake(&self, now_ms: u64) -> crate::Wake {

@@ -199,6 +199,23 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   the basic widgets, no new node kinds; new `Surface::Border`, `Surface::Primary` (text on it is drawn in `on_primary`)
   and `Round::Full` (pill or circle). The showcase opens on a new **Overview** page made of them, and the palette tile
   on the watch gets a row of its own now that there are ten pages
+- [x] **Elm-style view layer** (`fusuma-view`, first slice): `update` is the only place state changes, `view(&State)` describes
+  the screen, and the layer makes the tree match it. Views are values made on the stack and thrown away (the tree is the
+  previous state: setters compare first, so only what differs asks for layout or drawing); tuples are children, `Option`
+  and `show` are the conditions, `named` gives a node an app id; messages are values in a fixed table next to the node
+  that sends them (no closures, no paths). The Overview page runs on it. Checked: a counter program is pixel-identical
+  to the hand-built page, a change of one value redraws only that label, a running session makes **0 allocations**, a pass
+  over 11 nodes takes 237 ns on a laptop (release; about 22 ns a node: an estimate of 30 to 60 µs for a 40-node page on the
+  S3, not yet measured there); the Overview page's four screenshots are identical to the hand-built ones. Not yet: `Task`,
+  `Sub`, scoped effects, `.animate`, the simulator, message log and replay, presets, keyed lists
+- [x] **Wake** (`Wake::{Now, At(ms), Never}`, `App::deadline`, `Shell::wake`): a toast that holds or a press being timed
+  no longer keeps frames running; the desktop sleeps until the deadline, the web schedules one timeout, the embedded
+  driver reports it; a long press is answered when it comes due, not at the next input
+- [x] **Hidden nodes** (`set_hidden`): alive, no room, not drawn, no focus or presses, not in the semantic tree, state kept
+  (text, a checkbox, how far a list was scrolled)
+- [x] **App ids** (`set_id`, `find`, `focus_id`; `Semantic::app_id`)
+- [x] **Baselines for the view work:** a running showcase makes 0 allocations on every page (a test with a counting
+  allocator), a node is 184 bytes (budget test; the aim is 128, which needs the text out of the node)
 - [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
   of the default; a test draws with all five
 - [ ] Accessibility with `AccessKit`

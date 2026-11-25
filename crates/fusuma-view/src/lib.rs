@@ -28,9 +28,13 @@ pub struct Cx<'a, M, const N: usize, const K: usize> {
     pub msgs: &'a mut Msgs<M, K>,
 }
 
+/// Marks a type as a view. It exists so that `Option` and tuples can be given parts of their own without clashing with
+/// the blanket implementation for views (a view is anything with this marker and a [`View`] implementation).
+pub trait ViewMarker {}
+
 /// A description of one node (and what is under it) as a function of the state. A view is a cheap value made on the
 /// stack, used once and dropped: **the tree is the previous state**, so there is nothing to keep between passes.
-pub trait View<M: Clone> {
+pub trait View<M: Clone>: ViewMarker {
     /// Adds the nodes of this view under `parent` and returns the one at its root.
     ///
     /// # Errors
@@ -46,9 +50,78 @@ pub trait View<M: Clone> {
     fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId);
 }
 
-/// Views side by side: a tuple of views is the children of a container. Each view is one node, in order.
+/// A piece of a container's children: a view (one node) or an `Option` of one (a node, or none).
+///
+/// An `Option` has to stay `Some` or stay `None` for as long as its [`Host`] lives: it chooses the *shape* of the page
+/// (a title on a big screen and none on a watch), not what is on show now. For that, use [`show`], which keeps the node
+/// and hides it.
+pub trait Part<M: Clone> {
+    /// Adds this part's node, if it has one, under `parent`.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the tree has no room.
+    fn build_part<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: NodeId,
+    ) -> Result<(), BuildError>;
+
+    /// Rebuilds this part against the node at `cursor`, and moves the cursor past the node it used (not at all when the
+    /// part has none).
+    fn rebuild_part<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        cursor: &mut Option<NodeId>,
+    );
+}
+
+impl<M: Clone, V: View<M>> Part<M> for V {
+    fn build_part<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: NodeId,
+    ) -> Result<(), BuildError> {
+        self.build(cx, Some(parent)).map(|_| ())
+    }
+
+    fn rebuild_part<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        cursor: &mut Option<NodeId>,
+    ) {
+        if let Some(node) = *cursor {
+            self.rebuild(cx, node);
+            *cursor = cx.tree.next_sibling(node);
+        }
+    }
+}
+
+impl<M: Clone, V: View<M>> Part<M> for Option<V> {
+    fn build_part<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: NodeId,
+    ) -> Result<(), BuildError> {
+        match self {
+            Some(v) => v.build(cx, Some(parent)).map(|_| ()),
+            None => Ok(()),
+        }
+    }
+
+    fn rebuild_part<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        cursor: &mut Option<NodeId>,
+    ) {
+        if let Some(v) = self {
+            v.rebuild_part(cx, cursor);
+        }
+    }
+}
+
+/// Parts side by side: a tuple of them is the children of a container, in order.
 pub trait Children<M: Clone> {
-    /// Adds every view's nodes under `parent`.
+    /// Adds every part's nodes under `parent`.
     ///
     /// # Errors
     /// [`BuildError`] when the tree has no room.
@@ -58,7 +131,7 @@ pub trait Children<M: Clone> {
         parent: NodeId,
     ) -> Result<(), BuildError>;
 
-    /// Rebuilds each view against the children of `parent`, in order.
+    /// Rebuilds each part against the children of `parent`, in order.
     fn rebuild_all<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, parent: NodeId);
 }
 
@@ -76,13 +149,13 @@ impl<M: Clone> Children<M> for () {
 
 macro_rules! tuple_children {
     ($(($($v:ident $i:tt),+))+) => {$(
-        impl<M: Clone, $($v: View<M>),+> Children<M> for ($($v,)+) {
+        impl<M: Clone, $($v: Part<M>),+> Children<M> for ($($v,)+) {
             fn build_all<const N: usize, const K: usize>(
                 &self,
                 cx: &mut Cx<'_, M, N, K>,
                 parent: NodeId,
             ) -> Result<(), BuildError> {
-                $( self.$i.build(cx, Some(parent))?; )+
+                $( self.$i.build_part(cx, parent)?; )+
                 Ok(())
             }
 
@@ -92,11 +165,7 @@ macro_rules! tuple_children {
                 parent: NodeId,
             ) {
                 let mut at = cx.tree.first_child(parent);
-                $(
-                    let Some(node) = at else { return };
-                    self.$i.rebuild(cx, node);
-                    at = cx.tree.next_sibling(node);
-                )+
+                $( self.$i.rebuild_part(cx, &mut at); )+
                 let _ = at;
             }
         }

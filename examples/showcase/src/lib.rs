@@ -5,6 +5,8 @@
 //! have what changed drawn on any [`Renderer`]. `no_std`, no allocator.
 #![no_std]
 
+mod overview;
+
 use core::fmt::{self, Write};
 
 use fusuma::render::{Rect, Renderer};
@@ -291,7 +293,8 @@ pub struct Showcase {
     swipes: u32,
     /// The Overview page's stepper value.
     quantity: u32,
-    stepper: Option<fusuma::Stepper>,
+    /// The Overview page's view, kept in step with its part of the tree.
+    overview: fusuma::view::Host<overview::OverviewMsg, 12>,
     /// Whether a page that is chosen slides in (off in the tests that take pictures).
     slide: bool,
     /// A text UI: every length is in character cells (see [`Showcase::new_cells`]).
@@ -336,7 +339,7 @@ impl Showcase {
             tab: 0,
             swipes: 0,
             quantity: 2,
-            stepper: None,
+            overview: fusuma::view::Host::new(),
             slide: true,
             cells: false,
         };
@@ -930,55 +933,8 @@ impl Showcase {
                     )?;
                 }
             }
-            Page::Overview => {
-                if !lite {
-                    t.label(Some(c), "Overview", TextRole::Title)?;
-                }
-                // A row of cards on a wide screen, a column of them on a narrow one.
-                let cards = if self.class.is_compact() {
-                    t.column(Some(c), Style::new().gap(sp.md))?
-                } else {
-                    t.row(Some(c), Style::new().gap(sp.md))?
-                };
-                let card_style = Style::new()
-                    .padding(sp.md)
-                    .gap(sp.sm)
-                    .width(Length::Fill(1));
-                let who = t.card(Some(cards), card_style)?;
-                let head = t.row(Some(who), Style::new().gap(sp.md).align(CrossAlign::Center))?;
-                t.avatar(Some(head), "AM", if cells { 3 } else { scaled(44, scale) })?;
-                let name = t.column(Some(head), Style::new())?;
-                t.label(Some(name), "Ana Maria", TextRole::Body)?;
-                t.label(Some(name), "Designer", TextRole::Caption)?;
-                t.divider(Some(who))?;
-                let tags = t.row(Some(who), Style::new().gap(sp.sm))?;
-                t.badge(Some(tags), "Pro", true)?;
-                t.badge(Some(tags), "Team", false)?;
-                let qty = t.card(Some(cards), card_style)?;
-                t.section(Some(qty), "Seats")?;
-                let mut b = Buf::new();
-                let _ = write!(b, "{}", self.quantity);
-                self.stepper = Some(t.stepper(Some(qty), b.text())?);
-                if !lite {
-                    let usage = t.card(Some(cards), card_style)?;
-                    t.section(Some(usage), "Storage")?;
-                    let bar = t.progress_bar(Some(usage), 640)?;
-                    t.set_style(bar, Style::new().width(Length::Fill(1)));
-                    t.label(Some(usage), "6.4 of 10 GB", TextRole::Body)?;
-                }
-                if !lite {
-                    t.section(Some(c), "Status")?;
-                    let chips = t.row(Some(c), Style::new().gap(sp.sm))?;
-                    for (text, primary) in [
-                        ("Online", true),
-                        ("Synced", false),
-                        ("3 new", false),
-                        ("v0.2", false),
-                    ] {
-                        t.badge(Some(chips), text, primary)?;
-                    }
-                }
-            }
+            // The Overview page is a view: it is made after this match (see `sync_overview`).
+            Page::Overview => {}
             Page::Navigation => {
                 if !lite {
                     t.label(Some(c), "Navigation", TextRole::Title)?;
@@ -1070,7 +1026,42 @@ impl Showcase {
                 live.reset = Some(t.button(Some(row), "Reset", ButtonVariant::Secondary)?);
             }
         }
+        if self.page == Page::Overview {
+            // The page container is new, so the view is built again, not rebuilt.
+            self.overview.forget();
+            self.sync_overview();
+        }
         Ok(())
+    }
+
+    /// How the Overview page is laid out on this screen.
+    fn overview_look(&self) -> overview::Look {
+        let sp = self.theme.spacing;
+        overview::Look {
+            compact: self.class.is_compact(),
+            lite: self.class == Class::Watch,
+            md: sp.md,
+            sm: sp.sm,
+            avatar: if self.cells {
+                3
+            } else {
+                scaled(44, self.scale)
+            },
+        }
+    }
+
+    /// Makes the Overview page match the state: built the first time, then only what differs is touched.
+    fn sync_overview(&mut self) {
+        let Some(c) = self.content.filter(|_| self.page == Page::Overview) else {
+            return;
+        };
+        let mut seats = Buf::new();
+        let _ = write!(seats, "{}", self.quantity);
+        let look = self.overview_look();
+        // The tree has room for the page (the whole app is checked to fit), so a failure leaves a smaller page.
+        let _ = self
+            .overview
+            .sync_children(&mut self.tree, c, &overview::page(look, seats.text()));
     }
 
     /// Builds the whole tree again, for a change of screen: the pages' state lives in the app, not in the tree.
@@ -1309,19 +1300,14 @@ impl Showcase {
                         let _ = write!(b, "Page: {}", Page::ALL[to].name());
                     } else if id == self.live.field {
                         let _ = write!(b, "Submitted: {}", self.typed.as_str());
-                    } else if let Some(st) = self
-                        .stepper
-                        .filter(|st| id == Some(st.minus) || id == Some(st.plus))
-                    {
-                        let up = id == Some(st.plus);
-                        self.quantity = if up {
-                            (self.quantity + 1).min(99)
-                        } else {
-                            self.quantity.saturating_sub(1)
+                    } else if let Some(m) = self.overview.message(&self.tree, a) {
+                        // The Elm part: a message from the page's view, the one place the state changes, and the
+                        // view made again from it.
+                        self.quantity = match m {
+                            overview::OverviewMsg::More => (self.quantity + 1).min(99),
+                            overview::OverviewMsg::Fewer => self.quantity.saturating_sub(1),
                         };
-                        let mut v = Buf::new();
-                        let _ = write!(v, "{}", self.quantity);
-                        self.tree.set_text(st.value, v.text());
+                        self.sync_overview();
                         let _ = write!(b, "Seats: {}", self.quantity);
                     } else if id.is_some() && id == self.theme_button {
                         if let (Some(m), Some(a)) = (self.theme_menu, self.theme_button) {

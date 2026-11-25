@@ -4,7 +4,7 @@ use core::fmt::{self, Write};
 
 use fusuma_ui::{BuildError, ButtonVariant, Length, NodeId, SmallText, Style, TextRole};
 
-use crate::{Cx, Handler, View};
+use crate::{Cx, Handler, View, ViewMarker};
 
 /// A piece of text. Plain (`text`), or made with `.title()` or `.caption()`.
 #[derive(Clone, Copy, Debug)]
@@ -286,3 +286,10 @@ impl<M: Clone> View<M> for Spacer {
 
     fn rebuild<const N: usize, const K: usize>(&self, _: &mut Cx<'_, M, N, K>, _: NodeId) {}
 }
+
+impl ViewMarker for Text<'_> {}
+impl ViewMarker for FmtText {}
+impl<M> ViewMarker for Button<'_, M> {}
+impl<M> ViewMarker for Checkbox<'_, M> {}
+impl ViewMarker for Progress {}
+impl ViewMarker for Spacer {}
