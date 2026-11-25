@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout)]
+
 //! How many times the showcase asks the allocator for memory while it runs, once everything is built.
 //!
 //! The toolkit is `no_std` with no allocator, so a frame, a click or a scroll should need none: a chip with no heap to
