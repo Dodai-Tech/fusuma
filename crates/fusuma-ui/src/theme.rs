@@ -746,6 +746,10 @@ pub enum Surface {
     Surface,
     /// Something lifted above a card.
     Raised,
+    /// The outline colour, for a divider.
+    Border,
+    /// The main action's colour, for a badge or an avatar (put text on it in `on_primary`).
+    Primary,
 }
 
 /// How round a container's corners are.
@@ -760,6 +764,8 @@ pub enum Round {
     Medium,
     /// The large radius.
     Large,
+    /// As round as the box allows: a pill, or a circle for a square.
+    Full,
 }
 
 /// Which look a button has.
@@ -935,6 +941,8 @@ impl Theme {
             Surface::Background => Some(self.colors.background),
             Surface::Surface => Some(self.colors.surface),
             Surface::Raised => Some(self.colors.surface_raised),
+            Surface::Border => Some(self.colors.border),
+            Surface::Primary => Some(self.colors.primary),
         }
     }
 
@@ -946,6 +954,7 @@ impl Theme {
             Round::Small => self.radii.sm,
             Round::Medium => self.radii.md,
             Round::Large => self.radii.lg,
+            Round::Full => 4096,
         }
     }
 

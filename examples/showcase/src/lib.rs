@@ -14,7 +14,7 @@ use fusuma::{
 };
 
 /// Nodes the tree can hold; the busiest page uses about 40.
-pub const NODES: usize = 80;
+pub const NODES: usize = 112;
 
 /// How long the progress bar takes to fill, in milliseconds.
 const FILL_MS: u32 = 8000;
@@ -112,6 +112,8 @@ const PALETTE_NAMES: [&str; 7] = [
 /// The pages in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
+    /// Cards, badges, an avatar, a stepper and progress: the look of the toolkit at a glance.
+    Overview,
     /// Buttons of both looks, enabled and disabled.
     Buttons,
     /// Checkboxes and radio buttons.
@@ -134,7 +136,8 @@ pub enum Page {
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
+        Self::Overview,
         Self::Buttons,
         Self::Selection,
         Self::List,
@@ -150,6 +153,7 @@ impl Page {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Overview => "Overview",
             Self::Buttons => "Buttons",
             Self::Selection => "Selection",
             Self::List => "List",
@@ -249,7 +253,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 9],
+    sidebar: [Option<NodeId>; 10],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
@@ -263,7 +267,7 @@ pub struct Showcase {
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
-    tiles: [Option<NodeId>; 9],
+    tiles: [Option<NodeId>; 10],
     back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
@@ -285,6 +289,9 @@ pub struct Showcase {
     /// The tab that is chosen, and how many swipes the card has seen.
     tab: usize,
     swipes: u32,
+    /// The Overview page's stepper value.
+    quantity: u32,
+    stepper: Option<fusuma::Stepper>,
     /// Whether a page that is chosen slides in (off in the tests that take pictures).
     slide: bool,
     /// A text UI: every length is in character cells (see [`Showcase::new_cells`]).
@@ -302,15 +309,15 @@ impl Showcase {
             dark: true,
             palette: Palette::FUSUMA,
             bounds: Rect::new(0, 0, width, height),
-            page: Page::Buttons,
-            sidebar: [None; 9],
+            page: Page::Overview,
+            sidebar: [None; 10],
             nav: [None; 3],
             class: Class::of(width),
             dialog: [None; 3],
             insets: fusuma::Insets::all(0),
             shape: fusuma::Shape::Rect,
             open: false,
-            tiles: [None; 9],
+            tiles: [None; 10],
             back: None,
             body: None,
             content: None,
@@ -328,6 +335,8 @@ impl Showcase {
             typed: fusuma::InputText::new("Hello"),
             tab: 0,
             swipes: 0,
+            quantity: 2,
+            stepper: None,
             slide: true,
             cells: false,
         };
@@ -346,9 +355,9 @@ impl Showcase {
         s.class = Class::of(cols.saturating_mul(CELL_PX));
         s.theme = s.make_theme();
         s.tree.clear();
-        s.sidebar = [None; 9];
+        s.sidebar = [None; 10];
         s.nav = [None; 3];
-        s.tiles = [None; 9];
+        s.tiles = [None; 10];
         s.back = None;
         s.content = None;
         let _ = s.build();
@@ -685,6 +694,27 @@ impl Showcase {
                     self.palette_button = Some(id);
                 }
             }
+            if Page::ALL.len().is_multiple_of(2) {
+                // An even number of pages leaves no room in the last row: the palette switcher gets one of its own.
+                let row = t.row(
+                    Some(grid),
+                    Style::new().gap(sp.md).align(CrossAlign::Stretch),
+                )?;
+                let id = t.button(
+                    Some(row),
+                    palette_button_text(&self.palette),
+                    ButtonVariant::Primary,
+                )?;
+                t.set_style(
+                    id,
+                    Style::new()
+                        .width(Length::Fill(1))
+                        .height(Length::Fixed(tile_h)),
+                );
+                self.palette_button = Some(id);
+                // Half a row, like the tiles above it.
+                t.spacer(Some(row), Style::new().width(Length::Fill(1)))?;
+            }
             return Ok(());
         }
         if compact {
@@ -900,6 +930,55 @@ impl Showcase {
                     )?;
                 }
             }
+            Page::Overview => {
+                if !lite {
+                    t.label(Some(c), "Overview", TextRole::Title)?;
+                }
+                // A row of cards on a wide screen, a column of them on a narrow one.
+                let cards = if self.class.is_compact() {
+                    t.column(Some(c), Style::new().gap(sp.md))?
+                } else {
+                    t.row(Some(c), Style::new().gap(sp.md))?
+                };
+                let card_style = Style::new()
+                    .padding(sp.md)
+                    .gap(sp.sm)
+                    .width(Length::Fill(1));
+                let who = t.card(Some(cards), card_style)?;
+                let head = t.row(Some(who), Style::new().gap(sp.md).align(CrossAlign::Center))?;
+                t.avatar(Some(head), "AM", if cells { 3 } else { scaled(44, scale) })?;
+                let name = t.column(Some(head), Style::new())?;
+                t.label(Some(name), "Ana Maria", TextRole::Body)?;
+                t.label(Some(name), "Designer", TextRole::Caption)?;
+                t.divider(Some(who))?;
+                let tags = t.row(Some(who), Style::new().gap(sp.sm))?;
+                t.badge(Some(tags), "Pro", true)?;
+                t.badge(Some(tags), "Team", false)?;
+                let qty = t.card(Some(cards), card_style)?;
+                t.section(Some(qty), "Seats")?;
+                let mut b = Buf::new();
+                let _ = write!(b, "{}", self.quantity);
+                self.stepper = Some(t.stepper(Some(qty), b.text())?);
+                if !lite {
+                    let usage = t.card(Some(cards), card_style)?;
+                    t.section(Some(usage), "Storage")?;
+                    let bar = t.progress_bar(Some(usage), 640)?;
+                    t.set_style(bar, Style::new().width(Length::Fill(1)));
+                    t.label(Some(usage), "6.4 of 10 GB", TextRole::Body)?;
+                }
+                if !lite {
+                    t.section(Some(c), "Status")?;
+                    let chips = t.row(Some(c), Style::new().gap(sp.sm))?;
+                    for (text, primary) in [
+                        ("Online", true),
+                        ("Synced", false),
+                        ("3 new", false),
+                        ("v0.2", false),
+                    ] {
+                        t.badge(Some(chips), text, primary)?;
+                    }
+                }
+            }
             Page::Navigation => {
                 if !lite {
                     t.label(Some(c), "Navigation", TextRole::Title)?;
@@ -997,9 +1076,9 @@ impl Showcase {
     /// Builds the whole tree again, for a change of screen: the pages' state lives in the app, not in the tree.
     fn rebuild(&mut self) {
         self.tree.clear();
-        self.sidebar = [None; 9];
+        self.sidebar = [None; 10];
         self.nav = [None; 3];
-        self.tiles = [None; 9];
+        self.tiles = [None; 10];
         self.back = None;
         self.content = None;
         let _ = self.build();
@@ -1230,6 +1309,20 @@ impl Showcase {
                         let _ = write!(b, "Page: {}", Page::ALL[to].name());
                     } else if id == self.live.field {
                         let _ = write!(b, "Submitted: {}", self.typed.as_str());
+                    } else if let Some(st) = self
+                        .stepper
+                        .filter(|st| id == Some(st.minus) || id == Some(st.plus))
+                    {
+                        let up = id == Some(st.plus);
+                        self.quantity = if up {
+                            (self.quantity + 1).min(99)
+                        } else {
+                            self.quantity.saturating_sub(1)
+                        };
+                        let mut v = Buf::new();
+                        let _ = write!(v, "{}", self.quantity);
+                        self.tree.set_text(st.value, v.text());
+                        let _ = write!(b, "Seats: {}", self.quantity);
                     } else if id.is_some() && id == self.theme_button {
                         if let (Some(m), Some(a)) = (self.theme_menu, self.theme_button) {
                             self.tree.open_menu(m, a);
@@ -1480,9 +1573,9 @@ impl App for Showcase {
             self.theme = self.make_theme();
             self.bounds = bounds;
             self.tree.clear();
-            self.sidebar = [None; 9];
+            self.sidebar = [None; 10];
             self.nav = [None; 3];
-            self.tiles = [None; 9];
+            self.tiles = [None; 10];
             self.back = None;
             self.content = None;
             let _ = self.build();
@@ -1551,6 +1644,7 @@ mod tests {
     fn app() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
         let mut s = Showcase::new(1024, 600);
         s.slide = false;
+        s.set_page(Page::Buttons);
         let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
         assert!(s.frame(&mut r).unwrap().is_some());
         (s, r)
@@ -1766,10 +1860,11 @@ mod tests {
         let last = s.tile(*Page::ALL.last().unwrap()).unwrap();
         let (a, b) = (s.rect_of(tile).unwrap(), s.rect_of(last).unwrap());
         assert_eq!(
-            (a.y, a.h, a.w),
-            (b.y, b.h, b.w),
-            "beside the last page tile, the same size"
+            (a.h, a.w),
+            (b.h, b.w),
+            "as big as a page tile, in a row of its own"
         );
+        assert!(a.y > b.y);
         tap(&mut s, tile);
         assert_eq!(s.palette().name, "forest");
         assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Forest"));
@@ -1804,7 +1899,8 @@ mod tests {
             "the header comes first"
         );
         s.key(Key::Next);
-        assert_eq!(s.tree().focused(), s.sidebar_item(Page::Buttons));
+        assert_eq!(s.tree().focused(), s.sidebar_item(Page::Overview));
+        s.key(Key::Down);
         s.key(Key::Down);
         s.key(Key::Activate);
         assert_eq!(s.page(), Page::Selection);
@@ -2007,6 +2103,7 @@ mod tests {
     fn phone() -> (Showcase, fusuma::renderers::vello_cpu::VelloCpu) {
         let mut s = Showcase::new(600, 800);
         s.slide = false;
+        s.set_page(Page::Buttons);
         let mut r = fusuma::renderers::vello_cpu::new(600, 800).unwrap();
         s.frame(&mut r).unwrap();
         (s, r)
@@ -2026,13 +2123,17 @@ mod tests {
     fn next_and_previous_walk_the_pages_and_wrap_round() {
         let (mut s, mut r) = phone();
         let (prev, next) = s.nav_buttons().unwrap();
-        for want in &Page::ALL[1..] {
+        for want in Page::ALL
+            .iter()
+            .skip_while(|p| **p != Page::Buttons)
+            .skip(1)
+        {
             tap(&mut s, next);
             assert_eq!(s.page(), *want);
             s.frame(&mut r).unwrap();
         }
         tap(&mut s, next);
-        assert_eq!(s.page(), Page::Buttons, "after the last comes the first");
+        assert_eq!(s.page(), Page::Overview, "after the last comes the first");
         tap(&mut s, prev);
         assert_eq!(
             s.page(),
@@ -2503,8 +2604,10 @@ mod tests {
             s.frame(&mut r).unwrap();
             if let Some(tile) = s.tile(Page::Buttons) {
                 tap_id(&mut s, tile);
-                s.frame(&mut r).unwrap();
+            } else {
+                s.set_page(Page::Buttons);
             }
+            s.frame(&mut r).unwrap();
             let del = s.widgets().delete.unwrap();
             tap_id(&mut s, del);
             s.frame(&mut r).unwrap();
@@ -2537,8 +2640,10 @@ mod tests {
             s.frame(&mut r).unwrap();
             if let Some(tile) = s.tile(Page::Buttons) {
                 tap_id(&mut s, tile);
-                s.frame(&mut r).unwrap();
+            } else {
+                s.set_page(Page::Buttons);
             }
+            s.frame(&mut r).unwrap();
             let del = s.widgets().delete.unwrap();
             tap_id(&mut s, del);
             s.frame(&mut r).unwrap();
@@ -2664,7 +2769,11 @@ mod tests {
         // On a phone the same text is narrower, so it is taller.
         let (mut ph, mut pr) = phone();
         let (_, next) = ph.nav_buttons().unwrap();
-        for _ in 0..Page::ALL.iter().position(|&p| p == Page::Reading).unwrap() {
+        for _ in Page::ALL
+            .iter()
+            .skip_while(|p| **p != Page::Buttons)
+            .skip(1)
+        {
             tap(&mut ph, next);
         }
         settle(&mut ph);
@@ -2750,6 +2859,7 @@ mod tests {
     #[test]
     fn the_text_ui_takes_taps_in_cells() {
         let mut s = Showcase::new_cells(100, 30);
+        s.set_page(Page::Buttons);
         let click = s.widgets().click_me.unwrap();
         tap_cells(&mut s, click);
         assert_eq!(s.clicks(), 1);

@@ -263,6 +263,7 @@ mod tests {
     fn the_showcase_runs_over_a_console() {
         let (cols, rows) = (100u16, 30u16);
         let mut app = Showcase::new_cells(u32::from(cols), u32::from(rows));
+        app.choose_page(fusuma_showcase::Page::Buttons);
         let mut c = console(cols, rows);
         c.start().unwrap();
         let frame = |app: &mut Showcase, c: &mut Console<String, Vec<Cell>>| {

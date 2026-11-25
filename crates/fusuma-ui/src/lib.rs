@@ -3,6 +3,7 @@
 
 mod anim;
 mod app;
+mod blocks;
 mod cells;
 #[cfg(test)]
 mod damage;
@@ -35,6 +36,7 @@ mod virtual_list;
 mod widgets;
 
 pub use app::App;
+pub use blocks::Stepper;
 pub use cells::{CellMeasure, CellSink, CellTheme, CellThemeError, Emphasis, Glyphs};
 pub use event::Pointer;
 pub use focus::Key;

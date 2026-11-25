@@ -264,7 +264,13 @@ impl<const N: usize> Tree<N> {
             | Kind::Slider { .. }
             | Kind::TextInput { .. } => self.paint_widget(i, r, theme),
             Kind::Label { text, role } => {
-                let style = theme.text_style(role);
+                let mut style = theme.text_style(role);
+                // On the main action's colour (a badge, an avatar) text is in the colour made to read on it.
+                if n.parent.is_some_and(|p| {
+                    self.nodes[usize::from(p)].style.background == crate::theme::Surface::Primary
+                }) {
+                    style.color = theme.colors.on_primary;
+                }
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(rect.inset(n.style.padding).x, centred(rect, size).y);
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))

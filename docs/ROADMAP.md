@@ -195,6 +195,10 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   the real list's, through drag and fling
 - [x] **A semantic tree** (`semantics`, `semantic`: role, name, state, value, rectangle, depth, focus; closed dialogs
   and hidden toasts left out)
+- [x] **Building blocks** (`card`, `divider`, `section`, `badge`, `avatar`, `stepper`, in `blocks.rs`): arrangements of
+  the basic widgets, no new node kinds; new `Surface::Border`, `Surface::Primary` (text on it is drawn in `on_primary`)
+  and `Round::Full` (pill or circle). The showcase opens on a new **Overview** page made of them, and the palette tile
+  on the watch gets a row of its own now that there are ten pages
 - [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
   of the default; a test draws with all five
 - [ ] Accessibility with `AccessKit`

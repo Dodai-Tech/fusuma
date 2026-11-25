@@ -273,8 +273,7 @@ mod tests {
     #[test]
     fn far_apart_changes_are_shown_as_separate_rectangles_and_the_middle_is_not_sent() {
         for backend in backends() {
-            let mut d =
-                Driver::new(Showcase::new(1024, 600), Fake::new(1024, 600), backend).unwrap();
+            let mut d = Driver::new(buttons_app(1024, 600), Fake::new(1024, 600), backend).unwrap();
             d.step(0).unwrap();
             d.board_mut().shown.clear();
             // A click on the Buttons page changes the button and its counter near the top, and the status line at
@@ -308,7 +307,7 @@ mod tests {
         for backend in backends() {
             let mut board = Fake::new(320, 200);
             board.clock = Some(core::cell::Cell::new(0));
-            let mut d = Driver::new(Showcase::new(320, 200), board, backend).unwrap();
+            let mut d = Driver::new(buttons_app(320, 200), board, backend).unwrap();
             let step = d.step(0).unwrap();
             assert!(step.shown.is_some());
             // The fake clock moves 10 us a reading, so each stage between two readings is 10 us.
@@ -362,13 +361,20 @@ mod tests {
         );
     }
 
+    /// The showcase on its Buttons page, which has the widgets these tests press.
+    fn buttons_app(w: u32, h: u32) -> Showcase {
+        let mut app = Showcase::new(w, h);
+        app.set_start(Some("Buttons"), None, None, true, false);
+        app
+    }
+
     fn driver(backend: Backend) -> Driver<Showcase, Fake> {
-        Driver::new(Showcase::new(320, 200), Fake::new(320, 200), backend).unwrap()
+        Driver::new(buttons_app(320, 200), Fake::new(320, 200), backend).unwrap()
     }
 
     /// A screen big enough to lay the showcase's page out (its sidebar alone is 240 px wide).
     fn wide(backend: Backend) -> Driver<Showcase, Fake> {
-        Driver::new(Showcase::new(1024, 600), Fake::new(1024, 600), backend).unwrap()
+        Driver::new(buttons_app(1024, 600), Fake::new(1024, 600), backend).unwrap()
     }
 
     #[test]
@@ -482,7 +488,7 @@ mod tests {
         };
         for chunk in [1, 3, 7, 64] {
             let mut d = Driver::new(
-                Showcase::new(320, 200),
+                buttons_app(320, 200),
                 {
                     let mut f = Fake::new(320, 200);
                     f.chunk = chunk;

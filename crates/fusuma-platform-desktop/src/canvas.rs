@@ -189,7 +189,10 @@ mod tests {
 
     fn showcase_canvas(backend: Backend) -> Option<(Canvas, Shell<Showcase>)> {
         let canvas = Canvas::new(backend, 1024, 600, FontSet::default())?;
-        Some((canvas, Shell::new(Showcase::new(1024, 600))))
+        let mut app = Showcase::new(1024, 600);
+        // The Buttons page has the widgets these tests press.
+        app.set_start(Some("Buttons"), None, None, true, false);
+        Some((canvas, Shell::new(app)))
     }
 
     fn first_frame_and_a_click(backend: Backend) {
