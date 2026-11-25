@@ -11,8 +11,6 @@ authors.workspace = true
 repository.workspace = true
 keywords = ["tui", "terminal", "ansi", "no-std", "embedded"]
 categories = ["command-line-interface", "embedded", "no-std"]
-# A scaffold: published once the toolkit can paint into it (see the roadmap).
-publish = false
 
 [dependencies]
 

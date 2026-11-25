@@ -335,6 +335,15 @@ showcase-esp-restore port="":
 showcase-esp-log port="/dev/ttyACM0" seconds="15":
     nu -c "^stty -F {{ port }} 115200 raw -echo -hupcl; ^timeout {{ seconds }} cat {{ port }}"
 
+# Build the showcase for the browser (wasm + Vello on the CPU, one canvas): needs the wasm32 target and wasm-bindgen
+showcase-web-build *args:
+    nu scripts/web.nu build {{ args }}
+
+# Build it and serve it at http://localhost:8080/index.html
+showcase-web port="8080":
+    nu scripts/web.nu build
+    nu scripts/web.nu serve --port {{ port }}
+
 # Run the components showcase in the terminal (Ctrl+C quits); e.g. just showcase-tui --ascii, or --dump 80x24 Navigation
 showcase-tui *args:
     cargo run -q -p fusuma-showcase-tui -- {{ args }}

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Fusuma components</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #101218; overscroll-behavior: none; }
+  #fusuma { display: block; width: 100vw; height: 100vh; touch-action: none; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="fusuma" tabindex="0"></canvas>
+<script type="module">
+  import init from "./pkg/fusuma_showcase_web.js";
+  init().catch((e) => { document.body.textContent = String(e); });
+</script>
+</body>
+</html>

@@ -967,6 +967,11 @@ impl Showcase {
         fusuma::render::Point::new(self.bounds.w as i32 - 3, self.bounds.h as i32 - 3)
     }
 
+    /// Everything is drawn again at the next frame (a new surface, a new theme).
+    pub fn invalidate(&mut self) {
+        self.tree.invalidate();
+    }
+
     /// Shows `page` (the layout that has a sidebar or a Previous and Next row; on a watch's tile grid it opens the
     /// page). For a host that picks a page by name.
     pub fn choose_page(&mut self, page: Page) {

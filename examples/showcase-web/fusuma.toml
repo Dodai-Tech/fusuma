@@ -1,0 +1,6 @@
+# The web build's settings: the same fonts and colours as the desktop window and the watch.
+[fonts]
+preset = "fusuma"
+
+[theme]
+palette = "fusuma"

@@ -57,6 +57,24 @@ jobs:
         run: cargo test --workspace --all-features
 
 
+  # The showcase compiles to WebAssembly and gets its JavaScript glue: one canvas, Vello on the CPU.
+  web:
+    name: web build (wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: Install wasm-bindgen
+        run: nu scripts/web.nu install
+      - name: Build the web showcase
+        run: nu scripts/web.nu build
+
   msrv:
     name: MSRV (1.90)
     runs-on: ubuntu-latest
