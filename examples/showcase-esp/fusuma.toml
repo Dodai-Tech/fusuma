@@ -18,3 +18,8 @@
 # [theme]
 # palette = "forest"      # fusuma (default), forest, ocean, petrol or violet
 # accent = "violet"       # another palette's main-action colour on it
+
+# The showcase's theme draws text at 15 (captions), 20 (body), 24 (icons) and 30 (titles) pixels: atlases at those
+# sizes, so the integer renderer draws each at its size instead of the nearest smaller one.
+[fonts]
+sizes = [15, 20, 24, 30]

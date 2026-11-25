@@ -10,6 +10,7 @@
 //! preset = "material"   # a preset of fusuma-fonts' catalog; default: the first one the build linked
 //! sans = "roboto"       # or name the families one by one, overriding the preset's
 //! mono = "roboto-mono"
+//! icons = "material-symbols"  # the icon family; default: the first one the build linked
 //! sizes = [10, 15, 20]  # line heights of the glyph atlases (the integer renderer), read at build time
 //!
 //! [theme]
@@ -91,6 +92,8 @@ pub struct FontChoice {
     pub sans: Option<std::string::String>,
     /// The mono family's id, over the preset's.
     pub mono: Option<std::string::String>,
+    /// The icon family's id (`material-symbols`); default: the first one linked.
+    pub icons: Option<std::string::String>,
     /// Line heights the glyph atlases are made at. Read at build time (`fusuma-fonts` reads the file
     /// `FUSUMA_SETTINGS` names); at run time only compared with what the build made.
     pub sizes: Option<std::vec::Vec<u16>>,
@@ -215,6 +218,7 @@ mod tests {
                 preset: Some("material".into()),
                 sans: None,
                 mono: Some("jetbrains-mono".into()),
+                icons: None,
                 sizes: Some(std::vec![12, 18]),
             }
         );
@@ -227,7 +231,7 @@ mod tests {
         assert!(err("[fonts]\nsizes = [4]\n").contains("fonts.sizes: 4"));
         assert!(err("[fonts]\nfamily = \"x\"\n").contains("family"));
         assert!(err("[font]\npreset = \"x\"\n").contains("font"));
-        for key in ["preset", "sans", "mono", "sizes"] {
+        for key in ["preset", "sans", "mono", "icons", "sizes"] {
             assert!(
                 SETTINGS_SCHEMA.contains(&std::format!("\"{key}\"")),
                 "the schema has fonts.{key}"

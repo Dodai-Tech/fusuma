@@ -2,7 +2,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Downloads each family, cuts static Regular and Bold instances from a variable font (fonttools varLib.instancer),
 # subsets them to the catalog's coverage (pyftsubset) and writes `fonts/<id>/regular.ttf`, `bold.ttf` (sans only)
-# and `OFL.txt`. The results are committed, so a build needs no network. Needs `fonttools` (pip: fonttools).
+# and its licence (`OFL.txt`, or `LICENSE.txt` from `licence_url`). An icon family is cut to its `icons` names
+# instead, and `names.txt` lists them with their characters. The results are committed, so a build needs no network. Needs `fonttools` (pip: fonttools).
 #
 #   nu scripts/fonts.nu fetch                     # every family not fetched yet
 #   nu scripts/fonts.nu fetch --family roboto --force
@@ -19,6 +20,22 @@ export def catalog [file: string = ($FONTS | path join catalog.toml)]: nothing -
 # The weights a family is made of: `regular`, and `bold` for a sans (a mono has one weight).
 export def weights [family: record]: nothing -> list<string> {
     if $family.role == "sans" { ["regular" "bold"] } else { ["regular"] }
+}
+
+# An icon family's names with their codepoints (hex), from the `.codepoints` text (`name hex` a line), in the
+# catalog's order. Error naming the first name the font does not have.
+export def icon_codes [names: list<string>, codepoints: string]: nothing -> list<record> {
+    let table = $codepoints | lines | where { |l| $l | is-not-empty } | parse "{name} {hex}"
+    $names | each { |n|
+        let hit = $table | where name == $n
+        if ($hit | is-empty) { error make { msg: $"icon '($n)' is not in the font" } }
+        { name: $n, hex: ($hit | first | get hex) }
+    }
+}
+
+# The coverage that cuts an icon font to `codes` (from `icon_codes`).
+export def icon_coverage [codes: list<record>]: nothing -> string {
+    $codes | get hex | uniq | each { |h| $"U+($h)" } | str join ", "
 }
 
 # How one weight of a family is obtained: from a zip (`member` is the file in it), from a variable font (instanced
@@ -53,7 +70,9 @@ export def subset_args [input: string, output: string, coverage: string]: nothin
 
 # Where the licence of a family is next to its font file.
 export def licence_url [family: record]: nothing -> string {
-    if ($family.url | str contains "github.com/google/fonts/raw/main/") {
+    if ($family.licence_url? != null) {
+        $family.licence_url
+    } else if ($family.url | str contains "github.com/google/fonts/raw/main/") {
         ($family.url | path dirname) + "/OFL.txt"
     } else { "" }
 }
@@ -67,6 +86,11 @@ def fetch_one [family: record, coverage: string, force: bool] {
     }
     mkdir $dir
     let tmp = mktemp -d
+    let coverage = if $family.role == "icons" {
+        let codes = icon_codes $family.icons (http get --raw $family.codepoints_url | into string)
+        $codes | each { |c| $"($c.name) ($c.hex)" } | str join "\n" | $in + "\n" | save -f ($dir | path join names.txt)
+        icon_coverage $codes
+    } else { $coverage }
     for w in (weights $family) {
         let src = origin $family $w
         let raw = $tmp | path join $"($w)-raw.ttf"
@@ -87,8 +111,9 @@ def fetch_one [family: record, coverage: string, force: bool] {
         ^pyftsubset ...(subset_args $raw ($dir | path join $"($w).ttf") $coverage)
     }
     let lic = licence_url $family
+    let lic_file = if ($family.licence_url? != null) { "LICENSE.txt" } else { "OFL.txt" }
     if ($lic | is-not-empty) {
-        http get --raw $lic | save -f ($dir | path join OFL.txt)
+        http get --raw $lic | save -f ($dir | path join $lic_file)
     } else if not ($dir | path join OFL.txt | path exists) {
         error make { msg: $"($family.id): no OFL.txt next to its fonts; add it by hand" }
     }

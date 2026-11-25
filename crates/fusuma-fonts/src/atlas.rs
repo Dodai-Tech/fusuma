@@ -127,6 +127,29 @@ mod tests {
         assert!(!ATLASES.is_empty());
         for a in ATLASES {
             assert!(a.glyphs.windows(2).all(|w| w[0].ch < w[1].ch), "sorted");
+            let family = crate::family(a.family).unwrap();
+            if family.role == crate::Role::Icons {
+                // Every icon, standing on the bottom of the line and inside its square.
+                for (name, c) in family.icons {
+                    let g = a
+                        .glyph(*c)
+                        .unwrap_or_else(|| panic!("{} {} has {name}", a.family, a.line));
+                    assert!(
+                        i32::from(g.top) >= 0
+                            && i32::from(g.top) + i32::from(g.height) <= i32::from(a.line),
+                        "{name}"
+                    );
+                    assert!(
+                        g.width > 0 && u32::from(g.width) <= u32::from(a.line) + 1,
+                        "{name}"
+                    );
+                }
+                assert_eq!(
+                    a.baseline, a.line,
+                    "an icon's baseline is the bottom of the line"
+                );
+                continue;
+            }
             // What every family must have; arrows and the like only if the font does.
             for c in ['A', 'z', '0', 'é', 'ș', 'ț', 'Ă', 'ă', '€', '…'] {
                 assert!(a.glyph(c).is_some(), "{} {} has {c}", a.family, a.line);
@@ -211,7 +234,10 @@ mod tests {
                 )
             })
             .collect();
-        for a in ATLASES {
+        for a in ATLASES
+            .iter()
+            .filter(|a| crate::family(a.family).is_some_and(|f| f.role != crate::Role::Icons))
+        {
             for g in a.glyphs {
                 assert!(
                     ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&g.ch)),

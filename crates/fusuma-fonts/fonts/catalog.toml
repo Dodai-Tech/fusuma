@@ -123,3 +123,30 @@ id = "noto"
 about = "Noto Sans and Noto Sans Mono"
 sans = "noto-sans"
 mono = "noto-sans-mono"
+
+# ── Icons: drawn like text, one character an icon, looked up by name ─────────────────────────────────────────────
+
+[[family]]
+id = "material-symbols"
+name = "Material Symbols Rounded"
+role = "icons"
+about = "Google's Material Symbols, Rounded style, outlined, weight 400 (Apache 2.0)"
+url = "https://github.com/google/material-design-icons/raw/master/variablefont/MaterialSymbolsRounded%5BFILL,GRAD,opsz,wght%5D.ttf"
+codepoints_url = "https://github.com/google/material-design-icons/raw/master/variablefont/MaterialSymbolsRounded%5BFILL,GRAD,opsz,wght%5D.codepoints"
+licence_url = "https://raw.githubusercontent.com/google/material-design-icons/master/LICENSE"
+axes = { FILL = 0, GRAD = 0, opsz = 24 }
+# Only these are cut out of the 4,000; add a name and run `just fonts-fetch family=material-symbols --force`.
+icons = [
+    "home", "settings", "search", "menu", "close", "check", "add", "remove", "delete", "edit",
+    "arrow_back", "arrow_forward", "arrow_upward", "arrow_downward", "chevron_left", "chevron_right",
+    "expand_more", "expand_less", "more_vert", "more_horiz", "refresh", "info", "warning", "error", "help",
+    "notifications", "favorite", "star", "person", "lock", "lock_open", "visibility", "visibility_off",
+    "wifi", "bluetooth", "battery_full", "battery_charging_full", "light_mode", "dark_mode", "palette",
+    "volume_up", "volume_off", "play_arrow", "pause", "stop", "skip_next", "skip_previous", "timer", "schedule",
+    "calendar_today", "mail", "call", "chat", "share", "download", "upload", "folder", "image", "photo_camera",
+    "map", "location_on", "directions_car", "ev_station", "thermostat", "water_drop", "sunny", "cloud", "bolt",
+    "power_settings_new", "logout", "login", "sync", "tune", "filter_list", "sort", "list", "grid_view",
+    "dashboard", "check_circle", "cancel", "radio_button_checked", "radio_button_unchecked", "check_box",
+    "check_box_outline_blank", "toggle_on", "toggle_off", "keyboard", "text_fields", "brightness_6", "language",
+    "translate",
+]

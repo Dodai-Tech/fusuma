@@ -30,7 +30,7 @@ vello_cpu.workspace = true
 fusuma-text = { workspace = true, optional = true }
 
 [dev-dependencies]
-fusuma-fonts = { workspace = true, features = ["preset-fusuma"] }
+fusuma-fonts = { workspace = true, features = ["preset-fusuma", "material-symbols"] }
 fusuma-render = { workspace = true, features = ["conformance"] }
 fusuma-render-embedded.workspace = true
 

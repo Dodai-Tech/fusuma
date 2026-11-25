@@ -40,6 +40,7 @@ pub const fn theme(dark: bool, palette: &Palette) -> Theme {
             caption: 15,
             body: 20,
             title: 30,
+            icon: 24,
         },
         control_height: 56,
         indicator: 28,
@@ -102,6 +103,19 @@ impl Class {
         matches!(self, Self::Watch | Self::Phone)
     }
 }
+
+/// The icons the Typography page shows, by name.
+#[cfg(feature = "fonts")]
+const ICONS: [&str; 8] = [
+    "home",
+    "settings",
+    "wifi",
+    "bluetooth",
+    "palette",
+    "battery_full",
+    "notifications",
+    "ev_station",
+];
 
 /// The text of the palette button: the palette's name.
 fn palette_button_text(palette: &Palette) -> &'static str {
@@ -760,6 +774,17 @@ impl Showcase {
             Page::Typography => {
                 if !lite {
                     t.label(Some(c), "Typography", TextRole::Title)?;
+                }
+                // Icons, drawn like text: Material Symbols by name.
+                #[cfg(feature = "fonts")]
+                {
+                    let set = fusuma::fonts::FontSet::default_set();
+                    let row = t.row(Some(c), Style::new().gap(self.theme.spacing.sm))?;
+                    for name in ICONS {
+                        if let Some(ch) = set.icon(name) {
+                            t.icon(Some(row), ch)?;
+                        }
+                    }
                 }
                 if !lite {
                     t.label(

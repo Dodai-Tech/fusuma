@@ -102,6 +102,7 @@ const fn face(font: Font) -> Option<Face> {
         Font::Sans => Some(Face::Sans),
         Font::SansBold => Some(Face::SansBold),
         Font::Mono => Some(Face::Mono),
+        Font::Icons => Some(Face::Icons),
         Font::Bitmap => None,
     }
 }
@@ -172,7 +173,7 @@ impl TextEngine {
         let at = match self.cache.iter().position(|(k, _)| *k == key) {
             Some(i) => i,
             None => {
-                let laid = self.build(text, family, weight, size);
+                let laid = self.build(text, family, weight, size, font == Font::Icons);
                 if self.cache.len() >= CACHE {
                     self.cache.remove(0);
                 }
@@ -188,8 +189,17 @@ impl TextEngine {
         self.layout(text, font, size).map(|l| l.size)
     }
 
-    fn build(&mut self, text: &str, family: &'static str, weight: f32, size: u32) -> Option<Laid> {
-        let em = Self::em(size);
+    /// Lays `text` out. Icons (`icons`) fill a square as high as the line: their em is the line and their baseline
+    /// its bottom, as their font draws them (Material Symbols stand on the baseline, one em high).
+    fn build(
+        &mut self,
+        text: &str,
+        family: &'static str,
+        weight: f32,
+        size: u32,
+        icons: bool,
+    ) -> Option<Laid> {
+        let em = if icons { size as f32 } else { Self::em(size) };
         let mut b = self
             .layouts
             .ranged_builder(&mut self.fonts, text, 1.0, true);
@@ -205,7 +215,7 @@ impl TextEngine {
                     continue;
                 };
                 let mut x = run.offset();
-                let y = run.baseline();
+                let y = if icons { size as f32 } else { run.baseline() };
                 let glyphs = run
                     .glyphs()
                     .map(|g| {
@@ -228,7 +238,12 @@ impl TextEngine {
         // Whole pixels, rounded up so the text never sticks out of the box it was measured for; the line is
         // never shorter than asked, so a layout in `size` pixel lines stacks like the bitmap font's.
         let width = ceil_px(layout.width());
-        let height = ceil_px(layout.height()).max(size);
+        // An icon's line is its square, whatever the font's ascent and descent say.
+        let height = if icons {
+            size
+        } else {
+            ceil_px(layout.height()).max(size)
+        };
         Some(Laid {
             size: Size::new(width, height),
             runs,
@@ -346,7 +361,7 @@ mod tests {
                 .id()
         };
         let inter_file = font_of(&mut e);
-        e.set_fonts(FontSet::choose(None, Some("roboto"), None).unwrap());
+        e.set_fonts(FontSet::choose(None, Some("roboto"), None, None).unwrap());
         let roboto = e.measure("Settings and more", Font::Sans, 24).unwrap();
         assert_ne!(font_of(&mut e), inter_file, "another file");
         assert_ne!(

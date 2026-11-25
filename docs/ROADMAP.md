@@ -52,7 +52,14 @@ works and is tested.
      `App::palette`). Every palette with every accent keeps the contrast rules (text 7:1, muted 4.5:1, text on the
      main action 4.5:1 in every state, the main action 3:1 on the page): checked for all 50 combinations. The
      showcase switches at run time: a header button, on the watch a tile of the home screen
-   - [ ] **Icon fonts** (Material Symbols, Lucide, Phosphor) through the same atlases, drawn by name
+   - [x] **Icons, drawn like text.** Material Symbols Rounded (Apache 2.0) is a family of the catalog with the role
+     `icons`: the fetch script cuts the catalog's 90 names out of the 4,000 (17 KB) and writes their characters
+     (`names.txt`); the build makes the name table (`FontSet::icon("settings")`) and icon atlases (the em is the
+     line, the baseline its bottom, so an icon fills its square). `Font::Icons`, `TextRole::Icon`, `Tree::icon` and
+     `TextSizes::icon`; Vello draws it through Parley in the same square. `[fonts] icons` picks the family; the facade's
+     `icons` feature links it. Held to Vello: ink within 15 %, inside its square. The S3 watch shows them on the
+     Typography page; its firmware now asks for atlases at its theme's sizes (15, 20, 24, 30). Not yet: Lucide and
+     Phosphor (each a catalog entry), filled icons (the `FILL` axis), icons in buttons
 2. **UI components and logic:** the missing widgets and behaviour (see Phase 4), each with a pixel look.
 3. **TUI:** the cells in the toolkit (`Measure`, `CellSink`, the cell theme), running apps, then the outputs (see
    Phase 5). The `fusuma-cells` and `fusuma-platform-tui` scaffolds wait until then.

@@ -730,6 +730,16 @@ impl<const N: usize> Tree<N> {
         self.add(parent, Kind::Stack(Axis::Row), style)
     }
 
+    /// Adds an icon: the character `icon` of the icon font (look it up by name with `fusuma::fonts::FontSet::icon`),
+    /// drawn in a square of the theme's icon size. A renderer without the icon font shows its bitmap glyph.
+    ///
+    /// # Errors
+    /// [`BuildError`] as for [`label`](Self::label).
+    pub fn icon(&mut self, parent: Option<NodeId>, icon: char) -> Result<NodeId, BuildError> {
+        let mut buf = [0u8; 4];
+        self.label(parent, icon.encode_utf8(&mut buf), TextRole::Icon)
+    }
+
     /// Adds a label.
     ///
     /// # Errors
@@ -1217,6 +1227,32 @@ mod tests {
         t.set("");
         assert_eq!(t.as_str(), "");
         assert_eq!(SmallText::new(&"x".repeat(100)).as_str().len(), TEXT_CAP);
+    }
+
+    #[test]
+    fn an_icon_is_a_label_of_one_icon_character_in_the_icon_role() {
+        let mut t = Tree::<4>::new();
+        let root = t.row(None, Style::new()).unwrap();
+        let gear = t.icon(Some(root), '\u{e8b8}').unwrap();
+        assert_eq!(t.text(gear), Some("\u{e8b8}"));
+        assert!(matches!(
+            t.nodes[usize::from(gear.index)].kind,
+            Kind::Label {
+                role: TextRole::Icon,
+                ..
+            }
+        ));
+        let style = crate::Theme::DARK.text_style(TextRole::Icon);
+        assert_eq!(
+            (style.size, style.font),
+            (crate::Theme::DARK.text.icon, fusuma_render::Font::Icons)
+        );
+        t.remove(root);
+        assert_eq!(
+            t.icon(Some(root), 'x'),
+            Err(BuildError::NoSuchParent),
+            "a stale parent"
+        );
     }
 
     #[test]

@@ -43,6 +43,10 @@ struct Family {
     regular: Option<String>,
     bold: Option<String>,
     axes: Option<toml::Table>,
+    /// An icon family: where its name table is, its licence, and the names cut out of it.
+    codepoints_url: Option<String>,
+    licence_url: Option<String>,
+    icons: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -79,7 +83,13 @@ fn main() {
         .iter()
         .filter(|f| {
             assert!(!f.url.is_empty(), "fonts/catalog.toml: {} has no url", f.id);
-            let _ = (&f.bold_url, &f.regular, &f.bold, &f.axes);
+            let _ = (&f.bold_url, &f.regular, &f.bold, &f.axes, &f.codepoints_url, &f.licence_url);
+            assert_eq!(
+                f.role == "icons",
+                f.icons.is_some(),
+                "fonts/catalog.toml: {}: `icons` is for an icon family, and an icon family needs it",
+                f.id
+            );
             env::var(format!(
                 "CARGO_FEATURE_{}",
                 f.id.to_uppercase().replace('-', "_")
@@ -100,11 +110,18 @@ fn main() {
         let role = match f.role.as_str() {
             "sans" => "Sans",
             "mono" => "Mono",
+            "icons" => "Icons",
             other => panic!(
-                "fonts/catalog.toml: {}: role '{other}' is not sans or mono",
+                "fonts/catalog.toml: {}: role '{other}' is not sans, mono or icons",
                 f.id
             ),
         };
+        let icons = icon_table(&fonts.join(&f.id), f);
+        let licence = ["LICENSE.txt", "OFL.txt"]
+            .into_iter()
+            .map(|n| fonts.join(&f.id).join(n))
+            .find(|p| p.exists())
+            .unwrap_or_else(|| panic!("fonts/{}: no LICENSE.txt or OFL.txt", f.id));
         let file = |weight: &str| {
             let path = fonts.join(&f.id).join(format!("{weight}.ttf"));
             let data = fs::read(&path).unwrap_or_else(|_| {
@@ -129,12 +146,17 @@ fn main() {
         };
         let _ = writeln!(
             src,
-            "    Family {{ id: {:?}, name: {:?}, role: Role::{role}, about: {:?}, regular: {}, bold: {bold}, licence: include_str!({:?}) }},",
+            "    Family {{ id: {:?}, name: {:?}, role: Role::{role}, about: {:?}, regular: {}, bold: {bold}, licence: include_str!({:?}), icons: &[{}] }},",
             f.id,
             f.name,
             f.about,
             file("regular"),
-            fonts.join(&f.id).join("OFL.txt").display().to_string()
+            licence.display().to_string(),
+            icons
+                .iter()
+                .map(|(n, c)| format!("({n:?}, '\\u{{{c:x}}}')"))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     src.push_str("];\n\n/// Every preset of the catalog, linked or not; the first one whose families are linked is the default.\npub const PRESETS: &[Preset] = &[\n");
@@ -169,12 +191,67 @@ fn main() {
 
     #[cfg(feature = "atlas")]
     {
-        let faces: Vec<(&str, bool)> = linked
+        let faces: Vec<atlas::Source> = linked
             .iter()
-            .map(|f| (f.id.as_str(), f.role == "sans"))
+            .map(|f| atlas::Source {
+                id: f.id.as_str(),
+                sans: f.role == "sans",
+                // Icons fill a square as high as the line; their codepoints are the coverage.
+                // Sorted and without repeats: an atlas's glyphs are searched by character.
+                ranges: (f.role == "icons").then(|| {
+                    let mut cps: Vec<u32> = icon_table(&fonts.join(&f.id), f)
+                        .iter()
+                        .map(|(_, c)| *c)
+                        .collect();
+                    cps.sort_unstable();
+                    cps.dedup();
+                    cps.into_iter().map(|c| (c, c)).collect()
+                }),
+            })
             .collect();
         atlas::build(&faces, &fonts, &out, &sizes, &catalog.defaults.coverage);
     }
+}
+
+/// An icon family's names and characters from its `names.txt` (`name hex` a line), sorted by name, checked against
+/// the catalog's list; empty for a text family.
+fn icon_table(dir: &Path, f: &Family) -> Vec<(String, u32)> {
+    let Some(want) = &f.icons else {
+        return Vec::new();
+    };
+    let path = dir.join("names.txt");
+    let text = fs::read_to_string(&path).unwrap_or_else(|_| {
+        panic!(
+            "{}: missing; run `nu scripts/fonts.nu fetch --family {}`",
+            path.display(),
+            f.id
+        )
+    });
+    let mut table: Vec<(String, u32)> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (name, hex) = l
+                .split_once(' ')
+                .unwrap_or_else(|| panic!("{}: '{l}'", path.display()));
+            (
+                name.to_string(),
+                u32::from_str_radix(hex.trim(), 16).unwrap(),
+            )
+        })
+        .collect();
+    let mut got: Vec<&str> = table.iter().map(|(n, _)| n.as_str()).collect();
+    let mut asked: Vec<&str> = want.iter().map(String::as_str).collect();
+    got.sort_unstable();
+    asked.sort_unstable();
+    assert_eq!(
+        got,
+        asked,
+        "{}: not the catalog's icons; fetch it again with --force",
+        path.display()
+    );
+    table.sort();
+    table
 }
 
 /// The line heights to make atlases at: the app's settings, else the catalog's.
@@ -244,17 +321,21 @@ mod atlas {
     }
 
     /// An atlas per face (a family's regular and, for a sans, bold) at each line height.
-    pub fn build(
-        families: &[(&str, bool)],
-        fonts: &Path,
-        out: &Path,
-        sizes: &[u16],
-        coverage: &str,
-    ) {
-        let ranges = ranges(coverage);
+    /// A linked family to make atlases of.
+    pub struct Source<'a> {
+        pub id: &'a str,
+        pub sans: bool,
+        /// An icon family's codepoints; `None` for text, which gets the catalog's coverage.
+        pub ranges: Option<Vec<(u32, u32)>>,
+    }
+
+    pub fn build(families: &[Source<'_>], fonts: &Path, out: &Path, sizes: &[u16], coverage: &str) {
+        let text_ranges = ranges(coverage);
         let mut src = String::from("// Generated by build.rs. Do not edit.\n\n");
         let mut names = Vec::new();
-        for &(id, sans) in families {
+        for f in families {
+            let (id, sans) = (f.id, f.sans);
+            let ranges = f.ranges.as_ref().unwrap_or(&text_ranges);
             let weights: &[&str] = if sans {
                 &["regular", "bold"]
             } else {
@@ -272,10 +353,11 @@ mod atlas {
                     let atlas = Face {
                         family: id,
                         bold: weight == "bold",
+                        icons: f.ranges.is_some(),
                         line: u32::from(line),
                         name: &name,
                     };
-                    one(&font, &atlas, &ranges, out, &mut src);
+                    one(&font, &atlas, ranges, out, &mut src);
                     names.push(name);
                 }
             }
@@ -293,6 +375,8 @@ mod atlas {
     struct Face<'a> {
         family: &'a str,
         bold: bool,
+        /// An icon font: the em is the line and the baseline its bottom, so an icon fills the line's square.
+        icons: bool,
         line: u32,
         name: &'a str,
     }
@@ -307,12 +391,16 @@ mod atlas {
         src: &mut String,
     ) {
         let (line, name) = (face.line, face.name);
-        let em = line as f32 * 100.0 / 121.0;
+        let em = if face.icons {
+            line as f32
+        } else {
+            line as f32 * 100.0 / 121.0
+        };
         // `PxScale` is the font's ascent-to-descent height in pixels, not the em: convert `em` pixels per em to it.
         let scale =
             ab_glyph::PxScale::from(em * font.height_unscaled() / font.units_per_em().unwrap());
         let scaled = font.as_scaled(scale);
-        let baseline = scaled.ascent();
+        let baseline = if face.icons { em } else { scaled.ascent() };
         let mut glyphs = String::new();
         let mut coverage: Vec<u8> = Vec::new();
         for &(lo, hi) in ranges {

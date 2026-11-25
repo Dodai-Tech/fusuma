@@ -75,7 +75,7 @@ fn font_set(choice: &fusuma::platform::FontChoice) -> anyhow::Result<fusuma::fon
     let set = fusuma::fonts::FontSet::choose(
         choice.preset.as_deref(),
         choice.sans.as_deref(),
-        choice.mono.as_deref(),
+        choice.mono.as_deref(), choice.icons.as_deref(),
     )
     .map_err(|e| anyhow::anyhow!("fusuma.toml [fonts]: {e}"))?;
     log::info!(

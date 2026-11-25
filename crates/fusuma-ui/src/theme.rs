@@ -67,6 +67,8 @@ pub struct TextSizes {
     pub body: u32,
     /// Headings.
     pub title: u32,
+    /// Icons ([`TextRole::Icon`]): the side of their square.
+    pub icon: u32,
 }
 
 /// Durations of motion, in milliseconds.
@@ -119,14 +121,18 @@ pub struct Fonts {
     pub title: Font,
     /// Fixed-width text: [`TextRole::Code`].
     pub mono: Font,
+    /// Icons: [`TextRole::Icon`].
+    pub icons: Font,
 }
 
 impl Fonts {
-    /// Inter for text, Inter Bold for headings, JetBrains Mono for code.
+    /// Inter for text, Inter Bold for headings, JetBrains Mono for code, Material Symbols for icons (each the
+    /// family the build linked for that role).
     pub const DEFAULT: Self = Self {
         body: Font::Sans,
         title: Font::SansBold,
         mono: Font::Mono,
+        icons: Font::Icons,
     };
 }
 
@@ -173,6 +179,7 @@ impl Theme {
                 caption: s(self.text.caption, p, 1),
                 body: s(self.text.body, p, 1),
                 title: s(self.text.title, p, 1),
+                icon: s(self.text.icon, p, 1),
             },
             control_height: s(self.control_height, p, 1),
             border_width: s(self.border_width, p, 1),
@@ -508,6 +515,7 @@ pub(crate) const BITMAP_TEST: Theme = Theme {
         body: Font::Bitmap,
         title: Font::Bitmap,
         mono: Font::Bitmap,
+        icons: Font::Bitmap,
     },
     ..Theme::DARK
 };
@@ -524,6 +532,8 @@ pub enum TextRole {
     Caption,
     /// Fixed-width text, for a log or code.
     Code,
+    /// An icon: a character of the icon font ([`Tree::icon`](crate::Tree::icon)).
+    Icon,
 }
 
 /// The background of a container.
@@ -623,6 +633,7 @@ impl Theme {
             caption: 10,
             body: 15,
             title: 20,
+            icon: 20,
         },
         fonts: Fonts::DEFAULT,
         control_height: 44,
@@ -702,6 +713,9 @@ impl Theme {
             }
             TextRole::Code => {
                 TextStyle::new(self.text.body, self.colors.text).font(self.fonts.mono)
+            }
+            TextRole::Icon => {
+                TextStyle::new(self.text.icon, self.colors.text).font(self.fonts.icons)
             }
         }
     }
@@ -936,6 +950,10 @@ mod tests {
             );
             assert!(t.radii.sm < t.radii.md && t.radii.md < t.radii.lg);
             assert!(t.text.caption < t.text.body && t.text.body < t.text.title);
+            assert!(
+                t.text.icon >= t.text.body,
+                "an icon is not smaller than the text beside it"
+            );
             assert!(t.motion.fast_ms < t.motion.normal_ms && t.motion.normal_ms < t.motion.slow_ms);
         }
         assert_eq!(Theme::default(), Theme::DARK);

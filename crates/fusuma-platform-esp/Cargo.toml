@@ -23,7 +23,7 @@ vello-cpu = ["fusuma/renderer-vello-cpu", "fusuma-platform-embedded/vello-cpu"]
 # Smooth text with the default preset (Inter, JetBrains Mono): glyph atlases for the integer renderer (about 125 KB of
 # flash) and, with `vello-cpu`, the font files for Vello. Other families: the firmware turns on `fusuma/fonts-*` or
 # `fusuma-fonts/<family>` and picks them in `[fonts]`. Without it text is the bitmap font.
-fonts = ["fusuma/fonts-fusuma", "fusuma-platform-embedded/fonts"]
+fonts = ["fusuma/fonts-fusuma", "fusuma/icons", "fusuma-platform-embedded/fonts"]
 # Every font family of the catalog (about 600 KB of atlases), so `[fonts]` can pick any preset.
 all-fonts = ["fonts", "fusuma/fonts-all"]
 

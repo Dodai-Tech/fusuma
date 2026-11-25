@@ -11,9 +11,9 @@ publish = false
 
 [features]
 default = ["fonts"]
-# Vector fonts (Inter, Inter Bold, JetBrains Mono). Without them text is the built-in bitmap font: for a chip that
-# draws with the integer renderer.
-fonts = ["fusuma/fonts-fusuma"]
+# Smooth text (Inter, Inter Bold, JetBrains Mono) and icons (Material Symbols). Without them text is the built-in
+# bitmap font and the icons row is left out.
+fonts = ["fusuma/fonts-fusuma", "fusuma/icons"]
 
 [dependencies]
 fusuma.workspace = true

@@ -358,6 +358,7 @@ fn atlas_for(
         fusuma_render::Font::Sans => Face::Sans,
         fusuma_render::Font::SansBold => Face::SansBold,
         fusuma_render::Font::Mono => Face::Mono,
+        fusuma_render::Font::Icons => Face::Icons,
         fusuma_render::Font::Bitmap => return None,
     };
     fusuma_fonts::atlas::Atlas::for_face(set, face, style.size)
@@ -1124,6 +1125,43 @@ mod atlas_text_tests {
             px.iter().filter(|&&p| p == 0xffff).count() > 20,
             "but the strokes are there"
         );
+    }
+
+    /// An icon fills the square of its line, as Vello draws it.
+    #[test]
+    fn an_icon_fills_its_square_like_vellos() {
+        let set = fusuma_fonts::FontSet::default_set();
+        for (name, size) in [("settings", 20u32), ("home", 15), ("wifi", 10)] {
+            let ch = set.icon(name).unwrap();
+            let mut text = [0u8; 4];
+            let text = ch.encode_utf8(&mut text);
+            let (w, h) = (40u32, 40u32);
+            let mut a = screen(w as u16, h as u16);
+            let mut v = fusuma_render_vello_cpu::new(w, h).unwrap();
+            paint(&mut a, text, Font::Icons, size);
+            paint(&mut v, text, Font::Icons, size);
+            let (pa, pv) = (grey(&a, w, h), grey(&v, w, h));
+            let ink = |p: &[u8]| p.iter().map(|&g| u64::from(g)).sum::<u64>();
+            let ratio = ink(&pa) as f64 / ink(&pv) as f64;
+            assert!(
+                (0.85..1.15).contains(&ratio),
+                "{name} {size}: ink {ratio:.3}"
+            );
+            // Inside the square from (2, 2).
+            for y in 0..h {
+                for x in 0..w {
+                    let inside = (2..2 + size).contains(&x) && (2..2 + size).contains(&y);
+                    assert!(
+                        inside || pa[(y * w + x) as usize] == 0,
+                        "{name} {size}: ink at ({x}, {y})"
+                    );
+                }
+            }
+            let m = a.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
+            assert_eq!((m.w, m.h), (size, size), "{name}: a square");
+            let mv = v.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
+            assert_eq!((mv.w, mv.h), (size, size), "{name}: Vello's square");
+        }
     }
 
     /// The atlas draws the same text as Vello with the same font: the same ink in the same place. Not the same

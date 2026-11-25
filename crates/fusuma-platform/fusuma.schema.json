@@ -55,6 +55,10 @@
           },
           "minItems": 1,
           "description": "Line heights of the glyph atlases the integer renderer draws with, read at build time (FUSUMA_SETTINGS). Default 10, 15 and 20."
+        },
+        "icons": {
+          "type": "string",
+          "description": "The icon family's id (material-symbols). Default: the first one the build linked."
         }
       }
     },

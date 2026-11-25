@@ -23,6 +23,8 @@ pub enum Role {
     Sans,
     /// Fixed-width text (code, logs, numbers in columns).
     Mono,
+    /// Icons: each character is an icon, looked up by name ([`FontSet::icon`]).
+    Icons,
 }
 
 /// A family the build linked: its files and licence.
@@ -40,8 +42,11 @@ pub struct Family {
     pub regular: FontFile,
     /// The bold face (a sans has one).
     pub bold: Option<FontFile>,
-    /// Its licence text (SIL Open Font License 1.1): ship it with any binary that bundles the family.
+    /// Its licence text (SIL Open Font License 1.1, or Apache 2.0 for Material Symbols): ship it with any binary
+    /// that bundles the family.
     pub licence: &'static str,
+    /// An icon family's icons, by name, sorted by name; empty for text.
+    pub icons: &'static [(&'static str, char)],
 }
 
 /// A sans and a mono that go together, by family id. Every preset of the catalog is listed, linked or not.
@@ -66,6 +71,8 @@ pub enum Face {
     SansBold,
     /// The mono.
     Mono,
+    /// The icons.
+    Icons,
 }
 
 /// Which linked family fills each role. Built once from the settings ([`FontSet::choose`]); a renderer draws a
@@ -76,6 +83,8 @@ pub struct FontSet {
     pub sans: Option<&'static Family>,
     /// The mono family.
     pub mono: Option<&'static Family>,
+    /// The icon family.
+    pub icons: Option<&'static Family>,
 }
 
 /// Why a font choice cannot be met: it names the setting and the value.
@@ -101,7 +110,10 @@ impl core::fmt::Display for FontError<'_> {
                 "font family '{id}' is not linked: turn on the cargo feature fusuma-fonts/{id}"
             ),
             Self::WrongRole(id) => {
-                write!(f, "font family '{id}' is not for that role (sans or mono)")
+                write!(
+                    f,
+                    "font family '{id}' is not for that role (sans, mono or icons)"
+                )
             }
         }
     }
@@ -125,27 +137,26 @@ impl FontSet {
     pub const NONE: Self = Self {
         sans: None,
         mono: None,
+        icons: None,
     };
 
-    /// The default: the first preset whose families are both linked; else the first linked sans and mono.
+    /// The default: the first preset whose families are both linked, else the first linked sans and mono; and the
+    /// first linked icon family.
     #[must_use]
     pub fn default_set() -> Self {
-        PRESETS
+        let first = |role| FAMILIES.iter().find(|f| f.role == role);
+        let text = PRESETS
             .iter()
-            .find_map(|p| {
-                Some(Self {
-                    sans: Some(family(p.sans)?),
-                    mono: Some(family(p.mono)?),
-                })
-            })
-            .unwrap_or_else(|| Self {
-                sans: FAMILIES.iter().find(|f| f.role == Role::Sans),
-                mono: FAMILIES.iter().find(|f| f.role == Role::Mono),
-            })
+            .find_map(|p| Some((family(p.sans)?, family(p.mono)?)));
+        Self {
+            sans: text.map(|t| t.0).or_else(|| first(Role::Sans)),
+            mono: text.map(|t| t.1).or_else(|| first(Role::Mono)),
+            icons: first(Role::Icons),
+        }
     }
 
-    /// The set the settings ask for: a `preset`, and/or a `sans` and a `mono` family by id, each overriding the
-    /// preset's. Nothing asked: [`default_set`](Self::default_set).
+    /// The set the settings ask for: a `preset`, and/or a `sans`, a `mono` and an `icons` family by id, each
+    /// overriding the default's. Nothing asked: [`default_set`](Self::default_set).
     ///
     /// # Errors
     /// [`FontError`] naming an unknown preset or family, one whose feature is off, or one in the wrong role.
@@ -153,20 +164,20 @@ impl FontSet {
         preset: Option<&'a str>,
         sans: Option<&'a str>,
         mono: Option<&'a str>,
+        icons: Option<&'a str>,
     ) -> Result<Self, FontError<'a>> {
-        let mut set = match preset {
-            None => Self::default_set(),
-            Some(id) => {
-                let p = PRESETS
-                    .iter()
-                    .find(|p| p.id == id)
-                    .ok_or(FontError::UnknownPreset(id))?;
-                Self {
-                    sans: Some(pick(p.sans, Role::Sans)?),
-                    mono: Some(pick(p.mono, Role::Mono)?),
-                }
-            }
-        };
+        let mut set = Self::default_set();
+        if let Some(id) = preset {
+            let p = PRESETS
+                .iter()
+                .find(|p| p.id == id)
+                .ok_or(FontError::UnknownPreset(id))?;
+            set.sans = Some(pick(p.sans, Role::Sans)?);
+            set.mono = Some(pick(p.mono, Role::Mono)?);
+        }
+        if let Some(id) = icons {
+            set.icons = Some(pick(id, Role::Icons)?);
+        }
         if let Some(id) = sans {
             set.sans = Some(pick(id, Role::Sans)?);
         }
@@ -186,7 +197,19 @@ impl FontSet {
                 .sans
                 .map(|f| (f, f.bold.as_ref().unwrap_or(&f.regular))),
             Face::Mono => self.mono.map(|f| (f, &f.regular)),
+            Face::Icons => self.icons.map(|f| (f, &f.regular)),
         }
+    }
+
+    /// The character of the icon called `name` (`"settings"`) in this set's icon family; `None` when there is no
+    /// icon family or it has no such icon.
+    #[must_use]
+    pub fn icon(&self, name: &str) -> Option<char> {
+        let icons = self.icons?.icons;
+        icons
+            .binary_search_by(|(n, _)| (*n).cmp(name))
+            .ok()
+            .map(|i| icons[i].1)
     }
 }
 
@@ -244,11 +267,12 @@ mod tests {
             );
         }
         for f in FAMILIES {
-            assert!(
-                f.licence.contains("SIL OPEN FONT LICENSE Version 1.1"),
-                "{}",
-                f.id
-            );
+            let licence = if f.role == Role::Icons {
+                "Apache License"
+            } else {
+                "SIL OPEN FONT LICENSE Version 1.1"
+            };
+            assert!(f.licence.contains(licence), "{}", f.id);
             assert_eq!(
                 f.bold.is_some(),
                 f.role == Role::Sans,
@@ -258,30 +282,61 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "material-symbols")]
+    #[test]
+    fn icons_are_found_by_name_and_every_one_has_a_glyph() {
+        let set = FontSet::default_set();
+        let icons = set.icons.unwrap();
+        assert_eq!(icons.id, "material-symbols");
+        assert!(
+            icons.icons.windows(2).all(|w| w[0].0 < w[1].0),
+            "sorted for the search"
+        );
+        // That each one has a glyph is checked on its atlas (`atlas::tests`), rasterised from the file.
+        for (name, c) in icons.icons {
+            assert_eq!(set.icon(name), Some(*c));
+        }
+        assert!(set.icon("settings").is_some() && set.icon("home") != set.icon("settings"));
+        assert_eq!(set.icon("nope"), None);
+        assert_eq!(FontSet::NONE.icon("settings"), None);
+        assert_eq!(
+            set.file(Face::Icons).unwrap().1.family,
+            "Material Symbols Rounded"
+        );
+        assert_eq!(
+            FontSet::choose(None, None, None, Some("inter")),
+            Err(FontError::WrongRole("inter"))
+        );
+        assert_eq!(
+            FontSet::choose(None, None, None, Some("material-symbols")),
+            Ok(set)
+        );
+    }
+
     #[test]
     fn a_choice_names_what_is_wrong() {
         assert_eq!(
-            FontSet::choose(None, None, None),
+            FontSet::choose(None, None, None, None),
             Ok(FontSet::default_set())
         );
         assert_eq!(
-            FontSet::choose(Some("fusuma"), None, None),
+            FontSet::choose(Some("fusuma"), None, None, None),
             Ok(FontSet::default_set())
         );
         assert_eq!(
-            FontSet::choose(Some("nope"), None, None),
+            FontSet::choose(Some("nope"), None, None, None),
             Err(FontError::UnknownPreset("nope"))
         );
         assert_eq!(
-            FontSet::choose(None, Some("comic"), None),
+            FontSet::choose(None, Some("comic"), None, None),
             Err(FontError::UnknownFamily("comic"))
         );
         assert_eq!(
-            FontSet::choose(None, Some("jetbrains-mono"), None),
+            FontSet::choose(None, Some("jetbrains-mono"), None, None),
             Err(FontError::WrongRole("jetbrains-mono"))
         );
         assert_eq!(
-            FontSet::choose(None, None, Some("inter")),
+            FontSet::choose(None, None, Some("inter"), None),
             Err(FontError::WrongRole("inter"))
         );
         let e = std::format!("{}", FontError::NotLinked("roboto"));
@@ -292,11 +347,11 @@ mod tests {
     #[test]
     fn a_family_that_is_not_linked_says_which_feature_links_it() {
         assert_eq!(
-            FontSet::choose(Some("material"), None, None),
+            FontSet::choose(Some("material"), None, None, None),
             Err(FontError::NotLinked("roboto"))
         );
         assert_eq!(
-            FontSet::choose(None, Some("roboto"), None),
+            FontSet::choose(None, Some("roboto"), None, None),
             Err(FontError::NotLinked("roboto"))
         );
     }
@@ -304,7 +359,7 @@ mod tests {
     #[cfg(all(feature = "roboto", feature = "roboto-mono"))]
     #[test]
     fn a_preset_and_a_family_override_combine() {
-        let set = FontSet::choose(Some("material"), None, Some("jetbrains-mono")).unwrap();
+        let set = FontSet::choose(Some("material"), None, Some("jetbrains-mono"), None).unwrap();
         assert_eq!(
             (set.sans.unwrap().name, set.mono.unwrap().name),
             ("Roboto", "JetBrains Mono")
