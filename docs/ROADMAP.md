@@ -92,8 +92,12 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   Vello: within 1.5 % of the ink pixel by pixel
 - [x] Faster copy to the panel: a block of rows in one pass in the panel's byte order (S3: 16.8 -> 12.7 ms a full
   frame); per-stage timing in every driver step (`Timing`: input, draw, raster, present)
-- [ ] Smooth strokes along paths (the checkbox tick, chevrons) and smooth filled paths on the integer renderer
-- [ ] Images with alpha on the integer renderer (drawn on/off today)
+- [x] **Smooth strokes and filled paths on the integer renderer** (`fill.rs`, integer maths, no allocation): paths cut
+  into 1/16 px edges, four samples a pixel row with exact horizontal coverage; strokes are quads, miter joins (Vello's
+  limit of 4) and round caps, wound alike and filled non-zero so a translucent stroke is one layer. Held to Vello on a
+  tick, a chevron, a slanted line, a triangle and a curve (ink within 4 %, pixels within 8 %)
+- [x] **Images with alpha on the integer renderer**: each pixel mixed into the frame (`Blend::blend_colors`); held to
+  Vello within 16 per channel (RGB565 keeps 5 or 6 bits)
 - [ ] Pixel-shift scrolling on the integer renderer (a full redraw of the window today)
 - [ ] Several damage rectangles, so a hover and a status line do not repaint everything between them
 - [ ] The GPU backend drawing to a window surface with no read-back

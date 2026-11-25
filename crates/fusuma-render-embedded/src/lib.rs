@@ -417,7 +417,7 @@ where
     }
 
     fn capabilities(&self) -> Capabilities {
-        // Fills and text mix into a target that can blend; strokes along paths and images do not yet.
+        // Fills, strokes, text and images mix into a target that can blend.
         let blend = self.target.can_blend();
         Capabilities {
             alpha: blend,
@@ -606,25 +606,55 @@ where
 
     fn draw_image(&mut self, image: &Image<'_>, at: Point) -> Result<(), Self::Error> {
         let origin = self.shift(at);
-        if !Self::point_ok(origin) {
+        if !Self::point_ok(origin) || self.state.clip.is_empty() {
             return Ok(());
         }
-        let (w, h) = (image.width(), image.height());
-        let pixels = (0..h)
-            .flat_map(move |y| (0..w).map(move |x| (x, y)))
-            .filter_map(|(x, y)| {
-                let [r, g, b, a] = image.pixel(x, y)?;
-                let at = EgPoint::new(
-                    origin
-                        .x
-                        .saturating_add(i32::try_from(x).unwrap_or(i32::MAX)),
-                    origin
-                        .y
-                        .saturating_add(i32::try_from(y).unwrap_or(i32::MAX)),
-                );
-                (a != 0).then(|| embedded_graphics::Pixel(at, rgb565(Color::rgb(r, g, b))))
-            });
-        self.draw(|t| t.draw_iter(pixels))
+        let clip = self.state.clip;
+        let (cx0, cy0) = (i64::from(clip.x), i64::from(clip.y));
+        let (cx1, cy1) = (cx0 + i64::from(clip.w), cy0 + i64::from(clip.h));
+        let (ox, oy) = (i64::from(origin.x), i64::from(origin.y));
+        let (w, h) = (i64::from(image.width()), i64::from(image.height()));
+        let (x0, x1) = (ox.max(cx0), (ox + w).min(cx1));
+        if x0 >= x1 {
+            return Ok(());
+        }
+        let blend = self.target.can_blend();
+        let rgba = image.rgba();
+        let mut alpha = [0u8; 64];
+        let mut colors = [0u16; 64];
+        for y in oy.max(cy0)..(oy + h).min(cy1) {
+            let row = ((y - oy) * w) as usize * 4;
+            let mut x = x0;
+            while x < x1 {
+                let n = (x1 - x).min(64) as usize;
+                let first = row + (x - ox) as usize * 4;
+                for i in 0..n {
+                    let px = &rgba[first + i * 4..first + i * 4 + 4];
+                    alpha[i] = px[3];
+                    colors[i] = embedded_graphics::pixelcolor::IntoStorage::into_storage(rgb565(
+                        Color::rgb(px[0], px[1], px[2]),
+                    ));
+                }
+                // Inside the clip, so these fit `i32`.
+                let (bx, by) = (x as i32, y as i32);
+                if blend {
+                    self.target.blend_colors(bx, by, &alpha[..n], &colors[..n]);
+                } else {
+                    // The target cannot blend: the pixels at least half opaque, solid.
+                    let solid = (0..n).filter(|&i| alpha[i] >= 128).map(|i| {
+                        embedded_graphics::Pixel(
+                            EgPoint::new(bx + i as i32, by),
+                            Rgb565::from(embedded_graphics::pixelcolor::raw::RawU16::new(
+                                colors[i],
+                            )),
+                        )
+                    });
+                    self.target.draw_iter(solid).map_err(Error::Target)?;
+                }
+                x += n as i64;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -847,6 +877,7 @@ mod tests {
             ("tick", &tick[..], 2),
             ("fat tick", &tick[..], 4),
             ("chevron", &chevron[..], 3),
+            ("wide chevron", &chevron[..], 9),
             ("slant", &slant[..], 5),
             ("triangle", &tri[..], 2),
             ("curve", &curve[..], 3),
@@ -857,6 +888,136 @@ mod tests {
             });
             assert_like_vello(name, got, 4, 8);
         }
+    }
+
+    /// A translucent stroke is one layer: the pieces it is built from (segments, joins, caps) must not add up
+    /// where they overlap.
+    #[test]
+    fn a_translucent_stroke_is_even_where_its_pieces_overlap() {
+        let mut b = backend(40, 40);
+        let tick = poly(&[(6, 10), (14, 20), (30, 6)], false);
+        b.stroke_path(&tick, 6, Color::rgba(255, 255, 255, 128))
+            .unwrap();
+        let levels: std::collections::BTreeSet<u8> = (0..40)
+            .flat_map(|y| (0..40).map(move |x| (x, y)))
+            .filter_map(|(x, y)| b.pixel(x, y))
+            .map(|c| c.g)
+            .filter(|&g| g > 100)
+            .collect();
+        // Interior pixels are all the same grey: one layer of 50 %, not 75 % in the overlaps.
+        let top = *levels.iter().max().unwrap();
+        assert!(
+            (120..=136).contains(&top),
+            "brightest {top}, levels {levels:?}"
+        );
+    }
+
+    /// A sharp corner is mitred (a square outer corner), a very sharp one is bevelled, as Vello does.
+    #[test]
+    fn corners_are_mitred_up_to_the_limit() {
+        let mut b = backend(60, 60);
+        b.stroke_path(
+            &poly(&[(10, 20), (30, 20), (30, 40)], false),
+            8,
+            Color::WHITE,
+        )
+        .unwrap();
+        // The outer corner pixel, which a round or bevelled join leaves out.
+        let corner = b.pixel(34, 16).unwrap().g;
+        assert!(
+            (55..=75).contains(&corner),
+            "a quarter of the corner pixel is inside: {corner}"
+        );
+        // A hairpin turn is cut off flat, not a spike: its tip would run about 20 px past the end.
+        let mut b = backend(60, 60);
+        b.stroke_path(
+            &poly(&[(10, 30), (50, 30), (10, 42)], false),
+            6,
+            Color::WHITE,
+        )
+        .unwrap();
+        for y in 28..31 {
+            assert_eq!(b.pixel(57, y), Some(Color::BLACK), "no spike past the turn");
+        }
+    }
+
+    #[test]
+    fn paths_outside_the_clip_or_far_away_draw_nothing_and_finish() {
+        let tick = poly(&[(0, 0), (30, 30), (60, 0)], false);
+        let mut b = backend(40, 40);
+        b.clip(Rect::new(0, 0, 20, 20)).unwrap();
+        b.stroke_path(&tick, 5, Color::WHITE).unwrap();
+        assert_eq!(b.pixel(30, 25), Some(Color::BLACK), "outside the clip");
+        assert_ne!(b.pixel(10, 10), Some(Color::BLACK), "inside the clip");
+        let far = poly(&[(-2_000_000, 5), (2_000_000, 30)], false);
+        let mut b = backend(40, 40);
+        b.stroke_path(&far, 3, Color::WHITE).unwrap();
+        b.fill_path(
+            &poly(
+                &[(-9_000_000, -9_000_000), (9_000_000, 0), (0, 9_000_000)],
+                true,
+            ),
+            Color::WHITE,
+        )
+        .unwrap();
+        // Too many edges is an error, not a crash.
+        let zigzag: Vec<(i32, i32)> = (0..400)
+            .map(|i| (i % 40, if i % 2 == 0 { 2 } else { 30 }))
+            .collect();
+        let mut b = backend(40, 40);
+        assert!(
+            b.stroke_path(&poly(&zigzag, false), 1, Color::WHITE)
+                .is_err()
+        );
+        assert!(b.fill_path(&poly(&zigzag, true), Color::WHITE).is_err());
+    }
+
+    /// An image with alpha mixes into what is under it, as Vello's does, and is cut by the clip.
+    #[test]
+    fn images_with_alpha_blend_like_vellos() {
+        // 24 x 16: red to blue across, opacity 0 to 255 down.
+        let (iw, ih) = (24u32, 16u32);
+        let mut rgba = Vec::new();
+        for y in 0..ih {
+            for x in 0..iw {
+                rgba.extend_from_slice(&[(255 - x * 10) as u8, 40, (x * 10) as u8, (y * 17) as u8]);
+            }
+        }
+        let img = Image::new(iw, ih, &rgba).unwrap();
+        let (w, h) = (48u32, 32u32);
+        let mut a = backend(w as u16, h as u16);
+        let mut v = fusuma_render_vello_cpu::new(w, h).unwrap();
+        fn go<R: Renderer>(r: &mut R, img: &Image<'_>) {
+            r.clear(Color::rgb(200, 200, 40)).unwrap();
+            r.draw_image(img, Point::new(4, 6)).unwrap();
+            r.save().unwrap();
+            r.clip(Rect::new(30, 0, 10, 32)).unwrap();
+            r.draw_image(img, Point::new(26, 10)).unwrap();
+            r.restore().unwrap();
+        }
+        go(&mut a, &img);
+        go(&mut v, &img);
+        let mut worst = 0i32;
+        for y in 0..h as i32 {
+            for x in 0..w as i32 {
+                let (p, q) = (a.pixel(x, y).unwrap(), v.pixel(x, y).unwrap());
+                for (m, n) in [(p.r, q.r), (p.g, q.g), (p.b, q.b)] {
+                    worst = worst.max((i32::from(m) - i32::from(n)).abs());
+                }
+            }
+        }
+        // RGB565 keeps 5 or 6 bits, so a channel can be off by about 8, and rounding adds a little.
+        assert!(worst <= 16, "worst channel difference {worst}");
+        // Half-opaque pixels are a mix, not on or off.
+        let mid = a.pixel(10, 6 + 8).unwrap();
+        assert!(mid.r != 200 && mid.r != 255 - 60, "{mid:?}");
+        // Cut by the clip: nothing right of it.
+        assert_eq!(
+            a.pixel(41, 14),
+            Some(Color::from_rgb565(
+                rgb565(Color::rgb(200, 200, 40)).into_storage()
+            ))
+        );
     }
 
     #[test]

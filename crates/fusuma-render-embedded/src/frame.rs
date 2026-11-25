@@ -29,6 +29,13 @@ pub trait Blend {
         let _ = (x, y, alpha, color);
         false
     }
+
+    /// Like [`blend_row`](Self::blend_row), with a colour for each pixel (RGB565 values) beside its alpha: what an
+    /// image with transparency needs. False when the target cannot blend.
+    fn blend_colors(&mut self, x: i32, y: i32, alpha: &[u8], colors: &[u16]) -> bool {
+        let _ = (x, y, alpha, colors);
+        false
+    }
 }
 
 /// `color` over `dst` (both RGB565) with coverage `a` out of 255, rounded.
@@ -70,6 +77,25 @@ impl<S: AsRef<[u16]> + AsMut<[u16]>> Blend for Frame<S> {
             } else {
                 mix565(*p, color, a)
             };
+        }
+        true
+    }
+
+    fn blend_colors(&mut self, x: i32, y: i32, alpha: &[u8], colors: &[u16]) -> bool {
+        let (w, h) = (i32::from(self.width), i32::from(self.height));
+        if y < 0 || y >= h {
+            return true;
+        }
+        let row = &mut self.pixels.as_mut()[(y * w) as usize..((y + 1) * w) as usize];
+        for (i, (&a, &c)) in alpha.iter().zip(colors).enumerate() {
+            let Some(px) = i32::try_from(i).ok().and_then(|i| x.checked_add(i)) else {
+                break;
+            };
+            if a == 0 || px < 0 || px >= w {
+                continue;
+            }
+            let p = &mut row[px as usize];
+            *p = if a == 255 { c } else { mix565(*p, c, a) };
         }
         true
     }
