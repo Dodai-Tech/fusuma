@@ -14,7 +14,7 @@ use fusuma::{
 };
 
 /// Nodes the tree can hold; the busiest page uses about 40.
-pub const NODES: usize = 64;
+pub const NODES: usize = 80;
 
 /// How long the progress bar takes to fill, in milliseconds.
 const FILL_MS: u32 = 8000;
@@ -85,19 +85,26 @@ fn palette_button_text(palette: &Palette) -> &'static str {
         "ocean" => "Ocean",
         "petrol" => "Petrol",
         "violet" => "Violet",
+        "ember" => "Ember",
+        "graphite" => "Graphite",
         _ => "Colours",
     }
 }
 
-/// The text of the theme button: short in the compact layout.
+/// The text of the theme dropdown's button: the mode that is on, with a label in the wide layout.
 const fn theme_button_text(dark: bool, compact: bool) -> &'static str {
     match (dark, compact) {
-        (true, false) => "Light theme",
-        (false, false) => "Dark theme",
-        (true, true) => "Light",
-        (false, true) => "Dark",
+        (true, false) => "Theme: Dark",
+        (false, false) => "Theme: Light",
+        (true, true) => "Dark",
+        (false, true) => "Light",
     }
 }
+
+/// The names of a palette's row in the palette dropdown.
+const PALETTE_NAMES: [&str; 7] = [
+    "Fusuma", "Forest", "Ocean", "Petrol", "Violet", "Ember", "Graphite",
+];
 
 /// The pages in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -259,6 +266,12 @@ pub struct Showcase {
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
     palette_button: Option<NodeId>,
+    /// The dropdowns: a menu of Dark and Light under the theme button, and one of the palettes under the palette
+    /// button (a watch cycles the palettes with its tile instead).
+    theme_menu: Option<NodeId>,
+    theme_rows: [Option<NodeId>; 2],
+    palette_menu: Option<NodeId>,
+    palette_rows: [Option<NodeId>; 7],
     status: Option<NodeId>,
     live: Live,
     clicks: u32,
@@ -301,6 +314,10 @@ impl Showcase {
             content: None,
             theme_button: None,
             palette_button: None,
+            theme_menu: None,
+            theme_rows: [None; 2],
+            palette_menu: None,
+            palette_rows: [None; 7],
             status: None,
             live: Live::default(),
             clicks: 0,
@@ -427,13 +444,19 @@ impl Showcase {
         self.open
     }
 
-    /// The button that switches the theme.
+    /// The button that opens the theme dropdown.
     #[must_use]
     pub const fn theme_button(&self) -> Option<NodeId> {
         self.theme_button
     }
 
-    /// The button that steps through the palettes.
+    /// A row of the theme dropdown: 0 is Dark, 1 is Light.
+    #[must_use]
+    pub fn theme_row(&self, i: usize) -> Option<NodeId> {
+        self.theme_rows.get(i).copied().flatten()
+    }
+
+    /// The button that opens the palettes (a watch's tile steps through them).
     #[must_use]
     pub const fn palette_button(&self) -> Option<NodeId> {
         self.palette_button
@@ -573,21 +596,41 @@ impl Showcase {
             )?;
         }
         t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
+        (self.palette_menu, self.palette_rows) = (None, [None; 7]);
+        // The chevron of a dropdown, when the icon font has one.
+        #[cfg(feature = "fonts")]
+        let chevron = fusuma::fonts::FontSet::default_set().icon("expand_more");
+        #[cfg(not(feature = "fonts"))]
+        let chevron: Option<char> = None;
+        let dropdown = |t: &mut Tree<NODES>, parent, text| match chevron {
+            Some(c) => t.button_with_icon(Some(parent), c, text, ButtonVariant::Secondary),
+            None => t.button(Some(parent), text, ButtonVariant::Secondary),
+        };
         // On a watch the header has no room for it: it is a tile of the home screen instead.
         self.palette_button = if class == Class::Watch {
             None
         } else {
-            Some(t.button(
-                Some(header),
-                palette_button_text(&self.palette),
-                ButtonVariant::Secondary,
-            )?)
+            Some(dropdown(t, header, palette_button_text(&self.palette))?)
         };
-        self.theme_button = Some(t.button(
-            Some(header),
-            theme_button_text(self.dark, compact),
-            ButtonVariant::Secondary,
-        )?);
+        self.theme_button = Some(dropdown(t, header, theme_button_text(self.dark, compact))?);
+        // The dropdowns' menus: out of the flow, they open under their buttons.
+        let sp = self.theme.spacing;
+        let menu = t.menu(Some(root), Style::new().padding(sp.xs).gap(sp.xs))?;
+        for (i, name) in ["Dark", "Light"].into_iter().enumerate() {
+            self.theme_rows[i] = Some(t.list_item(Some(menu), name, (i == 0) == self.dark)?);
+        }
+        self.theme_menu = Some(menu);
+        if class != Class::Watch {
+            let menu = t.menu(Some(root), Style::new().padding(sp.xs).gap(sp.xs))?;
+            for (i, name) in PALETTE_NAMES.into_iter().enumerate() {
+                self.palette_rows[i] = Some(t.list_item(
+                    Some(menu),
+                    name,
+                    Palette::ALL[i].name == self.palette.name,
+                )?);
+            }
+            self.palette_menu = Some(menu);
+        }
         let body_style = Style::new()
             .height(Length::Fill(1))
             .gap(self.theme.spacing.md)
@@ -1045,12 +1088,22 @@ impl Showcase {
         if let Some(b) = self.palette_button {
             self.tree.set_text(b, palette_button_text(&palette));
         }
+        for (row, p) in self.palette_rows.iter().zip(Palette::ALL) {
+            if let Some(r) = *row {
+                self.tree.set_checked(r, p.name == palette.name);
+            }
+        }
         self.tree.invalidate();
     }
 
     fn set_dark(&mut self, dark: bool) {
         self.dark = dark;
         self.theme = self.make_theme();
+        for (i, row) in self.theme_rows.iter().enumerate() {
+            if let Some(r) = *row {
+                self.tree.set_checked(r, (i == 0) == dark);
+            }
+        }
         if let Some(b) = self.theme_button {
             self.tree
                 .set_text(b, theme_button_text(dark, self.class.is_compact()));
@@ -1141,11 +1194,31 @@ impl Showcase {
                         let _ = write!(b, "Page: {}", Page::ALL[to].name());
                     } else if id == self.live.field {
                         let _ = write!(b, "Submitted: {}", self.typed.as_str());
-                    } else if id == self.theme_button {
-                        self.set_dark(!self.dark);
-                    } else if id == self.palette_button {
-                        self.set_palette(*self.palette.next());
+                    } else if id.is_some() && id == self.theme_button {
+                        if let (Some(m), Some(a)) = (self.theme_menu, self.theme_button) {
+                            self.tree.open_menu(m, a);
+                        }
+                    } else if let Some(i) =
+                        self.theme_rows.iter().position(|&r| r.is_some() && r == id)
+                    {
+                        self.set_dark(i == 0);
+                        let _ = write!(b, "Theme: {}", if i == 0 { "Dark" } else { "Light" });
+                    } else if let Some(i) = self
+                        .palette_rows
+                        .iter()
+                        .position(|&r| r.is_some() && r == id)
+                    {
+                        self.set_palette(Palette::ALL[i]);
                         let _ = write!(b, "Colours: {}", self.palette.name);
+                    } else if id.is_some() && id == self.palette_button {
+                        match (self.palette_menu, self.palette_button) {
+                            (Some(m), Some(a)) => self.tree.open_menu(m, a),
+                            // A watch has a tile that steps through them.
+                            _ => {
+                                self.set_palette(*self.palette.next());
+                                let _ = write!(b, "Colours: {}", self.palette.name);
+                            }
+                        }
                     } else if id == self.live.click_me {
                         self.clicks += 1;
                         let _ = write!(b, "Clicked {} times", self.clicks);
@@ -1595,13 +1668,28 @@ mod tests {
         let dark_bg = s.theme().colors.background;
         let target = s.theme_button().unwrap();
         tap(&mut s, target);
+        assert!(s.is_dark(), "opening the dropdown changes nothing");
+        assert!(s.tree().is_menu_open(s.theme_menu.unwrap()));
+        let light = s.theme_rows[1].unwrap();
+        tap(&mut s, light);
         assert!(!s.is_dark());
+        assert!(
+            !s.tree().is_menu_open(s.theme_menu.unwrap()),
+            "choosing closes it"
+        );
         let region = s.frame(&mut r).unwrap().unwrap();
         assert_eq!(region, Rect::new(0, 0, 1024, 600));
         let light_bg = s.theme().colors.background;
         assert_ne!(dark_bg, light_bg);
         assert_eq!(r.pixel(0, 0).unwrap(), light_bg);
-        assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Dark theme"));
+        assert_eq!(
+            s.tree().text(s.theme_button().unwrap()),
+            Some("Theme: Light")
+        );
+        assert!(
+            s.tree().is_checked(s.theme_rows[1].unwrap())
+                && !s.tree().is_checked(s.theme_rows[0].unwrap())
+        );
     }
 
     #[test]
@@ -1612,7 +1700,7 @@ mod tests {
         for want in [
             "forest", "ocean", "petrol", "violet", "ember", "graphite", "fusuma",
         ] {
-            tap(&mut s, target);
+            next_palette(&mut s);
             assert_eq!(s.palette().name, want);
             assert!(s.is_dark(), "the palette does not switch dark and light");
             let p = Palette::named(want).unwrap();
@@ -1625,9 +1713,8 @@ mod tests {
             );
             assert_eq!(r.pixel(0, 0).unwrap(), p.dark.background, "{want}");
         }
-        let (p, t) = (s.palette_button().unwrap(), s.theme_button().unwrap());
-        tap(&mut s, p);
-        tap(&mut s, t);
+        next_palette(&mut s);
+        toggle_theme(&mut s);
         assert_eq!(s.theme().colors, Palette::FOREST.light, "light forest");
         assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Forest"));
     }
@@ -1692,8 +1779,7 @@ mod tests {
             for p in Page::ALL {
                 let (mut s, mut r) = app();
                 if !dark {
-                    let target = s.theme_button().unwrap();
-                    tap(&mut s, target);
+                    toggle_theme(&mut s);
                 }
                 go(&mut s, p);
                 s.frame(&mut r).unwrap();
@@ -1834,7 +1920,7 @@ mod tests {
         let t = s.theme_button().unwrap();
         App::resized(&mut s, 1024, 600, 150);
         assert_eq!(s.theme_button(), Some(t), "no rebuild for the same scale");
-        tap(&mut s, t);
+        toggle_theme(&mut s);
         assert!(!s.is_dark());
         assert_eq!(
             s.theme().control_height,
@@ -1965,17 +2051,19 @@ mod tests {
     fn the_layout_follows_the_width_in_both_directions_and_keeps_the_page_and_the_theme() {
         let (mut s, mut r) = app();
         go(&mut s, Page::Controls);
-        let b = s.theme_button().unwrap();
-        tap(&mut s, b);
+        toggle_theme(&mut s);
         App::resized(&mut s, 600, 800, 100);
         assert!(s.is_compact());
         assert_eq!((s.page(), s.is_dark()), (Page::Controls, false));
         let mut small = fusuma::renderers::vello_cpu::new(600, 800).unwrap();
         s.frame(&mut small).unwrap();
-        assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Dark"));
+        assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Light"));
         App::resized(&mut s, 1024, 600, 100);
         assert!(!s.is_compact() && s.sidebar_item(Page::Controls).is_some());
-        assert_eq!(s.tree().text(s.theme_button().unwrap()), Some("Dark theme"));
+        assert_eq!(
+            s.tree().text(s.theme_button().unwrap()),
+            Some("Theme: Light")
+        );
         // A 2x screen of 1280 physical pixels is 640 logical: not compact; 1200 is.
         App::resized(&mut s, 1200, 800, 200);
         assert!(s.is_compact());
@@ -2022,9 +2110,26 @@ mod tests {
         tap(s, id);
     }
 
+    /// Opens the theme dropdown and picks the other mode.
     fn toggle_theme(s: &mut Showcase) {
         let id = s.theme_button().unwrap();
         tap(s, id);
+        let row = s.theme_rows[usize::from(s.is_dark())].unwrap();
+        tap(s, row);
+    }
+
+    /// Opens the palette dropdown (or taps the watch's tile) and picks the palette after the current one.
+    fn next_palette(s: &mut Showcase) {
+        let id = s.palette_button().unwrap();
+        tap(s, id);
+        if s.palette_menu.is_some() {
+            let at = Palette::ALL
+                .iter()
+                .position(|p| p.name == Showcase::palette(s).name)
+                .unwrap();
+            let row = s.palette_rows[(at + 1) % Palette::ALL.len()].unwrap();
+            tap(s, row);
+        }
     }
 
     #[test]
@@ -2082,7 +2187,7 @@ mod tests {
         let (mut s, _) = watch();
         open(&mut s, Page::Buttons);
         assert!(
-            s.tree().len() - 6 < 15, // the closed dialog's six nodes are not the page
+            s.tree().len() - 6 - 3 < 15, // the closed dialog's six and the theme menu's three are not the page
             "the Buttons page is a button and a counter: {}",
             s.tree().len()
         );
@@ -2608,5 +2713,29 @@ mod tests {
         assert_eq!(s.clicks(), 1);
         let text = cells_text(&mut s, 100, 30);
         assert!(text.contains("Clicked 1 times"), "{text}");
+    }
+
+    #[test]
+    fn the_dropdown_pictures_are_written_when_asked() {
+        let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") else {
+            return;
+        };
+        for (name, palette_menu) in [("theme", false), ("palette", true)] {
+            let (mut s, mut r) = app();
+            let b = if palette_menu {
+                s.palette_button()
+            } else {
+                s.theme_button()
+            }
+            .unwrap();
+            tap(&mut s, b);
+            App::tick(&mut s, 1000);
+            s.frame(&mut r).unwrap();
+            std::fs::write(
+                std::format!("{dir}/dropdown-{name}.png"),
+                fusuma::renderers::vello_cpu::png(&r).unwrap(),
+            )
+            .unwrap();
+        }
     }
 }

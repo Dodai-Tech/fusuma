@@ -215,7 +215,15 @@ mod tests {
         let at = Point::new(b.x + 4, b.y + 4);
         shell.input(fusuma::Input::Pointer(Pointer::Down(at)));
         shell.input(fusuma::Input::Pointer(Pointer::Up(at)));
-        let region = canvas.frame(&mut shell, 32).unwrap();
+        // The dropdown opens: only its menu is drawn, over the page.
+        let opened = canvas.frame(&mut shell, 32).unwrap();
+        assert!(opened.w * opened.h < 1024 * 600 / 4, "{opened:?}");
+        let light = shell.app.theme_row(1).unwrap();
+        let r = shell.app.rect_of(light).unwrap();
+        let at = Point::new(r.x + 4, r.y + 4);
+        shell.input(fusuma::Input::Pointer(Pointer::Down(at)));
+        shell.input(fusuma::Input::Pointer(Pointer::Up(at)));
+        let region = canvas.frame(&mut shell, 48).unwrap();
         assert_eq!(region, Rect::new(0, 0, 1024, 600));
         assert_ne!(
             canvas.pixels()[0],

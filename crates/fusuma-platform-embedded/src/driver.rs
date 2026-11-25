@@ -415,16 +415,27 @@ mod tests {
         for b in backends() {
             let mut d = driver(b);
             d.step(0).unwrap();
+            // The theme dropdown: one tap opens its menu, a second on its Light row switches the theme.
+            let tap = |d: &mut Driver<Showcase, Fake>, id, t0: u64| {
+                let r = d.shell().app.rect_of(id).unwrap();
+                let finger = Point::new(r.x + 3, r.y + 3);
+                d.board
+                    .touches
+                    .extend([Ok(Some(finger)), Ok(Some(finger)), Ok(None)]);
+                let mut last = None;
+                for t in 1..=3u64 {
+                    last = d.step((t0 + t) * 16).unwrap().shown.or(last);
+                }
+                last
+            };
             let theme_button = d.shell().app.theme_button().unwrap();
-            let r = d.shell().app.rect_of(theme_button).unwrap();
-            let finger = Point::new(r.x + 3, r.y + 3);
-            d.board
-                .touches
-                .extend([Ok(Some(finger)), Ok(Some(finger)), Ok(None)]);
-            let mut last = None;
-            for t in 1..=3u64 {
-                last = d.step(t * 16).unwrap().shown.or(last);
-            }
+            let opened = tap(&mut d, theme_button, 0).unwrap();
+            assert!(
+                opened.w * opened.h < 320 * 200,
+                "{b:?}: opening a menu repaints only the menu, not {opened:?}"
+            );
+            let light = d.shell().app.theme_row(1).unwrap();
+            let last = tap(&mut d, light, 10);
             assert!(
                 !d.shell().app.is_dark(),
                 "{b:?}: the tap switched the theme"
