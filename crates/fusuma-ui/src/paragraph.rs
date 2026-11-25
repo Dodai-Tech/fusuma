@@ -193,14 +193,14 @@ impl<const N: usize> Tree<N> {
     }
 
     /// The height of one line of `role`'s text and the space added between lines.
-    fn line_metrics<R: Renderer>(r: &R, theme: &Theme, role: TextRole) -> (u32, u32) {
+    fn line_metrics<M: fusuma_render::Measure>(r: &M, theme: &Theme, role: TextRole) -> (u32, u32) {
         let h = r.measure_text("Ag", &theme.text_style(role)).h.max(1);
         (h, h / 5)
     }
 
     /// The size a paragraph wants when wrapped to `wrap` pixels: the widest line and all the lines.
-    pub(crate) fn measure_paragraph<R: Renderer>(
-        r: &R,
+    pub(crate) fn measure_paragraph<M: fusuma_render::Measure>(
+        r: &M,
         theme: &Theme,
         text: &str,
         role: TextRole,

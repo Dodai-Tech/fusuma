@@ -330,7 +330,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// The size the widget wants, from its content and the theme.
-    pub(crate) fn measure_widget<R: Renderer>(&self, i: usize, r: &R, theme: &Theme) -> Size {
+    pub(crate) fn measure_widget<M: fusuma_render::Measure>(&self, i: usize, r: &M, theme: &Theme) -> Size {
         let body = TextStyle::new(theme.text.body, Color::BLACK).font(theme.fonts.body);
         let text = |t: &str| r.measure_text(t, &body);
         match self.nodes[i].kind {

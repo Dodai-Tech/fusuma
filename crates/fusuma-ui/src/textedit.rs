@@ -511,9 +511,8 @@ mod tests {
         u.t.type_text(&s);
         assert_eq!(state(&u).0.len(), s.len().min(INPUT_CAP));
         const { assert!(INPUT_CAP >= 64 && INPUT_CAP <= 250) };
-        if cfg!(feature = "long-text") {
-            const { assert!(INPUT_CAP >= 240) };
-        }
+        #[cfg(feature = "long-text")]
+        const { assert!(INPUT_CAP >= 240) };
     }
 
     fn press_x(u: &Ui, n: usize, text: &str) -> (i32, i32) {

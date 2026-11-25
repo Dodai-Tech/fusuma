@@ -93,15 +93,32 @@ impl<S: AsRef<[Cell]> + AsMut<[Cell]>> Grid<S> {
         }
     }
 
-    /// Writes `text` from column `x` of row `y` in `style`, one character a cell, cut at the end of the row. Returns
-    /// how many cells were written.
+    /// Writes `text` from column `x` of row `y` in `style`, one cell a column (a wide character two: itself and a
+    /// [tail](Cell::tail)), cut at the end of the row. A wide character that does not fit in the last column leaves a
+    /// space there; a zero-width one is dropped. Returns how many cells were written.
     pub fn put_str(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
         let mut col = x;
         for ch in text.chars() {
-            if !self.set(col, y, Cell::new(ch, style)) {
-                break;
+            match crate::width::char_width(ch) {
+                0 => {}
+                1 => {
+                    if !self.set(col, y, Cell::new(ch, style)) {
+                        break;
+                    }
+                    col += 1;
+                }
+                _ => {
+                    if col.saturating_add(1) < self.width {
+                        self.set(col, y, Cell::new(ch, style));
+                        self.set(col + 1, y, Cell::tail(style));
+                        col += 2;
+                    } else {
+                        self.set(col, y, Cell::new(' ', style));
+                        col += 1;
+                        break;
+                    }
+                }
             }
-            col += 1;
         }
         col - x
     }
@@ -149,6 +166,21 @@ mod tests {
         assert_eq!(g.put_str(0, 9, "x", bold), 0);
         assert!(!g.set(4, 0, Cell::BLANK));
         assert_eq!((g.get(4, 0), g.get(0, 3), g.row(3)), (None, None, None));
+    }
+
+    #[test]
+    fn a_wide_character_takes_two_cells_and_the_second_shows_nothing() {
+        let mut g = Grid::new(6, 2, vec![Cell::BLANK; 12]).unwrap();
+        assert_eq!(g.put_str(0, 0, "a日b", Style::PLAIN), 4);
+        assert_eq!(g.get(1, 0).unwrap().ch, '日');
+        assert!(g.get(2, 0).unwrap().is_tail() && !g.get(1, 0).unwrap().is_tail());
+        assert_eq!(g.get(3, 0).unwrap().ch, 'b');
+        // Where only one column is left it cannot be drawn: a space, and the rest is cut.
+        assert_eq!(g.put_str(5, 1, "日", Style::PLAIN), 1);
+        assert_eq!(g.get(5, 1).unwrap().ch, ' ');
+        // A combining mark has no column of its own.
+        assert_eq!(g.put_str(0, 1, "e\u{301}x", Style::PLAIN), 2);
+        assert_eq!(text(&g, 1).chars().take(2).collect::<String>(), "ex");
     }
 
     #[test]

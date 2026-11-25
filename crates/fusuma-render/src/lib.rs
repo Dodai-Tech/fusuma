@@ -13,6 +13,7 @@
 pub mod color;
 pub mod geometry;
 pub mod image;
+pub mod measure;
 pub mod path;
 pub mod renderer;
 pub mod text;
@@ -23,6 +24,7 @@ pub mod conformance;
 pub use color::Color;
 pub use geometry::{Point, Rect, Size};
 pub use image::Image;
+pub use measure::Measure;
 pub use path::{PathCmd, triangle};
 pub use renderer::{Capabilities, Error, MIN_STATE_DEPTH, Probe, Renderer};
 pub use text::{Align, Font, TextStyle, left_edge};

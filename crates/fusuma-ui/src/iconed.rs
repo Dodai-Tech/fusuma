@@ -124,8 +124,8 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Measures an icon and the text after it, as a widget draws them.
-    pub(crate) fn measure_icon_text<R: Renderer>(
-        r: &R,
+    pub(crate) fn measure_icon_text<M: fusuma_render::Measure>(
+        r: &M,
         theme: &Theme,
         icon: Option<char>,
         text: &str,

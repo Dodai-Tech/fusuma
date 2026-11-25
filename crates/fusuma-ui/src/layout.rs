@@ -1,6 +1,6 @@
 //! The rewrite passes: disabled state flowing down, then layout, then hover against the new layout.
 
-use fusuma_render::{Rect, Renderer, Size};
+use fusuma_render::{Rect, Size};
 
 use crate::theme::Theme;
 use crate::tree::{Axis, CrossAlign, Flags, Kind, Length, Style, Tree};
@@ -55,7 +55,7 @@ impl<const N: usize> Tree<N> {
     ///
     /// The whole tree is laid out when anything needs it; the flags already say where, so laying out
     /// only the changed subtrees can follow without changing this interface.
-    pub fn update<R: Renderer>(&mut self, renderer: &R, theme: &Theme, bounds: Rect) {
+    pub fn update<M: fusuma_render::Measure>(&mut self, renderer: &M, theme: &Theme, bounds: Rect) {
         self.update_disabled();
         self.layout(renderer, theme, bounds);
     }
@@ -100,7 +100,7 @@ impl<const N: usize> Tree<N> {
         }
     }
 
-    fn layout<R: Renderer>(&mut self, renderer: &R, theme: &Theme, bounds: Rect) {
+    fn layout<M: fusuma_render::Measure>(&mut self, renderer: &M, theme: &Theme, bounds: Rect) {
         let Some(root) = self.root.map(usize::from) else {
             return;
         };
@@ -194,7 +194,7 @@ impl<const N: usize> Tree<N> {
 
     /// Lays the tree out again at the same bounds, for a test that moves things between frames.
     #[cfg(test)]
-    pub(crate) fn relayout<R: Renderer>(&mut self, renderer: &R, theme: &Theme) {
+    pub(crate) fn relayout<M: fusuma_render::Measure>(&mut self, renderer: &M, theme: &Theme) {
         if let Some(b) = self.bounds {
             self.update(renderer, theme, b);
         }
@@ -237,7 +237,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// The size node `i` wants, from its content and its style.
-    fn measure<R: Renderer>(&self, i: usize, renderer: &R, theme: &Theme) -> Size {
+    fn measure<M: fusuma_render::Measure>(&self, i: usize, renderer: &M, theme: &Theme) -> Size {
         let n = &self.nodes[i];
         let pad = n.style.padding.saturating_mul(2);
         let content = match n.kind {
@@ -431,6 +431,7 @@ impl<const N: usize> Tree<N> {
 mod tests {
     use super::*;
     use crate::theme::{ButtonVariant, TextRole};
+    use fusuma_render::Renderer;
     use fusuma_render_vello_cpu::VelloCpu;
 
     type Screen = VelloCpu;

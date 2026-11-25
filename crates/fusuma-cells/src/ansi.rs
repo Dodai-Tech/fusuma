@@ -78,6 +78,10 @@ impl Encoder {
             )?;
         }
         for cell in &row[start..end] {
+            // The second column of a wide character: the terminal has already moved over it.
+            if cell.is_tail() {
+                continue;
+            }
             if self.style != Some(cell.style) {
                 self.write_style(out, cell.style)?;
                 self.style = Some(cell.style);
@@ -176,6 +180,21 @@ mod tests {
         let mut s = String::new();
         e.write_run(&mut s, &g, Run { x: 4, y: 0, len: 1 }).unwrap();
         assert_eq!(s, "o");
+    }
+
+    #[test]
+    fn the_second_column_of_a_wide_character_writes_nothing() {
+        let mut g = Grid::new(5, 1, vec![Cell::BLANK; 5]).unwrap();
+        g.put_str(0, 0, "日本x", Style::PLAIN);
+        let mut e = Encoder::new(Depth::TrueColor);
+        let mut s = String::new();
+        e.write_run(&mut s, &g, Run { x: 0, y: 0, len: 5 }).unwrap();
+        assert_eq!(s, "\x1b[1;1H\x1b[0m日本x");
+        assert_eq!(
+            e.cursor,
+            Some((5, 0)),
+            "five columns, though four characters"
+        );
     }
 
     #[test]

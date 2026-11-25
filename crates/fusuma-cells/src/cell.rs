@@ -204,6 +204,24 @@ impl Cell {
         style: Style::PLAIN,
     };
 
+    /// The second column of a wide character: it shows nothing of its own, and an output writes nothing for it.
+    pub const TAIL_CH: char = '\0';
+
+    /// The second cell of a wide character written in `style`.
+    #[must_use]
+    pub const fn tail(style: Style) -> Self {
+        Self {
+            ch: Self::TAIL_CH,
+            style,
+        }
+    }
+
+    /// Whether this is the second column of a wide character.
+    #[must_use]
+    pub const fn is_tail(&self) -> bool {
+        self.ch == Self::TAIL_CH
+    }
+
     /// `ch` in `style`.
     #[must_use]
     pub const fn new(ch: char, style: Style) -> Self {

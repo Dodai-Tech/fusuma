@@ -425,7 +425,7 @@ impl<const N: usize> Tree<N> {
 
     /// How far the text is scrolled left so that the caret is in view, and the caret's x from the start of
     /// the text, in pixels.
-    fn input_metrics<R: Renderer>(&self, i: usize, r: &R, theme: &Theme) -> (u32, u32) {
+    fn input_metrics<M: fusuma_render::Measure>(&self, i: usize, r: &M, theme: &Theme) -> (u32, u32) {
         let Kind::TextInput { text, cursor, .. } = &self.nodes[i].kind else {
             return (0, 0);
         };
@@ -443,7 +443,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// At layout: puts the cursor where a press landed, and works out where the caret is.
-    pub(crate) fn resolve_input<R: Renderer>(&mut self, r: &R, theme: &Theme) {
+    pub(crate) fn resolve_input<M: fusuma_render::Measure>(&mut self, r: &M, theme: &Theme) {
         if let Some((id, x, click)) = self.pending_click.take()
             && let Some(i) = self.input_index(id)
         {

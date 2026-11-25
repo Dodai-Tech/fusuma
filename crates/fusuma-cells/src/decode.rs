@@ -29,10 +29,43 @@ pub enum CellKey {
     Home,
     /// End.
     End,
+    /// Alt (or Meta) and a printable key: the terminal sent Escape and then the character.
+    Alt(char),
+    /// A mouse report (see [`Mouse`]); a terminal sends them once mouse reporting is on (`ESC [ ? 1000 h` and
+    /// `ESC [ ? 1006 h`).
+    Mouse(Mouse),
+}
+
+/// What the mouse did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseKind {
+    /// The left button went down.
+    Down,
+    /// The left button came up.
+    Up,
+    /// The mouse moved with the left button down.
+    Drag,
+    /// The mouse moved with no button down.
+    Move,
+    /// The wheel turned away from the user (up).
+    ScrollUp,
+    /// The wheel turned towards the user (down).
+    ScrollDown,
+}
+
+/// A mouse report: what happened, and in which column and row (from 0).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mouse {
+    /// What happened.
+    pub kind: MouseKind,
+    /// Column, from 0.
+    pub x: u16,
+    /// Row, from 0.
+    pub y: u16,
 }
 
 /// How many bytes of an unfinished sequence are kept; longer ones are dropped.
-const PENDING: usize = 8;
+const PENDING: usize = 16;
 
 /// Turns bytes into [`CellKey`]s. Escape is also how every special key's sequence starts, so a lone Escape is only
 /// known when nothing follows: call [`flush`](Self::flush) when input has paused (a few tens of milliseconds).
@@ -147,9 +180,16 @@ fn escape(s: &[u8]) -> Step {
             let Some((&last, params)) = rest.split_last() else {
                 return Step::More;
             };
+            // An SGR mouse report: `ESC [ < button ; column ; row M` (down) or `m` (up).
+            if let [b'<', body @ ..] = params
+                && matches!(last, b'M' | b'm')
+            {
+                return mouse(body, last == b'm')
+                    .map_or(Step::Drop, |m| Step::Key(CellKey::Mouse(m)));
+            }
             match last {
                 // Parameters and separators: the sequence goes on.
-                b'0'..=b'9' | b';' => Step::More,
+                b'0'..=b'9' | b';' | b'<' => Step::More,
                 b'~' => match params {
                     b"1" | b"7" => Step::Key(CellKey::Home),
                     b"3" => Step::Key(CellKey::Delete),
@@ -162,9 +202,55 @@ fn escape(s: &[u8]) -> Step {
                 _ => Step::Drop,
             }
         }
-        // Escape and then something that starts no sequence (Alt and a key): not handled yet.
+        // Escape and then a printable character: Alt and that key.
+        [0x1b, c @ 0x20..=0x7e] => Step::Key(CellKey::Alt(char::from(*c))),
         _ => Step::Drop,
     }
+}
+
+/// The numbers of a mouse report (`button;column;row`), as what happened.
+fn mouse(body: &[u8], release: bool) -> Option<Mouse> {
+    let mut parts = body.split(|&b| b == b';').map(|p| {
+        p.iter().try_fold(0u32, |n, &b| {
+            b.is_ascii_digit()
+                .then(|| n.saturating_mul(10).saturating_add(u32::from(b - b'0')))
+        })
+    });
+    let (b, x, y) = (parts.next()??, parts.next()??, parts.next()??);
+    if parts.next().is_some() {
+        return None;
+    }
+    let button = b & 3;
+    let kind = if b & 64 != 0 {
+        match button {
+            0 => MouseKind::ScrollUp,
+            1 => MouseKind::ScrollDown,
+            _ => return None,
+        }
+    } else if b & 32 != 0 {
+        if button == 3 {
+            MouseKind::Move
+        } else if button == 0 {
+            MouseKind::Drag
+        } else {
+            return None;
+        }
+    } else if button == 0 {
+        if release {
+            MouseKind::Up
+        } else {
+            MouseKind::Down
+        }
+    } else {
+        // Another button.
+        return None;
+    };
+    let at = |v: u32| u16::try_from(v.saturating_sub(1)).unwrap_or(u16::MAX);
+    Some(Mouse {
+        kind,
+        x: at(x),
+        y: at(y),
+    })
 }
 
 fn arrow(last: u8) -> Option<CellKey> {
@@ -260,6 +346,43 @@ mod tests {
     }
 
     #[test]
+    fn alt_and_a_key_is_one_key_and_a_lone_escape_still_waits() {
+        use CellKey::*;
+        assert_eq!(keys(b"\x1bb\x1bf\x1b."), [Alt('b'), Alt('f'), Alt('.')]);
+        assert_eq!(keys(b"\x1b "), [Alt(' ')]);
+        assert_eq!(keys(b"\x1b"), [Escape]);
+        assert_eq!(
+            keys(b"\x1b\x01"),
+            [],
+            "Escape and a control character: dropped"
+        );
+    }
+
+    #[test]
+    fn mouse_reports_in_sgr_form() {
+        use MouseKind::*;
+        let m = |kind, x, y| CellKey::Mouse(Mouse { kind, x, y });
+        assert_eq!(keys(b"\x1b[<0;10;5M"), [m(Down, 9, 4)]);
+        assert_eq!(keys(b"\x1b[<0;10;5m"), [m(Up, 9, 4)]);
+        assert_eq!(keys(b"\x1b[<32;11;5M"), [m(Drag, 10, 4)]);
+        assert_eq!(keys(b"\x1b[<35;3;1M"), [m(Move, 2, 0)]);
+        assert_eq!(
+            keys(b"\x1b[<64;1;1M\x1b[<65;1;1M"),
+            [m(ScrollUp, 0, 0), m(ScrollDown, 0, 0)]
+        );
+        assert_eq!(
+            keys(b"\x1b[<0;120;45Mx"),
+            [m(Down, 119, 44), CellKey::Char('x')]
+        );
+        // Other buttons, a malformed report and a huge column are dropped or held, never a panic.
+        assert_eq!(keys(b"\x1b[<2;1;1M"), []);
+        assert_eq!(keys(b"\x1b[<0;1M"), []);
+        assert_eq!(keys(b"\x1b[<0;1;1;1M"), []);
+        assert_eq!(keys(b"\x1b[<0;99999;1M"), [m(Down, u16::MAX, 0)]);
+        assert_eq!(keys(b"\x1b[<0;1;1Ma"), [m(Down, 0, 0), CellKey::Char('a')]);
+    }
+
+    #[test]
     fn unicode_arrives_byte_by_byte() {
         assert_eq!(
             keys("șé日🙂".as_bytes()),
@@ -275,14 +398,10 @@ mod tests {
     fn unknown_and_overlong_sequences_are_dropped_and_decoding_goes_on() {
         assert_eq!(keys(b"\x1b[99~a"), [CellKey::Char('a')]);
         assert_eq!(
-            keys(b"\x1b[1;2;3;4;5;6;7A b"),
+            keys(b"\x1b[1;2;3;4;5;6;7;8;9A b"),
             [CellKey::Char(' '), CellKey::Char('b')]
         );
-        assert_eq!(
-            keys(b"\x1bxq"),
-            [CellKey::Char('q')],
-            "Alt+x is not handled yet"
-        );
+        assert_eq!(keys(b"\x1bxq"), [CellKey::Alt('x'), CellKey::Char('q')]);
         // Every byte value, after every prefix: never a panic.
         for prefix in [&b""[..], b"\x1b", b"\x1b[", b"\x1bO", b"\xe2", b"\xf0\x9f"] {
             for b in 0..=255u8 {
