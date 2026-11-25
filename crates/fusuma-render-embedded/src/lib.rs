@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
 
+mod cover;
 mod frame;
 pub mod raster;
 
@@ -17,7 +18,7 @@ use embedded_graphics::{
     },
     pixelcolor::{IntoStorage, Rgb565},
     prelude::{DrawTarget, Drawable, Point as EgPoint, Primitive},
-    primitives::{Circle, Line, PrimitiveStyle, Rectangle},
+    primitives::{Line, PrimitiveStyle, Rectangle},
     text::{Baseline, Text},
 };
 use fusuma_render::{
@@ -34,10 +35,6 @@ fn in_band(v: i64) -> bool {
     (-BAND..=BAND).contains(&v)
 }
 
-/// The largest circle radius and rounded-rectangle side: `embedded-graphics` squares distances in
-/// `i32`, which overflows beyond this. Bigger shapes are not drawn (no screen is that big).
-/// Circles with a radius above this are drawn through the path rasteriser, which clips.
-const BIG_CIRCLE: u32 = 256;
 const MAX_EXTENT: u32 = 16_383;
 
 /// The widest stroke drawn; a wider one is drawn this wide.
@@ -173,6 +170,112 @@ impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
 }
 
 impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
+    /// Fills row `y` from `x0` to `x1` (device pixels, inside the clip) in `color` at `alpha` (0 to 255).
+    fn span(
+        &mut self,
+        y: i64,
+        x0: i64,
+        x1: i64,
+        color: Rgb565,
+        alpha: u8,
+    ) -> Result<(), Error<T::Error>> {
+        if x1 <= x0 || alpha == 0 {
+            return Ok(());
+        }
+        // Inside the clip, which is inside the target: these fit `i32`.
+        let (x, y) = (x0 as i32, y as i32);
+        if alpha == 255 {
+            let run = Rectangle::new(EgPoint::new(x, y), EgSize::new((x1 - x0) as u32, 1));
+            return self.target.fill_solid(&run, color).map_err(Error::Target);
+        }
+        let buf = [alpha; 256];
+        let mut at = x0;
+        while at < x1 {
+            let n = (x1 - at).min(256) as usize;
+            self.blend(at as i32, y, &buf[..n], color)?;
+            at += n as i64;
+        }
+        Ok(())
+    }
+
+    /// Mixes `alpha` (one entry a pixel from `(x, y)`) of `color` into the target; a target that cannot blend gets
+    /// the pixels at least half covered, solid.
+    fn blend(
+        &mut self,
+        x: i32,
+        y: i32,
+        alpha: &[u8],
+        color: Rgb565,
+    ) -> Result<(), Error<T::Error>> {
+        if self.target.blend_row(x, y, alpha, color) {
+            return Ok(());
+        }
+        let solid = alpha
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| **a >= 128)
+            .map(|(i, _)| embedded_graphics::Pixel(EgPoint::new(x + i as i32, y), color));
+        self.target.draw_iter(solid).map_err(Error::Target)
+    }
+
+    /// Paints `shape` (local pixels) in `color`, anti-aliased and clipped: rows without a curved edge as spans, the
+    /// others pixel by pixel.
+    fn cover(&mut self, shape: cover::Shape, color: Color) -> Result<(), Error<T::Error>> {
+        let (tx, ty) = (i64::from(self.state.tx), i64::from(self.state.ty));
+        let moved = |r: cover::RoundRect| cover::RoundRect {
+            x0: r.x0 + tx,
+            y0: r.y0 + ty,
+            x1: r.x1 + tx,
+            y1: r.y1 + ty,
+            rad: r.rad,
+        };
+        let shape = cover::Shape {
+            outer: moved(shape.outer),
+            inner: shape.inner.map(moved),
+        };
+        let clip = self.state.clip;
+        let (cx0, cy0) = (i64::from(clip.x), i64::from(clip.y));
+        let (cx1, cy1) = (cx0 + i64::from(clip.w), cy0 + i64::from(clip.h));
+        let o = shape.outer;
+        let (y0, y1) = (o.y0.max(cy0), o.y1.min(cy1));
+        let (vx0, vx1) = (o.x0.max(cx0), o.x1.min(cx1));
+        if vx0 >= vx1 {
+            return Ok(());
+        }
+        let value = rgb565(color);
+        let opacity = u32::from(color.a);
+        let mut buf = [0u8; 256];
+        for y in y0..y1 {
+            match shape.row(y) {
+                cover::Row::Empty => {}
+                cover::Row::Span(a, b) => self.span(y, a.max(vx0), b.min(vx1), value, color.a)?,
+                cover::Row::Bars(a, b, c, d) => {
+                    self.span(y, a.max(vx0), b.min(vx1), value, color.a)?;
+                    self.span(y, c.max(vx0), d.min(vx1), value, color.a)?;
+                }
+                cover::Row::Curved(a, d) => {
+                    // The corners pixel by pixel, the straight middle as one span.
+                    let (b, c) = shape.corner_columns();
+                    let alpha = |cov: u8| (u32::from(cov) * opacity / 255) as u8;
+                    for (from, to) in [(a, b), (c, d)] {
+                        let (mut x, end) = (from.max(vx0), to.min(vx1));
+                        while x < end {
+                            let n = (end - x).min(256) as usize;
+                            for (i, v) in buf[..n].iter_mut().enumerate() {
+                                *v = alpha(shape.coverage(x + i as i64, y));
+                            }
+                            self.blend(x as i32, y as i32, &buf[..n], value)?;
+                            x += n as i64;
+                        }
+                    }
+                    let middle = alpha(shape.coverage(b, y));
+                    self.span(y, b.max(vx0), c.min(vx1), value, middle)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Draws `text` from a glyph atlas (smooth text), clipped, each glyph's coverage blended into the target.
     #[cfg(feature = "fonts")]
     fn draw_atlas_text(
@@ -238,6 +341,12 @@ impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
     }
 }
 
+/// `rect` with corners of `rad` (1/256 px), cut to half its shorter side.
+fn round_rect(rect: Rect, rad: i64) -> cover::RoundRect {
+    let (x, y) = (i64::from(rect.x), i64::from(rect.y));
+    cover::RoundRect::new(x, y, x + i64::from(rect.w), y + i64::from(rect.h), rad)
+}
+
 /// The atlas for `style`'s font at its size in `set`, when smooth text is built in and the font is not the bitmap one.
 #[cfg(feature = "fonts")]
 fn atlas_for(
@@ -265,9 +374,11 @@ where
     }
 
     fn capabilities(&self) -> Capabilities {
+        // Fills and text mix into a target that can blend; strokes along paths and images do not yet.
+        let blend = self.target.can_blend();
         Capabilities {
-            alpha: false,
-            antialiasing: false,
+            alpha: blend,
+            antialiasing: blend,
         }
     }
 
@@ -304,10 +415,16 @@ where
         if rect.is_empty() || color.a == 0 {
             return Ok(());
         }
-        if radius.min(rect.w / 2).min(rect.h / 2) > 0 {
-            return self.fill_path(&raster::rounded_rect(rect, radius), color);
+        if radius.min(rect.w / 2).min(rect.h / 2) > 0 || color.a < 255 {
+            return self.cover(
+                cover::Shape {
+                    outer: round_rect(rect, i64::from(radius) * 256),
+                    inner: None,
+                },
+                color,
+            );
         }
-        // A plain rectangle is clipped exactly, whatever its coordinates.
+        // A plain opaque rectangle is clipped exactly, whatever its coordinates.
         let visible = rect
             .translate(self.state.tx, self.state.ty)
             .intersect(&self.state.clip);
@@ -356,45 +473,30 @@ where
             }
             return Ok(());
         }
-        // A rounded ring: the outer outline and the inner one, filled with the even-odd rule.
-        let mut ring = [PathCmd::Close; 20];
-        ring[..10].copy_from_slice(&raster::rounded_rect(rect, radius));
-        ring[10..].copy_from_slice(&raster::rounded_rect(
-            rect.inset(width),
-            radius.saturating_sub(width),
-        ));
-        self.fill_path(&ring, color)
+        // A rounded ring: the outer outline less the inner one, which keeps the radius less the width.
+        let outer = i64::from(radius) * 256;
+        self.cover(
+            cover::Shape {
+                outer: round_rect(rect, outer),
+                inner: Some(round_rect(
+                    rect.inset(width),
+                    outer - i64::from(width) * 256,
+                )),
+            },
+            color,
+        )
     }
 
     fn fill_circle(&mut self, center: Point, radius: u32, color: Color) -> Result<(), Self::Error> {
-        if color.a == 0 {
+        if color.a == 0 || !Self::point_ok(self.shift(center)) || radius > MAX_EXTENT {
             return Ok(());
         }
-        let c = self.shift(center);
-        if !Self::point_ok(c) || radius > MAX_EXTENT {
-            return Ok(());
-        }
-        let diameter = radius * 2 + 1;
-        // Nothing to do when the circle is off the clip; and a big circle is a rounded square, which the
-        // path rasteriser clips to the screen, where walking every point of the circle would not stop.
-        let bounds = Rect::new(c.x - radius as i32, c.y - radius as i32, diameter, diameter);
-        if bounds.intersect(&self.state.clip).is_empty() {
-            return Ok(());
-        }
-        if radius > BIG_CIRCLE {
-            let square = Rect::new(
-                center.x.saturating_sub(radius as i32),
-                center.y.saturating_sub(radius as i32),
-                diameter,
-                diameter,
-            );
-            return self.fill_rect(square, radius, color);
-        }
-        self.draw(|t| {
-            Circle::with_center(c, diameter)
-                .into_styled(PrimitiveStyle::with_fill(rgb565(color)))
-                .draw(t)
-        })
+        // The disc of pixels within `radius` of the centre pixel: a square of side `2r + 1` with corners of half that,
+        // so the edge runs half a pixel past the outermost pixel centres.
+        let (cx, cy, r) = (i64::from(center.x), i64::from(center.y), i64::from(radius));
+        let outer =
+            cover::RoundRect::new(cx - r, cy - r, cx + r + 1, cy + r + 1, (2 * r + 1) * 128);
+        self.cover(cover::Shape { outer, inner: None }, color)
     }
 
     fn fill_path(&mut self, path: &[PathCmd], color: Color) -> Result<(), Self::Error> {
@@ -613,10 +715,105 @@ mod tests {
         fusuma_render::conformance::run_all(|| backend(200, 120));
     }
 
+    /// A target that cannot read its pixels: drawn one bit a pixel, and the renderer says so.
+    struct Opaque(Frame<Vec<u16>>);
+    impl embedded_graphics::geometry::OriginDimensions for Opaque {
+        fn size(&self) -> embedded_graphics::geometry::Size {
+            self.0.size()
+        }
+    }
+    impl DrawTarget for Opaque {
+        type Color = Rgb565;
+        type Error = core::convert::Infallible;
+        fn draw_iter<I: IntoIterator<Item = embedded_graphics::Pixel<Rgb565>>>(
+            &mut self,
+            p: I,
+        ) -> Result<(), Self::Error> {
+            self.0.draw_iter(p)
+        }
+    }
+    impl Blend for Opaque {}
+
     #[test]
     fn capabilities_are_honest() {
         let c = backend(8, 8).capabilities();
-        assert!(!c.alpha && !c.antialiasing);
+        assert!(c.alpha && c.antialiasing, "a frame blends");
+        let mut opaque = Embedded::new(Opaque(Frame::new(40, 40, vec![0u16; 1600]).unwrap()));
+        let c = opaque.capabilities();
+        assert!(!c.alpha && !c.antialiasing, "a target that cannot blend");
+        // It still draws the shapes, the pixels at least half covered.
+        opaque
+            .fill_circle(Point::new(20, 20), 12, Color::WHITE)
+            .unwrap();
+        opaque
+            .fill_rect(Rect::new(0, 0, 10, 10), 0, Color::rgba(255, 255, 255, 100))
+            .unwrap();
+        let px = opaque.target().0.pixels();
+        assert!(px.iter().all(|&p| p == 0 || p == 0xffff), "one bit a pixel");
+        let lit = px.iter().filter(|&&p| p == 0xffff).count();
+        let disc = core::f64::consts::PI * 12.5 * 12.5;
+        assert!(
+            (lit as f64 - disc).abs() < 0.08 * disc,
+            "{lit} pixels for a disc of {disc:.0}"
+        );
+        assert_eq!(px[0], 0, "a fill under half opacity is left out");
+    }
+
+    /// Anti-aliased shapes against Vello drawing the same: the same ink, in the same place.
+    #[test]
+    fn smooth_shapes_look_like_vellos() {
+        let paint = |r: &mut dyn DynShapes| {
+            r.wipe(Color::BLACK);
+            r.circle(Point::new(30, 30), 20);
+            r.circle(Point::new(75, 22), 5);
+            r.rect(Rect::new(100, 8, 70, 40), 12);
+            r.ring(Rect::new(8, 60, 90, 36), 14, 2);
+            r.ring(Rect::new(110, 60, 60, 36), 18, 4);
+        };
+        let (w, h) = (180u32, 100u32);
+        let mut a = backend(w as u16, h as u16);
+        let mut v = fusuma_render_vello_cpu::new(w, h).unwrap();
+        paint(&mut a);
+        paint(&mut v);
+        let grey = |r: &dyn Probe| -> Vec<i64> {
+            (0..h as i32)
+                .flat_map(|y| (0..w as i32).map(move |x| (x, y)))
+                .map(|(x, y)| r.pixel(x, y).map_or(0, |c| i64::from(c.g)))
+                .collect()
+        };
+        let (pa, pv) = (grey(&a), grey(&v));
+        let (ia, iv): (i64, i64) = (pa.iter().sum(), pv.iter().sum());
+        let diff: i64 = pa.iter().zip(&pv).map(|(x, y)| (x - y).abs()).sum();
+        let soft = pa.iter().filter(|&&g| g > 20 && g < 235).count();
+        std::println!(
+            "ink {ia} vs {iv}, difference {:.2}% of the ink, {soft} soft pixels",
+            diff as f64 * 100.0 / iv as f64
+        );
+        assert!((ia - iv).abs() * 100 < iv, "ink within 1%: {ia} vs {iv}");
+        assert!(diff * 100 < iv * 3, "pixels within 3% of the ink: {diff}");
+        assert!(soft > 200, "{soft} soft edge pixels");
+    }
+
+    /// The few shapes the comparison draws, on either renderer.
+    trait DynShapes {
+        fn wipe(&mut self, c: Color);
+        fn circle(&mut self, at: Point, r: u32);
+        fn rect(&mut self, r: Rect, radius: u32);
+        fn ring(&mut self, r: Rect, radius: u32, width: u32);
+    }
+    impl<R: Renderer> DynShapes for R {
+        fn wipe(&mut self, c: Color) {
+            Renderer::clear(self, c).unwrap();
+        }
+        fn circle(&mut self, at: Point, r: u32) {
+            self.fill_circle(at, r, Color::WHITE).unwrap();
+        }
+        fn rect(&mut self, r: Rect, radius: u32) {
+            self.fill_rect(r, radius, Color::WHITE).unwrap();
+        }
+        fn ring(&mut self, r: Rect, radius: u32, width: u32) {
+            self.stroke_rect(r, radius, width, Color::WHITE).unwrap();
+        }
     }
 
     #[test]

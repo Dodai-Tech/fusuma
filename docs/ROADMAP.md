@@ -37,6 +37,15 @@ works and is tested.
      `FontSet`; the facade has `fonts-*` presets. `scripts/fonts.nu` (tested) fetches, instances and subsets a
      family; each file's own name is checked against the catalog at build time. Seen on the S3 watch: `preset =
      "legible"` draws Atkinson Hyperlegible, first frame 84 ms. B612 was tried and left out (no ș, ț, ă)
+   - [x] **A2, smooth shapes on the integer renderer.** Rounded rectangles, circles and rounded borders are drawn from
+     their coverage (`cover.rs`, integer maths: on a corner the distance from the pixel's centre to the corner's
+     circle, one integer square root; straight edges lie on whole pixels). Rows without a corner and the straight
+     middle of a corner row stay plain spans, so only the corner columns are worked out pixel by pixel. Fills with
+     alpha blend too, so a target that blends (`Blend::can_blend`, a `Frame`) now reports alpha and anti-aliasing:
+     the dialog scrim and the scrollbar fade show on the integer renderer. Held to Vello drawing the same shapes: ink
+     within 0.7 %, pixel by pixel within 1.5 % of the ink; the area within 1 % of pi r^2. On the S3 watch the first
+     frame is 90 ms (83 with hard edges; 174 before the straight middle of a corner row became a span). Not yet:
+     strokes along paths and images (opaque, hard edges), arbitrary filled paths (hard edges)
    - [ ] **Icon fonts** (Material Symbols, Lucide, Phosphor) through the same atlases, drawn by name
 2. **UI components and logic:** the missing widgets and behaviour (see Phase 4), each with a pixel look.
 3. **TUI:** the cells in the toolkit (`Measure`, `CellSink`, the cell theme), running apps, then the outputs (see

@@ -18,6 +18,11 @@ pub trait PixelSource {
 /// Mixes a colour into pixels already drawn, for anti-aliased text. A target that cannot read its pixels keeps the
 /// default, and the renderer then draws the pixels that are at least half covered, solid.
 pub trait Blend {
+    /// Whether [`blend_row`](Self::blend_row) mixes (so the renderer can promise alpha and anti-aliasing).
+    fn can_blend(&self) -> bool {
+        false
+    }
+
     /// Mixes `color` into row `y` from column `x`, one pixel for each entry of `alpha` (0 keeps the pixel, 255 is
     /// `color`); pixels outside the target are skipped. False when the target cannot blend.
     fn blend_row(&mut self, x: i32, y: i32, alpha: &[u8], color: Rgb565) -> bool {
@@ -41,6 +46,10 @@ pub fn mix565(dst: u16, color: u16, a: u8) -> u16 {
 }
 
 impl<S: AsRef<[u16]> + AsMut<[u16]>> Blend for Frame<S> {
+    fn can_blend(&self) -> bool {
+        true
+    }
+
     fn blend_row(&mut self, x: i32, y: i32, alpha: &[u8], color: Rgb565) -> bool {
         let (w, h) = (i32::from(self.width), i32::from(self.height));
         if y < 0 || y >= h {
