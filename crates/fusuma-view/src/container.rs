@@ -235,3 +235,36 @@ impl<M: Clone, V: View<M>> View<M> for Animated<V> {
 }
 
 impl<V> ViewMarker for Animated<V> {}
+
+/// A view whose node has a style class: a number the theme's hooks map to a look, so a design system restyles a widget by
+/// name (`class(button("Delete"), DANGER)`) and the widget itself does not change.
+#[derive(Clone, Copy, Debug)]
+pub struct Classed<V> {
+    class: u8,
+    view: V,
+}
+
+/// `view`, in style class `class` (0 is the default look).
+#[must_use]
+pub const fn class<V>(class: u8, view: V) -> Classed<V> {
+    Classed { class, view }
+}
+
+impl<M: Clone, V: View<M>> View<M> for Classed<V> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = self.view.build(cx, parent)?;
+        cx.tree.set_class(node, self.class);
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.view.rebuild(cx, node);
+        cx.tree.set_class(node, self.class);
+    }
+}
+
+impl<V> ViewMarker for Classed<V> {}

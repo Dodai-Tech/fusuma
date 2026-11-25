@@ -222,14 +222,15 @@ impl<const N: usize> Tree<N> {
         let Kind::Button { variant, blend, .. } = n.kind else {
             return None;
         };
+        let class = n.class;
         Some(if n.disabled_eff {
-            theme.button(variant, ButtonState::Disabled)
+            theme.button_in(class, variant, ButtonState::Disabled)
         } else if n.active {
             // A press shows at once; only the hover fades.
-            theme.button(variant, ButtonState::Pressed)
+            theme.button_in(class, variant, ButtonState::Pressed)
         } else {
-            let rest = theme.button(variant, ButtonState::Idle);
-            let hover = theme.button(variant, ButtonState::Hovered);
+            let rest = theme.button_in(class, variant, ButtonState::Idle);
+            let hover = theme.button_in(class, variant, ButtonState::Hovered);
             let t = Easing::CubicOut.apply(blend);
             ButtonStyle {
                 background: mix(rest.background, hover.background, t),
@@ -248,7 +249,7 @@ impl<const N: usize> Tree<N> {
         }
         match n.kind {
             Kind::Stack(_) | Kind::Scroll { .. } => {
-                if let Some(color) = theme.surface(n.style.background) {
+                if let Some(color) = theme.surface_in(n.class, n.style.background) {
                     r.fill_rect(rect, theme.radius(n.style.round), color)?;
                 }
                 Ok(())

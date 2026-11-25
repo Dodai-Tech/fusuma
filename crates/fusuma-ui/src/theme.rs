@@ -127,21 +127,36 @@ pub struct Theme {
     pub cells: bool,
 }
 
+/// A style class: a number a view gives a widget (`.class(..)` in `fusuma-view`) that the hooks of a design system map to a
+/// look, so a widget is restyled by name and not by changing the widget. 0 is the default look.
+pub type Class = u8;
+
+/// A function that decides how a button looks.
+pub type ButtonHook = fn(&Theme, Class, ButtonVariant, ButtonState) -> ButtonStyle;
+/// A function that decides the colour of a container background.
+pub type SurfaceHook = fn(&Theme, Class, Surface) -> Option<Color>;
+/// A function that decides how a list item or menu row looks.
+pub type ItemHook = fn(&Theme, Class, ButtonState, bool) -> ItemStyle;
+/// A function that decides how a tab looks.
+pub type TabHook = fn(&Theme, Class, ButtonState, bool) -> TabStyle;
+/// A function that decides how a floating panel looks.
+pub type PanelHook = fn(&Theme, Class, PanelKind) -> PanelStyle;
+
 /// Where a design system plugs in. Tokens (colours, radii, sizes) restyle most of what a theme says; a hook is a
 /// function that decides one kind of widget's look itself, in every state, and takes the place of the default. A hook
 /// gets the theme it is called for, so it can still use the tokens. Each is `None` in the defaults.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Hooks {
     /// How a button looks in a variant and a state.
-    pub button: Option<fn(&Theme, ButtonVariant, ButtonState) -> ButtonStyle>,
+    pub button: Option<ButtonHook>,
     /// The colour of a container background.
-    pub surface: Option<fn(&Theme, Surface) -> Option<Color>>,
+    pub surface: Option<SurfaceHook>,
     /// How a list item or a menu row looks in a state, chosen or not.
-    pub item: Option<fn(&Theme, ButtonState, bool) -> ItemStyle>,
+    pub item: Option<ItemHook>,
     /// How a tab looks in a state, chosen or not.
-    pub tab: Option<fn(&Theme, ButtonState, bool) -> TabStyle>,
+    pub tab: Option<TabHook>,
     /// How a dialog, a menu or a toast panel looks.
-    pub panel: Option<fn(&Theme, PanelKind) -> PanelStyle>,
+    pub panel: Option<PanelHook>,
 }
 
 impl Hooks {
@@ -927,8 +942,14 @@ impl Theme {
     /// The colour of a container background; `None` for [`Surface::None`].
     #[must_use]
     pub fn surface(&self, surface: Surface) -> Option<Color> {
+        self.surface_in(0, surface)
+    }
+
+    /// [`surface`](Self::surface) for a widget of style class `class`.
+    #[must_use]
+    pub fn surface_in(&self, class: Class, surface: Surface) -> Option<Color> {
         match self.hooks.surface {
-            Some(f) => f(self, surface),
+            Some(f) => f(self, class, surface),
             None => self.default_surface(surface),
         }
     }
@@ -983,8 +1004,19 @@ impl Theme {
     /// How a button looks.
     #[must_use]
     pub fn button(&self, variant: ButtonVariant, state: ButtonState) -> ButtonStyle {
+        self.button_in(0, variant, state)
+    }
+
+    /// [`button`](Self::button) for a widget of style class `class`.
+    #[must_use]
+    pub fn button_in(
+        &self,
+        class: Class,
+        variant: ButtonVariant,
+        state: ButtonState,
+    ) -> ButtonStyle {
         match self.hooks.button {
-            Some(f) => f(self, variant, state),
+            Some(f) => f(self, class, variant, state),
             None => self.default_button(variant, state),
         }
     }
@@ -992,8 +1024,14 @@ impl Theme {
     /// How a list item or a menu row looks in `state`, chosen (`selected`) or not.
     #[must_use]
     pub fn item(&self, state: ButtonState, selected: bool) -> ItemStyle {
+        self.item_in(0, state, selected)
+    }
+
+    /// [`item`](Self::item) for a widget of style class `class`.
+    #[must_use]
+    pub fn item_in(&self, class: Class, state: ButtonState, selected: bool) -> ItemStyle {
         if let Some(f) = self.hooks.item {
-            return f(self, state, selected);
+            return f(self, class, state, selected);
         }
         let c = &self.colors;
         let (fill, text) = match (state, selected) {
@@ -1013,8 +1051,14 @@ impl Theme {
     /// How a tab looks in `state`, chosen (`selected`) or not.
     #[must_use]
     pub fn tab(&self, state: ButtonState, selected: bool) -> TabStyle {
+        self.tab_in(0, state, selected)
+    }
+
+    /// [`tab`](Self::tab) for a widget of style class `class`.
+    #[must_use]
+    pub fn tab_in(&self, class: Class, state: ButtonState, selected: bool) -> TabStyle {
         if let Some(f) = self.hooks.tab {
-            return f(self, state, selected);
+            return f(self, class, state, selected);
         }
         let c = &self.colors;
         let (fill, text) = match state {
@@ -1042,8 +1086,14 @@ impl Theme {
     /// How a floating panel looks.
     #[must_use]
     pub fn panel(&self, kind: PanelKind) -> PanelStyle {
+        self.panel_in(0, kind)
+    }
+
+    /// [`panel`](Self::panel) for a widget of style class `class`.
+    #[must_use]
+    pub fn panel_in(&self, class: Class, kind: PanelKind) -> PanelStyle {
         if let Some(f) = self.hooks.panel {
-            return f(self, kind);
+            return f(self, class, kind);
         }
         let c = &self.colors;
         match kind {
@@ -1417,7 +1467,7 @@ mod hook_tests {
     const TEAL: Color = Color::rgb(30, 200, 210);
     const GOLD: Color = Color::rgb(240, 190, 20);
 
-    fn button(_: &Theme, v: ButtonVariant, s: ButtonState) -> ButtonStyle {
+    fn button(_: &Theme, _: Class, v: ButtonVariant, s: ButtonState) -> ButtonStyle {
         ButtonStyle {
             background: match (v, s) {
                 (_, ButtonState::Pressed) => LIME,
@@ -1430,7 +1480,7 @@ mod hook_tests {
         }
     }
 
-    fn item(t: &Theme, s: ButtonState, selected: bool) -> ItemStyle {
+    fn item(t: &Theme, _: Class, s: ButtonState, selected: bool) -> ItemStyle {
         ItemStyle {
             fill: if selected { Some(GOLD) } else { None },
             text: if s == ButtonState::Disabled {
@@ -1442,7 +1492,7 @@ mod hook_tests {
         }
     }
 
-    fn tab(_: &Theme, _: ButtonState, selected: bool) -> TabStyle {
+    fn tab(_: &Theme, _: Class, _: ButtonState, selected: bool) -> TabStyle {
         TabStyle {
             fill: None,
             text: Color::WHITE,
@@ -1451,7 +1501,7 @@ mod hook_tests {
         }
     }
 
-    fn panel(t: &Theme, kind: PanelKind) -> PanelStyle {
+    fn panel(t: &Theme, _: Class, kind: PanelKind) -> PanelStyle {
         PanelStyle {
             fill: GOLD,
             border: None,
@@ -1468,7 +1518,7 @@ mod hook_tests {
     }
     impl Tap for PanelStyle {}
 
-    fn surface(_: &Theme, s: Surface) -> Option<Color> {
+    fn surface(_: &Theme, _: Class, s: Surface) -> Option<Color> {
         match s {
             Surface::None => None,
             _ => Some(PINK),
@@ -1620,5 +1670,101 @@ mod hook_tests {
             Some(GOLD),
             "the toast panel"
         );
+    }
+
+    const DANGER: Class = 1;
+
+    fn classed_button(t: &Theme, class: Class, v: ButtonVariant, s: ButtonState) -> ButtonStyle {
+        let mut look = t.default_button(v, s);
+        if class == DANGER {
+            look.background = t.colors.danger;
+            look.text = Color::WHITE;
+        }
+        look
+    }
+
+    fn classed_surface(t: &Theme, class: Class, s: Surface) -> Option<Color> {
+        match (class, s) {
+            (DANGER, Surface::Raised) => Some(Color::rgb(90, 20, 20)),
+            _ => t.default_surface(s),
+        }
+    }
+
+    /// A design system maps a class to a look: a widget in class 1 is a danger button, one in class 0 is as before, and a
+    /// hook that ignores the class does what it always did.
+    #[test]
+    fn a_class_restyles_the_widgets_that_carry_it_and_no_others() {
+        let mut t = crate::theme::BITMAP_TEST;
+        t.hooks = Hooks {
+            button: Some(classed_button),
+            surface: Some(classed_surface),
+            ..Hooks::NONE
+        };
+        let mut tree = Tree::<8>::new();
+        let root = tree
+            .column(
+                None,
+                Style::new().padding(10).gap(6).align(CrossAlign::Start),
+            )
+            .unwrap();
+        let plain = tree
+            .button(Some(root), "Plain", ButtonVariant::Secondary)
+            .unwrap();
+        let danger = tree
+            .button(Some(root), "Delete", ButtonVariant::Secondary)
+            .unwrap();
+        let panel = tree
+            .column(
+                Some(root),
+                Style::new().padding(8).background(Surface::Raised),
+            )
+            .unwrap();
+        tree.label(Some(panel), "in a danger panel", TextRole::Body)
+            .unwrap();
+        tree.set_class(danger, DANGER);
+        tree.set_class(panel, DANGER);
+        assert_eq!((tree.class_of(plain), tree.class_of(danger)), (0, DANGER));
+        let mut s = fusuma_render_vello_cpu::new(200, 160).unwrap();
+        tree.update(&s, &t, Rect::new(0, 0, 200, 160));
+        s.clear(t.colors.background).unwrap();
+        tree.paint(&mut s, &t).unwrap();
+        let (a, b, p) = (
+            tree.rect(plain).unwrap(),
+            tree.rect(danger).unwrap(),
+            tree.rect(panel).unwrap(),
+        );
+        let secondary = t
+            .default_button(ButtonVariant::Secondary, ButtonState::Idle)
+            .background;
+        assert_eq!(
+            s.pixel(a.x + (a.w / 2) as i32, a.y + (a.h / 2) as i32 - 6),
+            Some(secondary),
+            "no class: the default look"
+        );
+        assert_eq!(
+            s.pixel(b.x + (b.w / 2) as i32, b.y + (b.h / 2) as i32 - 6),
+            Some(t.colors.danger),
+            "class 1: the danger look"
+        );
+        assert_eq!(
+            s.pixel(p.x + 2, p.y + 4),
+            Some(Color::rgb(90, 20, 20)),
+            "a container too"
+        );
+        // Back to class 0: the default look returns, and it asks for a repaint.
+        let _ = tree.take_damage();
+        tree.set_class(danger, 0);
+        assert!(tree.take_damage().is_some() || tree.needs_frame());
+        tree.update(&s, &t, Rect::new(0, 0, 200, 160));
+        s.clear(t.colors.background).unwrap();
+        tree.paint(&mut s, &t).unwrap();
+        assert_eq!(
+            s.pixel(b.x + (b.w / 2) as i32, b.y + (b.h / 2) as i32 - 6),
+            Some(secondary)
+        );
+        // A stale handle has class 0 and cannot be given one.
+        tree.remove(danger);
+        tree.set_class(danger, 3);
+        assert_eq!(tree.class_of(danger), 0);
     }
 }

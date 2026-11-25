@@ -18,6 +18,23 @@ impl<const N: usize> Tree<N> {
         self.slot(id).map_or(0, |i| self.nodes[i].key)
     }
 
+    /// Gives node `id` the style class `class`: a number the theme's hooks map to a look (`Theme::button_in` and friends), so
+    /// a design system restyles a widget by name. Class 0 is the default look.
+    pub fn set_class(&mut self, id: NodeId, class: u8) {
+        if let Some(i) = self.slot(id)
+            && self.nodes[i].class != class
+        {
+            self.nodes[i].class = class;
+            self.request(i, Flags::PAINT);
+        }
+    }
+
+    /// The style class of node `id`.
+    #[must_use]
+    pub fn class_of(&self, id: NodeId) -> u8 {
+        self.slot(id).map_or(0, |i| self.nodes[i].class)
+    }
+
     /// Remembers what node `id` (the root of a memoised view) was last made from: 16 bits, a version of the data it shows.
     pub fn set_memo(&mut self, id: NodeId, value: u16) {
         if let Some(i) = self.slot(id) {

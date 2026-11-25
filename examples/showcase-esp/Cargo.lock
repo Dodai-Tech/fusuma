@@ -1152,6 +1152,8 @@ dependencies = [
 name = "fusuma-view"
 version = "0.2.0"
 dependencies = [
+ "fusuma-anim",
+ "fusuma-render",
  "fusuma-ui",
 ]
 

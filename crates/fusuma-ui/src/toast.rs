@@ -251,7 +251,7 @@ impl<const N: usize> Tree<N> {
                     (u32::from(c.a) * u32::from(alpha) / 255) as u8,
                 )
             };
-            let look = theme.panel(crate::theme::PanelKind::Toast);
+            let look = theme.panel_in(n.class, crate::theme::PanelKind::Toast);
             r.fill_rect(rect, look.radius, with(look.fill))?;
             if let Some(border) = look.border {
                 r.stroke_rect(rect, look.radius, theme.border_width, with(border))?;

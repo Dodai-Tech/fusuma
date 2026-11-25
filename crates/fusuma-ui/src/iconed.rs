@@ -188,7 +188,7 @@ impl<const N: usize> Tree<N> {
             return Ok(());
         };
         let rect = n.rect;
-        let look = theme.tab(self.widget_state(i), selected);
+        let look = theme.tab_in(n.class, self.widget_state(i), selected);
         let (fill, color) = (look.fill, look.text);
         if let Some(fill) = fill {
             r.fill_rect(rect, look.radius, fill)?;

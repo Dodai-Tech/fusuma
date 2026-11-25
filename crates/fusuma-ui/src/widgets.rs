@@ -513,7 +513,7 @@ impl<const N: usize> Tree<N> {
                 icon,
             } => {
                 let state = self.widget_state(i);
-                let look = theme.item(state, selected);
+                let look = theme.item_in(n.class, state, selected);
                 if let Some(fill) = look.fill {
                     r.fill_rect(rect, look.radius, fill)?;
                 }

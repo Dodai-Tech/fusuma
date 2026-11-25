@@ -349,7 +349,7 @@ impl<const N: usize> Tree<N> {
         } else {
             crate::theme::PanelKind::Dialog
         };
-        let look = theme.panel(kind);
+        let look = theme.panel_in(self.nodes[i].class, kind);
         let radius = look.radius;
         r.fill_rect(rect, radius, look.fill)?;
         if let Some(border) = look.border {

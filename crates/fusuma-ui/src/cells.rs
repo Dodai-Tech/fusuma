@@ -558,7 +558,7 @@ impl<const N: usize> Tree<N> {
         let ink = if disabled { c.text_disabled } else { c.text };
         match n.kind {
             Kind::Stack(_) => {
-                if let Some(bg) = look.theme.surface(n.style.background) {
+                if let Some(bg) = look.theme.surface_in(n.class, n.style.background) {
                     pen.fill(rect, ' ', look.style(c.text, Some(bg), Attrs::NONE));
                 }
                 self.cells_children(i, pen, look);
@@ -566,7 +566,7 @@ impl<const N: usize> Tree<N> {
             Kind::Scroll {
                 offset, content, ..
             } => {
-                if let Some(bg) = look.theme.surface(n.style.background) {
+                if let Some(bg) = look.theme.surface_in(n.class, n.style.background) {
                     pen.fill(rect, ' ', look.style(c.text, Some(bg), Attrs::NONE));
                 }
                 let outer = pen.clip;

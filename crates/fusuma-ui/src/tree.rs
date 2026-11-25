@@ -460,6 +460,8 @@ pub(crate) struct Node {
     pub(crate) key: u32,
     /// What a memoised subtree was last made from (see `Tree::set_memo`).
     pub(crate) memo: u16,
+    /// The style class a design system's hooks map to a look (see `Theme::button_in`); 0 is the default.
+    pub(crate) class: u8,
 }
 
 impl Node {
@@ -491,6 +493,7 @@ impl Node {
         hidden: false,
         key: 0,
         memo: 0,
+        class: 0,
     };
 
     /// Whether the parent leaves this node out of its flow: a dialog or toast (placed on their own) or a hidden node.
