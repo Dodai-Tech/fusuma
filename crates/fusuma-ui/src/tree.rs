@@ -43,10 +43,29 @@ impl SmallText {
         self.len = end as u8;
     }
 
+    /// Adds `s` at the end, cutting it at a character boundary where the room runs out.
+    pub fn push_str(&mut self, s: &str) {
+        let at = usize::from(self.len);
+        let mut end = s.len().min(TEXT_CAP - at);
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        self.buf[at..at + end].copy_from_slice(&s.as_bytes()[..end]);
+        self.len += end as u8;
+    }
+
     /// The text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         core::str::from_utf8(&self.buf[..usize::from(self.len)]).unwrap_or("")
+    }
+}
+
+/// Text can be formatted into it (`write!`); what does not fit is cut, never an error.
+impl core::fmt::Write for SmallText {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.push_str(s);
+        Ok(())
     }
 }
 
@@ -1159,6 +1178,33 @@ impl<const N: usize> Tree<N> {
     #[must_use]
     pub fn root_id(&self) -> Option<NodeId> {
         self.root.map(|r| self.id_of(usize::from(r)))
+    }
+
+    /// Whether `id` still names a node of this tree.
+    #[must_use]
+    pub fn contains(&self, id: NodeId) -> bool {
+        self.slot(id).is_some()
+    }
+
+    /// The parent of `id`, if it has one.
+    #[must_use]
+    pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
+        let i = self.slot(id)?;
+        self.nodes[i].parent.map(|p| self.id_of(usize::from(p)))
+    }
+
+    /// The first child of `id`, if it has any.
+    #[must_use]
+    pub fn first_child(&self, id: NodeId) -> Option<NodeId> {
+        let i = self.slot(id)?;
+        self.nodes[i].first.map(|c| self.id_of(usize::from(c)))
+    }
+
+    /// The sibling after `id`, if there is one.
+    #[must_use]
+    pub fn next_sibling(&self, id: NodeId) -> Option<NodeId> {
+        let i = self.slot(id)?;
+        self.nodes[i].next.map(|c| self.id_of(usize::from(c)))
     }
 
     /// The children of `id`, first to last.

@@ -1,0 +1,26 @@
+[package]
+name = "fusuma-view"
+description = "Fusuma's Elm-style view layer: describe the screen as a function of your state, and only what changed is touched (no_std, no allocator)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-view"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "elm", "declarative", "no-std", "embedded"]
+categories = ["gui", "embedded", "no-std"]
+publish = false
+
+[dependencies]
+fusuma-ui.workspace = true
+
+[dev-dependencies]
+fusuma-render = { workspace = true }
+fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
+fusuma-render-embedded.workspace = true
+allocation-counter = "0.8.1"
+
+[lints]
+workspace = true

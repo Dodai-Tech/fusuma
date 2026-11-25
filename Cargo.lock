@@ -1157,6 +1157,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-view"
+version = "0.2.0"
+dependencies = [
+ "allocation-counter",
+ "fusuma-render",
+ "fusuma-render-embedded",
+ "fusuma-render-vello-cpu",
+ "fusuma-ui",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
