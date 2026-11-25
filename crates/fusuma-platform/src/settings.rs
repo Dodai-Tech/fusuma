@@ -1,10 +1,16 @@
-//! Reading the `[render]` settings from TOML.
+//! Reading a settings file (`fusuma.toml`).
 //!
 //! ```toml
 //! [render]
 //! backend = "auto"      # auto (the default), integer, vello-cpu or vello-gpu
 //! fallback = true       # step down to a lighter backend if the chosen one does not fit; default true
 //! min_free_kb = 100     # internal RAM that must stay free after the frame; default 100 (a guess)
+//!
+//! [fonts]
+//! preset = "material"   # a preset of fusuma-fonts' catalog; default: the first one the build linked
+//! sans = "roboto"       # or name the families one by one, overriding the preset's
+//! mono = "roboto-mono"
+//! sizes = [10, 15, 20]  # line heights of the glyph atlases (the integer renderer), read at build time
 //! ```
 //!
 //! Every key is optional, and a key left out says nothing, so the layer below it decides. An unknown key
@@ -70,22 +76,64 @@ impl RawRender {
     }
 }
 
+/// The `[fonts]` table: which of the linked font families draw. The names are checked against the families the
+/// build linked by the platform that applies them (`fusuma::fonts::FontSet::choose`); this crate knows no fonts.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FontChoice {
+    /// A preset's id (`material`).
+    pub preset: Option<std::string::String>,
+    /// The sans family's id, over the preset's.
+    pub sans: Option<std::string::String>,
+    /// The mono family's id, over the preset's.
+    pub mono: Option<std::string::String>,
+    /// Line heights the glyph atlases are made at. Read at build time (`fusuma-fonts` reads the file
+    /// `FUSUMA_SETTINGS` names); at run time only compared with what the build made.
+    pub sizes: Option<std::vec::Vec<u16>>,
+}
+
+/// A settings file (`fusuma.toml`), read and checked.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Settings {
+    /// The `[render]` table as a layer (empty when the file has none).
+    pub render: RenderLayer,
+    /// The `[fonts]` table (all `None` when the file has none).
+    pub fonts: FontChoice,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
     render: Option<RawRender>,
+    fonts: Option<FontChoice>,
 }
 
-impl RenderLayer {
-    /// The layer a settings file (`fusuma.toml`) makes: its `[render]` table, or an empty layer if it has
-    /// none. Nothing else is allowed in the file yet, so a mistyped table name is an error, not silence.
+impl Settings {
+    /// Reads a settings file. A table or key it does not know is an error, so a typo is not silence.
     ///
     /// # Errors
-    /// [`SettingsError`] for text that is not valid TOML, an unknown key or table, or an unknown backend.
+    /// [`SettingsError`] for text that is not valid TOML, an unknown key or table, an unknown backend, or a line
+    /// height outside 6 to 96.
     pub fn from_toml(text: &str) -> Result<Self, SettingsError> {
         let file: File = toml::from_str(text)
             .map_err(|e| SettingsError(std::string::ToString::to_string(&e)))?;
-        file.render.map_or(Ok(Self::EMPTY), RawRender::into_layer)
+        let fonts = file.fonts.unwrap_or_default();
+        if let Some(bad) = fonts
+            .sizes
+            .iter()
+            .flatten()
+            .find(|s| !(6..=96).contains(*s))
+        {
+            return Err(SettingsError(std::format!(
+                "fonts.sizes: {bad} is not a line height of 6 to 96"
+            )));
+        }
+        Ok(Self {
+            render: file
+                .render
+                .map_or(Ok(RenderLayer::EMPTY), RawRender::into_layer)?,
+            fonts,
+        })
     }
 }
 
@@ -96,22 +144,25 @@ mod tests {
 
     #[test]
     fn a_full_table_is_read() {
-        let l = RenderLayer::from_toml(
+        let l = Settings::from_toml(
             "[render]\nbackend = \"vello-cpu\"\nfallback = false\nmin_free_kb = 64\n",
         )
-        .unwrap();
+        .unwrap()
+        .render;
         assert_eq!(l.backend, Some(BackendSetting::Fixed(Backend::VelloCpu)));
         assert_eq!((l.fallback, l.min_free_kb), (Some(false), Some(64)));
     }
 
     #[test]
     fn what_is_left_out_says_nothing() {
-        assert_eq!(RenderLayer::from_toml("").unwrap(), RenderLayer::EMPTY);
+        assert_eq!(Settings::from_toml("").unwrap().render, RenderLayer::EMPTY);
         assert_eq!(
-            RenderLayer::from_toml("[render]\n").unwrap(),
+            Settings::from_toml("[render]\n").unwrap().render,
             RenderLayer::EMPTY
         );
-        let l = RenderLayer::from_toml("[render]\nfallback = false\n").unwrap();
+        let l = Settings::from_toml("[render]\nfallback = false\n")
+            .unwrap()
+            .render;
         assert_eq!(l.backend, None);
         assert_eq!(
             Render::layered(&[l]).min_free_kb,
@@ -121,18 +172,53 @@ mod tests {
 
     #[test]
     fn auto_is_written_out_and_every_backend_name_works() {
-        let auto = RenderLayer::from_toml("[render]\nbackend = \"auto\"\n").unwrap();
+        let auto = Settings::from_toml("[render]\nbackend = \"auto\"\n")
+            .unwrap()
+            .render;
         assert_eq!(auto.backend, Some(BackendSetting::Auto));
         for b in Backend::ALL {
-            let l = RenderLayer::from_toml(&std::format!("[render]\nbackend = \"{}\"\n", b.name()))
-                .unwrap();
+            let l = Settings::from_toml(&std::format!("[render]\nbackend = \"{}\"\n", b.name()))
+                .unwrap()
+                .render;
             assert_eq!(l.backend, Some(BackendSetting::Fixed(b)));
         }
     }
 
     #[test]
+    fn the_fonts_table_is_read_and_checked() {
+        let s = Settings::from_toml(
+            "[fonts]\npreset = \"material\"\nmono = \"jetbrains-mono\"\nsizes = [12, 18]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            s.fonts,
+            FontChoice {
+                preset: Some("material".into()),
+                sans: None,
+                mono: Some("jetbrains-mono".into()),
+                sizes: Some(std::vec![12, 18]),
+            }
+        );
+        assert_eq!(s.render, RenderLayer::EMPTY);
+        assert_eq!(
+            Settings::from_toml("").unwrap().fonts,
+            FontChoice::default()
+        );
+        let err = |t: &str| Settings::from_toml(t).unwrap_err().to_string();
+        assert!(err("[fonts]\nsizes = [4]\n").contains("fonts.sizes: 4"));
+        assert!(err("[fonts]\nfamily = \"x\"\n").contains("family"));
+        assert!(err("[font]\npreset = \"x\"\n").contains("font"));
+        for key in ["preset", "sans", "mono", "sizes"] {
+            assert!(
+                SETTINGS_SCHEMA.contains(&std::format!("\"{key}\"")),
+                "the schema has fonts.{key}"
+            );
+        }
+    }
+
+    #[test]
     fn mistakes_are_errors_that_name_the_problem() {
-        let err = |t: &str| RenderLayer::from_toml(t).unwrap_err().to_string();
+        let err = |t: &str| Settings::from_toml(t).unwrap_err().to_string();
         assert!(err("[render]\nbackend = \"vello\"\n").contains("unknown render backend 'vello'"));
         assert!(err("[render]\nbackend = \"vello\"\n").contains("auto, "));
         assert!(err("[render]\nbogus = 1\n").contains("bogus"));

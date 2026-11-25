@@ -34,6 +34,10 @@ keywords = ["graphics", "renderer", "embedded", "no-std", "2d"]
 categories = ["graphics", "embedded", "no-std", "rendering"]
 
 [workspace.dependencies]
+serde = { version = "1", default-features = false, features = ["derive", "std"] }
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
+ab_glyph = "0.2"
+ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 fusuma-render = { path = "crates/fusuma-render", version = "0.2.0" }
 fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.2.0" }
 embedded-graphics = "0.8.2"

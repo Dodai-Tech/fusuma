@@ -22,6 +22,8 @@ libm = ["fusuma/libm"]
 # `libm` as well. The automatic choice does not pick it on a microcontroller (no SIMD for Vello there); a board file
 # can.
 vello-cpu = ["fusuma/renderer-vello-cpu"]
+# Smooth text: the font families `fusuma-fonts` links, drawn by whichever renderer is linked, and `Driver::set_fonts`.
+fonts = ["fusuma/fonts"]
 
 [dependencies]
 fusuma = { workspace = true, features = ["renderer-integer"] }

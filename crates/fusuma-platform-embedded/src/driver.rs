@@ -86,6 +86,14 @@ impl<A: App, B: Board> Driver<A, B> {
         &self.board
     }
 
+    /// Draws the font roles with `set`'s families (`[fonts]` in the settings). Call it before the first
+    /// [`step`](Self::step): the first frame lays out the text with these families; a later change would leave text
+    /// laid out for the old ones until the app lays out again.
+    #[cfg(feature = "fonts")]
+    pub fn set_fonts(&mut self, set: fusuma::fonts::FontSet) {
+        self.surface.set_fonts(set);
+    }
+
     /// The board, to read and reset its own numbers or change a setting (brightness) from outside.
     pub fn board_mut(&mut self) -> &mut B {
         &mut self.board
@@ -279,6 +287,31 @@ mod tests {
 
     fn backends() -> Vec<Backend> {
         crate::LINKED.to_vec()
+    }
+
+    /// The families decide how text looks: with none every role is the bitmap font (one bit a pixel), with the
+    /// default set the integer renderer blends its atlases (pixels in between).
+    #[cfg(feature = "fonts")]
+    #[test]
+    fn the_font_set_decides_how_text_is_drawn() {
+        let partial = |set: fusuma::fonts::FontSet| {
+            let mut d = wide(Backend::Integer);
+            d.set_fonts(set);
+            d.step(0).unwrap();
+            let lit = |p: &u16| *p != 0 && *p != 0xffff;
+            let screen = &d.board().screen;
+            let colours: std::collections::BTreeSet<u16> =
+                screen.iter().copied().filter(lit).collect();
+            colours.len()
+        };
+        let (smooth, bitmap) = (
+            partial(fusuma::fonts::FontSet::default_set()),
+            partial(fusuma::fonts::FontSet::NONE),
+        );
+        assert!(
+            smooth > bitmap + 20,
+            "{smooth} colours with atlases, {bitmap} without"
+        );
     }
 
     fn driver(backend: Backend) -> Driver<Showcase, Fake> {

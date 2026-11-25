@@ -69,6 +69,16 @@ impl Surface {
         }
     }
 
+    /// Draws the font roles with `set`'s families from now on.
+    #[cfg(feature = "fonts")]
+    pub fn set_fonts(&mut self, set: fusuma::fonts::FontSet) {
+        match self {
+            Self::Integer(r, _) => r.set_fonts(set),
+            #[cfg(feature = "vello-cpu")]
+            Self::Vello(r, _) => r.set_fonts(set),
+        }
+    }
+
     /// One frame of the shell: time passes, then the app draws what changed. The rectangle it redrew, if any.
     ///
     /// # Errors

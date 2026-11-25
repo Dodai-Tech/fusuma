@@ -13,7 +13,7 @@ keywords = ["gui", "toolkit", "embedded", "no-std", "vello"]
 categories = ["gui", "embedded", "no-std"]
 
 [features]
-default = ["std", "renderer-vello-cpu", "font-inter", "font-inter-bold"]
+default = ["std", "renderer-vello-cpu", "fonts-fusuma"]
 # The standard library. Without it the crate is `no_std` (the Vello renderers then need `libm`, see their README).
 std = ["fusuma-render-vello-cpu?/std"]
 # Software floating point (the `libm` crate) for the Vello renderers without `std`, on a chip with no FPU or no libm.
@@ -24,21 +24,29 @@ toml = ["fusuma-platform/toml"]
 renderer-integer = ["dep:fusuma-render-embedded"]
 renderer-vello-cpu = ["dep:fusuma-render-vello-cpu"]
 renderer-vello-gpu = ["dep:fusuma-render-vello"]
-# `fusuma::text`: Parley layout over the bundled fonts, for an app that lays out text itself.
-text = ["dep:fusuma-text", "fusuma-render-vello-cpu?/text", "fusuma-render-vello?/text"]
-# Which fonts to bundle, for every linked renderer: the Vello ones draw them from their outlines through Parley
-# (about 65 to 90 KB each), the integer one from glyph atlases made at build time (about 40 KB each at the default
-# line heights), with no Parley. Without a font, or for a font that is not bundled, text is the bitmap font.
-# Inter Regular, the UI font.
-font-inter = ["fusuma-render-vello-cpu?/inter", "fusuma-render-vello?/inter", "fusuma-render-embedded?/inter"]
-# Inter Bold, for titles.
-font-inter-bold = ["fusuma-render-vello-cpu?/inter-bold", "fusuma-render-vello?/inter-bold", "fusuma-render-embedded?/inter-bold"]
-# JetBrains Mono, for logs and code.
-font-jetbrains-mono = [
-    "fusuma-render-vello-cpu?/jetbrains-mono",
-    "fusuma-render-vello?/jetbrains-mono",
-    "fusuma-render-embedded?/jetbrains-mono",
+# `fusuma::text`: Parley layout over the linked font families, for an app that lays out text itself.
+text = ["dep:fusuma-text", "fonts", "fusuma-render-vello-cpu?/text", "fusuma-render-vello?/text"]
+# Smooth text in every linked renderer (`fusuma::fonts`): the Vello ones draw the families from their outlines through
+# Parley, the integer one from glyph atlases made at build time (no Parley). Which families: a `fonts-*` preset below,
+# or `fusuma-fonts`' own features for single families; which of the linked ones draw: `[fonts]` in `fusuma.toml`.
+fonts = [
+    "dep:fusuma-fonts",
+    "fusuma-render-vello-cpu?/text",
+    "fusuma-render-vello?/text",
+    "fusuma-render-embedded?/fonts",
 ]
+# Inter and JetBrains Mono, the default.
+fonts-fusuma = ["fonts", "fusuma-fonts/preset-fusuma"]
+# Roboto and Roboto Mono, the Android and Material look.
+fonts-material = ["fonts", "fusuma-fonts/preset-material"]
+# Atkinson Hyperlegible Next and Mono, for small screens and low vision.
+fonts-legible = ["fonts", "fusuma-fonts/preset-legible"]
+# IBM Plex Sans and Mono.
+fonts-plex = ["fonts", "fusuma-fonts/preset-plex"]
+# Noto Sans and Noto Sans Mono.
+fonts-noto = ["fonts", "fusuma-fonts/preset-noto"]
+# Every family.
+fonts-all = ["fonts", "fusuma-fonts/all-families"]
 # `png()` for the CPU Vello renderer: the surface as a PNG file.
 png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 
@@ -48,6 +56,7 @@ fusuma-render.workspace = true
 fusuma-anim.workspace = true
 fusuma-platform.workspace = true
 fusuma-text = { workspace = true, optional = true }
+fusuma-fonts = { workspace = true, optional = true, default-features = false }
 fusuma-render-embedded = { workspace = true, optional = true }
 fusuma-render-vello-cpu = { workspace = true, optional = true }
 fusuma-render-vello = { workspace = true, optional = true }

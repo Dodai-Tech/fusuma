@@ -13,11 +13,8 @@ keywords = ["text", "layout", "fonts", "parley", "no-std"]
 categories = ["gui", "text-processing", "no-std"]
 
 [features]
-default = ["inter"]
-# The bundled fonts (see `fusuma-fonts`): one feature each.
-inter = ["fusuma-fonts/inter"]
-inter-bold = ["fusuma-fonts/inter-bold"]
-jetbrains-mono = ["fusuma-fonts/jetbrains-mono"]
+# The families come from `fusuma-fonts`' features, turned on by whoever picks them (the app, the `fusuma` facade).
+default = []
 
 [dependencies]
 fusuma-render.workspace = true
@@ -25,6 +22,10 @@ fusuma-fonts = { workspace = true, default-features = false }
 # `libm`, never `std`: Parley's `std` feature pulls `memmap2`, which does not build for ESP-IDF, and system fonts
 # are not wanted here (the bundled ones are the point).
 parley = { workspace = true }
+
+[dev-dependencies]
+# The tests draw with the default preset and Roboto.
+fusuma-fonts = { workspace = true, features = ["preset-fusuma", "roboto"] }
 
 [lints]
 workspace = true

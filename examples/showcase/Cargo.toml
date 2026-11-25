@@ -13,7 +13,7 @@ publish = false
 default = ["fonts"]
 # Vector fonts (Inter, Inter Bold, JetBrains Mono). Without them text is the built-in bitmap font: for a chip that
 # draws with the integer renderer.
-fonts = ["fusuma/font-inter", "fusuma/font-inter-bold", "fusuma/font-jetbrains-mono"]
+fonts = ["fusuma/fonts-fusuma"]
 
 [dependencies]
 fusuma.workspace = true

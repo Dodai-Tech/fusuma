@@ -298,6 +298,16 @@ clean:
     cargo clean
     rm -rf dist
 
+# ── Fonts (crates/fusuma-fonts) ───────────────────────────────────────────────
+
+# The font families and presets of the catalog
+fonts-list:
+    nu scripts/fonts.nu list
+
+# Download, instance and subset a family of the catalog (all missing ones without family=)
+fonts-fetch family="":
+    nu scripts/fonts.nu fetch --family "{{ family }}"
+
 # ── Showcase (examples/showcase, examples/showcase-esp) ───────────────────────
 
 # Render every showcase page to PNG on the host (docs/screenshots)

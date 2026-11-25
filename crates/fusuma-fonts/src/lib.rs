@@ -16,50 +16,203 @@ pub struct FontFile {
     pub data: &'static [u8],
 }
 
-/// Inter Regular, a Latin subset.
-#[cfg(feature = "inter")]
-pub const INTER_REGULAR: FontFile = FontFile {
-    family: "Inter",
-    bold: false,
-    data: include_bytes!("../fonts/Inter-Regular.ttf"),
-};
+/// What a family is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    /// Running text and titles; comes with a bold face.
+    Sans,
+    /// Fixed-width text (code, logs, numbers in columns).
+    Mono,
+}
 
-/// Inter Bold, a Latin subset.
-#[cfg(feature = "inter-bold")]
-pub const INTER_BOLD: FontFile = FontFile {
-    family: "Inter",
-    bold: true,
-    data: include_bytes!("../fonts/Inter-Bold.ttf"),
-};
+/// A family the build linked: its files and licence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Family {
+    /// The id the catalog, the cargo feature and the settings use (`"roboto"`).
+    pub id: &'static str,
+    /// The family name inside its files (`"Roboto"`).
+    pub name: &'static str,
+    /// What it is for.
+    pub role: Role,
+    /// One line about it.
+    pub about: &'static str,
+    /// The regular face.
+    pub regular: FontFile,
+    /// The bold face (a sans has one).
+    pub bold: Option<FontFile>,
+    /// Its licence text (SIL Open Font License 1.1): ship it with any binary that bundles the family.
+    pub licence: &'static str,
+}
 
-/// JetBrains Mono Regular, a Latin subset.
-#[cfg(feature = "jetbrains-mono")]
-pub const JETBRAINS_MONO: FontFile = FontFile {
-    family: "JetBrains Mono",
-    bold: false,
-    data: include_bytes!("../fonts/JetBrainsMono-Regular.ttf"),
-};
+/// A sans and a mono that go together, by family id. Every preset of the catalog is listed, linked or not.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Preset {
+    /// Its id (`"material"`): what `[fonts] preset` names and the cargo feature `preset-<id>` links.
+    pub id: &'static str,
+    /// One line about it.
+    pub about: &'static str,
+    /// The sans family's id.
+    pub sans: &'static str,
+    /// The mono family's id.
+    pub mono: &'static str,
+}
 
-/// Every font the enabled features bundle.
-pub const ALL: &[FontFile] = &[
-    #[cfg(feature = "inter")]
-    INTER_REGULAR,
-    #[cfg(feature = "inter-bold")]
-    INTER_BOLD,
-    #[cfg(feature = "jetbrains-mono")]
-    JETBRAINS_MONO,
-];
+/// A face a renderer asks for: the roles a theme uses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Face {
+    /// The sans, regular.
+    Sans,
+    /// The sans, bold.
+    SansBold,
+    /// The mono.
+    Mono,
+}
 
-/// The licence text of Inter (SIL Open Font License 1.1). Ship it with any binary that bundles Inter.
-pub const INTER_LICENSE: &str = include_str!("../fonts/Inter-OFL.txt");
+/// Which linked family fills each role. Built once from the settings ([`FontSet::choose`]); a renderer draws a
+/// role whose family is `None` with its bitmap font.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FontSet {
+    /// The sans family.
+    pub sans: Option<&'static Family>,
+    /// The mono family.
+    pub mono: Option<&'static Family>,
+}
 
-/// The licence text of JetBrains Mono (SIL Open Font License 1.1).
-pub const JETBRAINS_MONO_LICENSE: &str = include_str!("../fonts/JetBrainsMono-OFL.txt");
+/// Why a font choice cannot be met: it names the setting and the value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontError<'a> {
+    /// No preset has this id.
+    UnknownPreset(&'a str),
+    /// No family of the catalog has this id.
+    UnknownFamily(&'a str),
+    /// The family is in the catalog but its cargo feature is off.
+    NotLinked(&'a str),
+    /// The family is a mono where a sans is asked for, or the other way round.
+    WrongRole(&'a str),
+}
 
-/// The characters the subsets cover: ASCII, Latin-1 and Latin Extended-A (so Romanian ă â î and Central and
-/// Eastern European letters), the Romanian comma-below ș ț, common punctuation, the euro sign and four arrows.
-/// Greek, Cyrillic, CJK and emoji are not included.
-pub const COVERAGE: &str = "U+0020-007E, U+00A0-017F, U+0218-021B, U+2013-2014, U+2018-201E, U+2022, U+2026, U+20AC, U+2190-2193, U+2212";
+impl core::fmt::Display for FontError<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnknownPreset(id) => write!(f, "no font preset '{id}'"),
+            Self::UnknownFamily(id) => write!(f, "no font family '{id}' in the catalog"),
+            Self::NotLinked(id) => write!(
+                f,
+                "font family '{id}' is not linked: turn on the cargo feature fusuma-fonts/{id}"
+            ),
+            Self::WrongRole(id) => {
+                write!(f, "font family '{id}' is not for that role (sans or mono)")
+            }
+        }
+    }
+}
+
+/// The linked family `id`.
+#[must_use]
+pub fn family(id: &str) -> Option<&'static Family> {
+    FAMILIES.iter().find(|f| f.id == id)
+}
+
+/// Every font file linked, regular and bold: what a text engine registers.
+pub fn files() -> impl Iterator<Item = &'static FontFile> {
+    FAMILIES
+        .iter()
+        .flat_map(|f| core::iter::once(&f.regular).chain(f.bold.as_ref()))
+}
+
+impl FontSet {
+    /// No family: every role is drawn with the bitmap font.
+    pub const NONE: Self = Self {
+        sans: None,
+        mono: None,
+    };
+
+    /// The default: the first preset whose families are both linked; else the first linked sans and mono.
+    #[must_use]
+    pub fn default_set() -> Self {
+        PRESETS
+            .iter()
+            .find_map(|p| {
+                Some(Self {
+                    sans: Some(family(p.sans)?),
+                    mono: Some(family(p.mono)?),
+                })
+            })
+            .unwrap_or_else(|| Self {
+                sans: FAMILIES.iter().find(|f| f.role == Role::Sans),
+                mono: FAMILIES.iter().find(|f| f.role == Role::Mono),
+            })
+    }
+
+    /// The set the settings ask for: a `preset`, and/or a `sans` and a `mono` family by id, each overriding the
+    /// preset's. Nothing asked: [`default_set`](Self::default_set).
+    ///
+    /// # Errors
+    /// [`FontError`] naming an unknown preset or family, one whose feature is off, or one in the wrong role.
+    pub fn choose<'a>(
+        preset: Option<&'a str>,
+        sans: Option<&'a str>,
+        mono: Option<&'a str>,
+    ) -> Result<Self, FontError<'a>> {
+        let mut set = match preset {
+            None => Self::default_set(),
+            Some(id) => {
+                let p = PRESETS
+                    .iter()
+                    .find(|p| p.id == id)
+                    .ok_or(FontError::UnknownPreset(id))?;
+                Self {
+                    sans: Some(pick(p.sans, Role::Sans)?),
+                    mono: Some(pick(p.mono, Role::Mono)?),
+                }
+            }
+        };
+        if let Some(id) = sans {
+            set.sans = Some(pick(id, Role::Sans)?);
+        }
+        if let Some(id) = mono {
+            set.mono = Some(pick(id, Role::Mono)?);
+        }
+        Ok(set)
+    }
+
+    /// The family and file that draw `face`, if its family is set (a sans without a bold face draws bold with its
+    /// regular one).
+    #[must_use]
+    pub fn file(&self, face: Face) -> Option<(&'static Family, &'static FontFile)> {
+        match face {
+            Face::Sans => self.sans.map(|f| (f, &f.regular)),
+            Face::SansBold => self
+                .sans
+                .map(|f| (f, f.bold.as_ref().unwrap_or(&f.regular))),
+            Face::Mono => self.mono.map(|f| (f, &f.regular)),
+        }
+    }
+}
+
+impl Default for FontSet {
+    fn default() -> Self {
+        Self::default_set()
+    }
+}
+
+/// The linked family `id` in `role`, or why not.
+fn pick(id: &str, role: Role) -> Result<&'static Family, FontError<'_>> {
+    // The catalog's ids, linked or not, are the presets' names plus the linked families; an id in neither is unknown.
+    let known = CATALOG_IDS.contains(&id);
+    let f = family(id).ok_or(if known {
+        FontError::NotLinked(id)
+    } else {
+        FontError::UnknownFamily(id)
+    })?;
+    if f.role == role {
+        Ok(f)
+    } else {
+        Err(FontError::WrongRole(id))
+    }
+}
+
+include!(concat!(env!("OUT_DIR"), "/fonts.rs"));
 
 #[cfg(test)]
 mod tests {
@@ -67,41 +220,124 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_enabled_font_is_a_truetype_file_of_a_sensible_size() {
-        assert!(!ALL.is_empty(), "the default feature bundles Inter");
-        for f in ALL {
+    fn the_default_features_link_the_fusuma_preset_and_it_is_the_default() {
+        let set = FontSet::default_set();
+        assert_eq!(set.sans.map(|f| f.id), Some("inter"));
+        assert_eq!(set.mono.map(|f| f.id), Some("jetbrains-mono"));
+        let (fam, file) = set.file(Face::SansBold).unwrap();
+        assert_eq!((fam.name, file.bold), ("Inter", true));
+        assert_eq!(set.file(Face::Mono).unwrap().1.family, "JetBrains Mono");
+        assert_eq!(FontSet::default(), set);
+        assert_eq!(FontSet::NONE.file(Face::Sans), None);
+    }
+
+    #[test]
+    fn every_linked_file_is_truetype_with_its_licence() {
+        assert!(!FAMILIES.is_empty());
+        for f in files() {
             assert_eq!(&f.data[..4], &[0, 1, 0, 0], "{} is not TrueType", f.family);
             assert!(
-                (30_000..150_000).contains(&f.data.len()),
+                (15_000..150_000).contains(&f.data.len()),
                 "{}: {} bytes",
                 f.family,
                 f.data.len()
             );
         }
-    }
-
-    #[test]
-    fn the_licences_are_the_ofl_and_name_their_authors() {
-        for (text, who) in [
-            (INTER_LICENSE, "Inter Project Authors"),
-            (JETBRAINS_MONO_LICENSE, "JetBrains Mono Project Authors"),
-        ] {
-            assert!(text.contains("SIL OPEN FONT LICENSE Version 1.1"), "{who}");
-            assert!(text.contains(who));
+        for f in FAMILIES {
+            assert!(
+                f.licence.contains("SIL OPEN FONT LICENSE Version 1.1"),
+                "{}",
+                f.id
+            );
+            assert_eq!(
+                f.bold.is_some(),
+                f.role == Role::Sans,
+                "{}: a sans has a bold, a mono not",
+                f.id
+            );
         }
     }
 
-    #[cfg(all(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
     #[test]
-    fn the_whole_set_is_about_two_hundred_kilobytes() {
-        let total: usize = ALL.iter().map(|f| f.data.len()).sum();
-        assert!(total < 260_000, "{total} bytes");
-        assert_eq!(ALL.len(), 3);
-        let bolds: std::vec::Vec<bool> = ALL.iter().map(|f| f.bold).collect();
+    fn a_choice_names_what_is_wrong() {
         assert_eq!(
-            bolds.iter().filter(|&&b| b).count(),
-            1,
-            "exactly one bold face: Inter Bold"
+            FontSet::choose(None, None, None),
+            Ok(FontSet::default_set())
         );
+        assert_eq!(
+            FontSet::choose(Some("fusuma"), None, None),
+            Ok(FontSet::default_set())
+        );
+        assert_eq!(
+            FontSet::choose(Some("nope"), None, None),
+            Err(FontError::UnknownPreset("nope"))
+        );
+        assert_eq!(
+            FontSet::choose(None, Some("comic"), None),
+            Err(FontError::UnknownFamily("comic"))
+        );
+        assert_eq!(
+            FontSet::choose(None, Some("jetbrains-mono"), None),
+            Err(FontError::WrongRole("jetbrains-mono"))
+        );
+        assert_eq!(
+            FontSet::choose(None, None, Some("inter")),
+            Err(FontError::WrongRole("inter"))
+        );
+        let e = std::format!("{}", FontError::NotLinked("roboto"));
+        assert!(e.contains("fusuma-fonts/roboto"), "{e}");
+    }
+
+    #[cfg(not(feature = "roboto"))]
+    #[test]
+    fn a_family_that_is_not_linked_says_which_feature_links_it() {
+        assert_eq!(
+            FontSet::choose(Some("material"), None, None),
+            Err(FontError::NotLinked("roboto"))
+        );
+        assert_eq!(
+            FontSet::choose(None, Some("roboto"), None),
+            Err(FontError::NotLinked("roboto"))
+        );
+    }
+
+    #[cfg(all(feature = "roboto", feature = "roboto-mono"))]
+    #[test]
+    fn a_preset_and_a_family_override_combine() {
+        let set = FontSet::choose(Some("material"), None, Some("jetbrains-mono")).unwrap();
+        assert_eq!(
+            (set.sans.unwrap().name, set.mono.unwrap().name),
+            ("Roboto", "JetBrains Mono")
+        );
+    }
+
+    /// The cargo features of this crate are the catalog's families and presets, so a family cannot be listed in one
+    /// and forgotten in the other.
+    #[test]
+    fn the_cargo_features_match_the_catalog() {
+        let manifest = include_str!("../Cargo.toml");
+        for id in CATALOG_IDS {
+            assert!(
+                manifest.contains(&std::format!("\n{id} = [")),
+                "Cargo.toml has the feature {id}"
+            );
+        }
+        for p in PRESETS {
+            assert!(
+                manifest.contains(&std::format!(
+                    "\npreset-{} = [\"{}\", \"{}\"]",
+                    p.id,
+                    p.sans,
+                    p.mono
+                )),
+                "Cargo.toml: preset-{}",
+                p.id
+            );
+            assert!(
+                manifest.contains(&std::format!("\"preset-{}\"", p.id)),
+                "all-families has preset-{}",
+                p.id
+            );
+        }
     }
 }

@@ -1,0 +1,125 @@
+# The font families Fusuma can bundle, and the presets that map them to the roles a theme uses (sans, its bold, mono).
+# Each family is a cargo feature of fusuma-fonts with the same name (opt-in); a preset is a feature `preset-<id>` that
+# turns its families on. `nu scripts/fonts.nu fetch` downloads a family from `url`, cuts static instances from a
+# variable font (`axes`), subsets it to `coverage` and writes `<id>/regular.ttf`, `<id>/bold.ttf` and `<id>/OFL.txt`;
+# the results are committed. Every family here is under the SIL Open Font License 1.1.
+
+[defaults]
+# The characters every family is cut to: ASCII, Latin-1, Latin Extended-A, the Romanian comma-below letters, common
+# punctuation, the euro sign, four arrows and the minus sign.
+coverage = "U+0020-007E, U+00A0-017F, U+0218-021B, U+2013-2014, U+2018-201E, U+2022, U+2026, U+20AC, U+2190-2193, U+2212"
+# Line heights in pixels the glyph atlases are made at, unless the app's `[fonts] sizes` says otherwise.
+sizes = [10, 15, 20]
+
+# ── Sans ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[[family]]
+id = "inter"
+name = "Inter"
+role = "sans"
+about = "Fusuma's default: a screen face with a tall x-height"
+url = "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+regular = "Inter-Regular.ttf"
+bold = "Inter-Bold.ttf"
+
+[[family]]
+id = "roboto"
+name = "Roboto"
+role = "sans"
+about = "Android's and Material's face"
+url = "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto%5Bwdth,wght%5D.ttf"
+axes = { wdth = 100 }
+
+[[family]]
+id = "atkinson-hyperlegible"
+name = "Atkinson Hyperlegible Next"
+role = "sans"
+about = "Made for legibility: letters that cannot be confused (I l 1, O 0), good on small screens"
+url = "https://github.com/google/fonts/raw/main/ofl/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext%5Bwght%5D.ttf"
+
+[[family]]
+id = "ibm-plex-sans"
+name = "IBM Plex Sans"
+role = "sans"
+about = "A neutral grotesque with Mono and Serif siblings"
+url = "https://github.com/google/fonts/raw/main/ofl/ibmplexsans/IBMPlexSans%5Bwdth,wght%5D.ttf"
+axes = { wdth = 100 }
+
+[[family]]
+id = "noto-sans"
+name = "Noto Sans"
+role = "sans"
+about = "Google's face for every script; cut to Latin here like the others"
+url = "https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf"
+axes = { wdth = 100 }
+
+# ── Mono ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[[family]]
+id = "jetbrains-mono"
+name = "JetBrains Mono"
+role = "mono"
+about = "Fusuma's default mono"
+url = "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip"
+regular = "JetBrainsMono-Regular.ttf"
+
+[[family]]
+id = "roboto-mono"
+name = "Roboto Mono"
+role = "mono"
+about = "Roboto's mono"
+url = "https://github.com/google/fonts/raw/main/ofl/robotomono/RobotoMono%5Bwght%5D.ttf"
+
+[[family]]
+id = "atkinson-hyperlegible-mono"
+name = "Atkinson Hyperlegible Mono"
+role = "mono"
+about = "Atkinson Hyperlegible's mono"
+url = "https://github.com/google/fonts/raw/main/ofl/atkinsonhyperlegiblemono/AtkinsonHyperlegibleMono%5Bwght%5D.ttf"
+
+[[family]]
+id = "ibm-plex-mono"
+name = "IBM Plex Mono"
+role = "mono"
+about = "IBM Plex's mono"
+url = "https://github.com/google/fonts/raw/main/ofl/ibmplexmono/IBMPlexMono-Regular.ttf"
+
+[[family]]
+id = "noto-sans-mono"
+name = "Noto Sans Mono"
+role = "mono"
+about = "Noto's mono"
+url = "https://github.com/google/fonts/raw/main/ofl/notosansmono/NotoSansMono%5Bwdth,wght%5D.ttf"
+axes = { wdth = 100 }
+
+# ── Presets: the first one whose families are linked is the default ──────────────────────────────────────────────
+
+[[preset]]
+id = "fusuma"
+about = "Inter and JetBrains Mono"
+sans = "inter"
+mono = "jetbrains-mono"
+
+[[preset]]
+id = "material"
+about = "Roboto and Roboto Mono, the Android and Material look"
+sans = "roboto"
+mono = "roboto-mono"
+
+[[preset]]
+id = "legible"
+about = "Atkinson Hyperlegible Next and Mono, for small screens and low vision"
+sans = "atkinson-hyperlegible"
+mono = "atkinson-hyperlegible-mono"
+
+[[preset]]
+id = "plex"
+about = "IBM Plex Sans and Mono"
+sans = "ibm-plex-sans"
+mono = "ibm-plex-mono"
+
+[[preset]]
+id = "noto"
+about = "Noto Sans and Noto Sans Mono"
+sans = "noto-sans"
+mono = "noto-sans-mono"

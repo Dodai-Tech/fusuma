@@ -200,6 +200,8 @@ def esp_env [home: string, board: record]: nothing -> record {
         MCU: $board.chip
         ESP_IDF_SDKCONFIG_DEFAULTS: (generated_sdkconfig $board)
         FUSUMA_BOARD: $board.name
+        # The firmware's settings: fusuma-fonts reads `[fonts] sizes` from it to make the glyph atlases.
+        FUSUMA_SETTINGS: ($ROOT | path join $CRATE fusuma.toml)
     }
 }
 

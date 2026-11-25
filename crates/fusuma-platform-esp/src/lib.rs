@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use fusuma::App;
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
-use fusuma::platform::{Hardware, Machine, Render};
+use fusuma::platform::{Hardware, Machine, Render, Settings};
 use fusuma_platform_embedded::Board as _;
 use fusuma_platform_embedded::{Driver, DriverError};
 
@@ -68,6 +68,36 @@ fn hardware() -> Hardware {
     }
 }
 
+/// The font families `[fonts]` asks for, among those the build linked; warns when its atlas sizes are not the
+/// ones the build made (the build reads them from the file `FUSUMA_SETTINGS` names).
+#[cfg(feature = "fonts")]
+fn font_set(choice: &fusuma::platform::FontChoice) -> anyhow::Result<fusuma::fonts::FontSet> {
+    let set = fusuma::fonts::FontSet::choose(
+        choice.preset.as_deref(),
+        choice.sans.as_deref(),
+        choice.mono.as_deref(),
+    )
+    .map_err(|e| anyhow::anyhow!("fusuma.toml [fonts]: {e}"))?;
+    log::info!(
+        "fonts: sans {}, mono {}, atlases at {:?} px",
+        set.sans.map_or("the bitmap font", |f| f.name),
+        set.mono.map_or("the bitmap font", |f| f.name),
+        fusuma::fonts::ATLAS_SIZES
+    );
+    if let Some(sizes) = &choice.sizes {
+        let mut want = sizes.clone();
+        want.sort_unstable();
+        want.dedup();
+        if want != fusuma::fonts::ATLAS_SIZES {
+            log::warn!(
+                "fusuma.toml asks for atlases at {want:?} px, the build made {:?}: build with FUSUMA_SETTINGS naming this file",
+                fusuma::fonts::ATLAS_SIZES
+            );
+        }
+    }
+    Ok(set)
+}
+
 /// Free internal RAM, the lowest it has been since boot (the number `min_free_kb` should be set from), and free
 /// PSRAM, in bytes.
 fn heap() -> (usize, usize, usize) {
@@ -110,11 +140,12 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
     let panel = panel::EspBoard::open(options.backlight)?;
     let (w, h) = panel.size();
     // The layers, weakest first: the automatic rule needs no layer, then the project's file, then the build.
-    let file = match options.settings {
-        Some(text) => RenderLayer::from_toml(text)
+    let settings = match options.settings {
+        Some(text) => Settings::from_toml(text)
             .map_err(|e| anyhow::anyhow!("fusuma.toml is not valid: {e}"))?,
-        None => RenderLayer::EMPTY,
+        None => Settings::default(),
     };
+    let file = settings.render;
     let render = Render::layered(&[file, options.build]);
     let machine = Machine {
         screen: Some((w, h)),
@@ -143,6 +174,8 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
     log::info!("renderer: {plan}");
     let mut driver = Driver::new(make(w, h), panel, plan.uses)
         .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;
+    #[cfg(feature = "fonts")]
+    driver.set_fonts(font_set(&settings.fonts)?);
     let started_at = Instant::now();
     let mut report = Instant::now();
     // (count, total ms, worst ms) of the updates after the first: small ones (under a tenth of the screen, a tap or a

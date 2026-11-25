@@ -5,3 +5,11 @@
 # backend = "auto"      # auto, integer, vello-cpu or vello-gpu
 # fallback = true
 # min_free_kb = 100
+
+# Which of the linked font families draw (fusuma-fonts' catalog). The defaults: the first preset the build linked
+# (Inter and JetBrains Mono), atlases at 10, 15 and 20 px. Another preset needs its cargo feature (`fusuma/fonts-*`).
+# [fonts]
+# preset = "legible"      # fusuma, material, legible, plex or noto
+# sans = "roboto"         # or a family per role, over the preset's
+# mono = "roboto-mono"
+# sizes = [10, 15, 20]    # line heights of the glyph atlases (the integer renderer), read at build time

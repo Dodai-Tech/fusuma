@@ -13,12 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-# Vector fonts for `draw_text` and `measure_text` (bundled by `fusuma-text`).
+# Vector fonts for `draw_text` and `measure_text`, from the families `fusuma-fonts` links.
 text = ["fusuma-render-vello-common/text", "vello_gpu/text", "dep:fusuma-text", "dep:glifo"]
-# The bundled fonts, each implying `text`: see `fusuma-fonts`.
-inter = ["text", "fusuma-text/inter"]
-inter-bold = ["text", "fusuma-text/inter-bold"]
-jetbrains-mono = ["text", "fusuma-text/jetbrains-mono"]
 
 [dependencies]
 fusuma-render-vello-common = { workspace = true, features = ["std"] }
@@ -31,8 +27,9 @@ wgpu.workspace = true
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
 fusuma-render-embedded.workspace = true
-# `inter`: the GPU text test compares against the CPU drawing the same font.
-fusuma-render-vello-cpu = { workspace = true, features = ["std", "inter"] }
+# The GPU text test compares against the CPU drawing the same font.
+fusuma-render-vello-cpu = { workspace = true, features = ["std", "text"] }
+fusuma-fonts = { workspace = true, features = ["preset-fusuma"] }
 
 [lints]
 workspace = true

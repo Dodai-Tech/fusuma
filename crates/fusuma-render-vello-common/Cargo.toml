@@ -18,8 +18,8 @@ default = ["std"]
 # floating-point maths (an ESP32-S3 or similar).
 std = ["vello_common/std"]
 libm = ["vello_common/libm"]
-# Vector fonts (Inter and friends through Parley) for `draw_text` and `measure_text`; without it, or for a font
-# that is not bundled, text is the built-in bitmap font.
+# Vector fonts through Parley for `draw_text` and `measure_text`, from the families `fusuma-fonts` links; without it,
+# or for a role no linked family fills, text is the built-in bitmap font.
 text = ["dep:fusuma-text"]
 
 [dependencies]

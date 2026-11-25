@@ -17,6 +17,10 @@ pub use fusuma_platform as platform;
 #[cfg(feature = "text")]
 pub use fusuma_text as text;
 
+/// The font families and presets the build linked, and the `FontSet` that picks among them (the `fonts` feature).
+#[cfg(feature = "fonts")]
+pub use fusuma_fonts as fonts;
+
 /// The renderer backends linked by the `renderer-*` features.
 pub mod renderers {
     /// The integer, `no_std` renderer for microcontroller displays (`renderer-integer`).

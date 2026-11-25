@@ -939,6 +939,7 @@ name = "fusuma"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-fonts",
  "fusuma-platform",
  "fusuma-render",
  "fusuma-render-embedded",
@@ -961,6 +962,9 @@ name = "fusuma-fonts"
 version = "0.2.0"
 dependencies = [
  "ab_glyph",
+ "serde",
+ "toml",
+ "ttf-parser",
 ]
 
 [[package]]
@@ -1019,6 +1023,7 @@ dependencies = [
 name = "fusuma-render-vello"
 version = "0.2.0"
 dependencies = [
+ "fusuma-fonts",
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-common",
@@ -1044,6 +1049,7 @@ dependencies = [
 name = "fusuma-render-vello-cpu"
 version = "0.2.0"
 dependencies = [
+ "fusuma-fonts",
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-common",

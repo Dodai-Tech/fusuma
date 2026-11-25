@@ -637,10 +637,36 @@ mod tests {
     }
 
     /// Vector text: a proportional font through Parley and `glyph_run`, not the bitmap one.
-    #[cfg(feature = "inter")]
+    #[cfg(feature = "text")]
     mod vector {
         use super::*;
         use fusuma_render::{Font, Probe, TextStyle};
+
+        /// A renderer told before its first text to draw the roles with no family draws the bitmap font: the set
+        /// reaches the text engine it makes later.
+        #[test]
+        fn the_font_set_reaches_the_text_engine() {
+            let style = TextStyle::new(20, Color::WHITE);
+            let vector = new(200, 40).unwrap();
+            let mut bitmap = new(200, 40).unwrap();
+            bitmap.set_fonts(fusuma_text::FontSet::NONE);
+            let (v, b) = (
+                vector.measure_text("Settings", &style),
+                bitmap.measure_text("Settings", &style),
+            );
+            assert_ne!(v, b, "Inter and the bitmap font measure differently");
+            assert_eq!(
+                b,
+                new(200, 40)
+                    .unwrap()
+                    .measure_text("Settings", &style.font(Font::Bitmap))
+            );
+            // And a set given after the engine exists reaches it too.
+            let mut later = new(200, 40).unwrap();
+            let _ = later.measure_text("x", &style);
+            later.set_fonts(fusuma_text::FontSet::NONE);
+            assert_eq!(later.measure_text("Settings", &style), b);
+        }
 
         fn lit(r: &VelloCpu, w: i32, h: i32) -> usize {
             (0..h)

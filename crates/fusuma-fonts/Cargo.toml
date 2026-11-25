@@ -1,6 +1,6 @@
 [package]
 name = "fusuma-fonts"
-description = "The fonts Fusuma can bundle (Inter, JetBrains Mono), Latin subsets under the SIL Open Font License, one cargo feature each"
+description = "The font families Fusuma can bundle and their presets, Latin subsets under the SIL Open Font License, one cargo feature each, for every renderer and platform; glyph atlases for microcontrollers"
 readme = "README.md"
 documentation = "https://docs.rs/fusuma-fonts"
 version.workspace = true
@@ -10,25 +10,43 @@ rust-version.workspace = true
 license = "MIT AND OFL-1.1"
 authors.workspace = true
 repository.workspace = true
-keywords = ["fonts", "inter", "jetbrains-mono", "embedded", "no-std"]
+keywords = ["fonts", "inter", "roboto", "embedded", "no-std"]
 categories = ["gui", "embedded", "no-std"]
 include = ["src/**", "fonts/**", "build.rs", "README.md", "LICENSE*"]
 
 [features]
-default = ["inter"]
-# Inter Regular: the default UI font.
-inter = []
-# Inter Bold, for titles and emphasis.
-inter-bold = []
-# JetBrains Mono Regular, for logs and anything fixed-width.
-jetbrains-mono = []
-# Glyph atlases of the enabled fonts: every glyph rasterised at build time to 4-bit coverage at a few line heights, so
-# a renderer without a vector rasteriser (the integer one) draws smooth text. `FUSUMA_ATLAS_SIZES` picks the line
-# heights (default "10,15,20", the default theme's caption, body and title).
+default = ["preset-fusuma"]
+# Glyph atlases of the linked families: every glyph rasterised at build time to 4-bit coverage at a few line heights
+# (`[fonts] sizes` in the app's fusuma.toml, which `FUSUMA_SETTINGS` names; else the catalog's 10, 15 and 20), for a
+# renderer without a vector rasteriser (the integer one).
 atlas = ["dep:ab_glyph"]
 
+# One feature per family in fonts/catalog.toml (a test keeps the two in step). Sans families bring Regular and Bold.
+inter = []
+roboto = []
+atkinson-hyperlegible = []
+ibm-plex-sans = []
+noto-sans = []
+jetbrains-mono = []
+roboto-mono = []
+atkinson-hyperlegible-mono = []
+ibm-plex-mono = []
+noto-sans-mono = []
+
+# Presets: a sans and a mono that go together (the catalog's `[[preset]]`).
+preset-fusuma = ["inter", "jetbrains-mono"]
+preset-material = ["roboto", "roboto-mono"]
+preset-legible = ["atkinson-hyperlegible", "atkinson-hyperlegible-mono"]
+preset-plex = ["ibm-plex-sans", "ibm-plex-mono"]
+preset-noto = ["noto-sans", "noto-sans-mono"]
+# Every family.
+all-families = ["preset-fusuma", "preset-material", "preset-legible", "preset-plex", "preset-noto"]
+
 [build-dependencies]
-ab_glyph = { version = "0.2", optional = true }
+serde.workspace = true
+toml.workspace = true
+ttf-parser.workspace = true
+ab_glyph = { workspace = true, optional = true }
 
 [lints]
 workspace = true

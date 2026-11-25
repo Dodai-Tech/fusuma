@@ -28,9 +28,16 @@ works and is tested.
      ink (Vello hints and kerns, the atlas does neither and puts glyphs on whole pixels). On the S3 watch: first
      frame 83 ms (82 with bitmap text), the ESP firmware links no Parley. Not yet: kerning, other sizes than the
      three, families other than the bundled ones (next item)
-   - [ ] **Font families as data:** a catalog of families in `fusuma-fonts` (opt-in, one feature each), presets that
-     map families to the roles (sans, sans bold, mono), the choice in `fusuma.toml`, the atlas line heights there too
-     (today `FUSUMA_ATLAS_SIZES`); the same data for every renderer and platform; icon fonts
+   - [x] **Font families as data.** `fusuma-fonts` is the one font crate for every renderer and platform: a catalog
+     (`fonts/catalog.toml`) of ten OFL families, each an opt-in cargo feature (Inter, Roboto, Atkinson Hyperlegible
+     Next, IBM Plex Sans, Noto Sans; JetBrains Mono and the matching monos), and five presets (`fusuma` the default,
+     `material`, `legible`, `plex`, `noto`). Which linked families draw is `[fonts]` in `fusuma.toml` (a preset, or a
+     family per role), checked by `FontSet::choose`; the atlas line heights are `[fonts] sizes` there, read at build
+     time through `FUSUMA_SETTINGS`. Vello (through Parley) and the integer renderer (atlases) take the same
+     `FontSet`; the facade has `fonts-*` presets. `scripts/fonts.nu` (tested) fetches, instances and subsets a
+     family; each file's own name is checked against the catalog at build time. Seen on the S3 watch: `preset =
+     "legible"` draws Atkinson Hyperlegible, first frame 84 ms. B612 was tried and left out (no ș, ț, ă)
+   - [ ] **Icon fonts** (Material Symbols, Lucide, Phosphor) through the same atlases, drawn by name
 2. **UI components and logic:** the missing widgets and behaviour (see Phase 4), each with a pixel look.
 3. **TUI:** the cells in the toolkit (`Measure`, `CellSink`, the cell theme), running apps, then the outputs (see
    Phase 5). The `fusuma-cells` and `fusuma-platform-tui` scaffolds wait until then.

@@ -36,6 +36,8 @@ esp-idf-svc = { version = "0.53", features = ["experimental"] }
 render-integer = []
 # Vello is linked only for this one: the automatic choice is the integer renderer on every ESP chip.
 render-vello-cpu = ["fusuma-platform-esp/vello-cpu"]
+# Every font family (about 600 KB of glyph atlases), so `[fonts]` in fusuma.toml can pick any preset.
+all-fonts = ["fusuma-platform-esp/all-fonts"]
 
 [build-dependencies]
 embuild = "0.33"

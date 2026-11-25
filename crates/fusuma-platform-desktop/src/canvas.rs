@@ -4,6 +4,7 @@
 //! pixels is valid. The canvas keeps the whole picture in `frame` and copies just that region into it; the
 //! window then shows `frame`.
 
+use fusuma::fonts::FontSet;
 use fusuma::platform::Backend;
 use fusuma::render::Rect;
 use fusuma::renderers::vello_cpu::{self, Scene as _, VelloCpu};
@@ -30,13 +31,20 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    /// A canvas of `width` x `height` pixels on `backend`; `None` if that surface cannot be made (no GPU, or a
-    /// size Vello does not take).
-    pub fn new(backend: Backend, width: u32, height: u32) -> Option<Self> {
+    /// A canvas of `width` x `height` pixels on `backend`, drawing the font roles with `fonts`; `None` if that
+    /// surface cannot be made (no GPU, or a size Vello does not take).
+    pub fn new(backend: Backend, width: u32, height: u32, fonts: FontSet) -> Option<Self> {
         let surface = match backend {
-            Backend::VelloCpu => Surface::Cpu(Box::new(vello_cpu::new(width, height)?)),
+            Backend::VelloCpu => {
+                let mut r = vello_cpu::new(width, height)?;
+                r.set_fonts(fonts);
+                Surface::Cpu(Box::new(r))
+            }
             Backend::VelloGpu => match vello_gpu::new(width, height) {
-                Ok(s) => Surface::Gpu(Box::new(s)),
+                Ok(mut s) => {
+                    s.set_fonts(fonts);
+                    Surface::Gpu(Box::new(s))
+                }
                 Err(e) => {
                     log::warn!("no GPU surface: {e}");
                     return None;
@@ -176,7 +184,7 @@ mod tests {
     }
 
     fn showcase_canvas(backend: Backend) -> Option<(Canvas, Shell<Showcase>)> {
-        let canvas = Canvas::new(backend, 1024, 600)?;
+        let canvas = Canvas::new(backend, 1024, 600, FontSet::default())?;
         Some((canvas, Shell::new(Showcase::new(1024, 600))))
     }
 
@@ -263,13 +271,13 @@ mod tests {
 
     #[test]
     fn sizes_vello_does_not_take_make_no_canvas() {
-        assert!(Canvas::new(Backend::VelloCpu, 0, 10).is_none());
-        assert!(Canvas::new(Backend::VelloCpu, 70_000, 10).is_none());
+        assert!(Canvas::new(Backend::VelloCpu, 0, 10, FontSet::default()).is_none());
+        assert!(Canvas::new(Backend::VelloCpu, 70_000, 10, FontSet::default()).is_none());
         assert!(
-            Canvas::new(Backend::Integer, 10, 10).is_none(),
+            Canvas::new(Backend::Integer, 10, 10, FontSet::default()).is_none(),
             "not a desktop backend"
         );
-        let c = Canvas::new(Backend::VelloCpu, 8, 6).unwrap();
+        let c = Canvas::new(Backend::VelloCpu, 8, 6, FontSet::default()).unwrap();
         assert_eq!(
             (c.size(), c.backend(), c.pixels().len()),
             ((8, 6), Backend::VelloCpu, 48)

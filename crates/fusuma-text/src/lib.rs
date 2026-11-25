@@ -7,6 +7,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+pub use fusuma_fonts::{Face, FontSet};
 use fusuma_render::{Font, Size};
 use parley::fontique::Blob;
 use parley::{
@@ -75,15 +76,15 @@ struct Key {
 pub struct TextEngine {
     fonts: FontContext,
     layouts: LayoutContext<()>,
-    /// Which of the fonts the build bundled are registered.
-    has: [bool; 3],
+    /// Which linked family fills each role.
+    set: FontSet,
     cache: Vec<(Key, Option<Laid>)>,
 }
 
 impl core::fmt::Debug for TextEngine {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TextEngine")
-            .field("has", &self.has)
+            .field("set", &self.set)
             .field("cached", &self.cache.len())
             .finish_non_exhaustive()
     }
@@ -95,48 +96,59 @@ impl Default for TextEngine {
     }
 }
 
-/// The family name and weight a font asks for, and the slot in `has` that says it is available.
-const fn spec(font: Font) -> Option<(&'static str, f32, usize)> {
+/// The face a font role asks for; the bitmap font is not this engine's.
+const fn face(font: Font) -> Option<Face> {
     match font {
-        Font::Sans => Some(("Inter", 400.0, 0)),
-        Font::SansBold => Some(("Inter", 700.0, 1)),
-        Font::Mono => Some(("JetBrains Mono", 400.0, 2)),
+        Font::Sans => Some(Face::Sans),
+        Font::SansBold => Some(Face::SansBold),
+        Font::Mono => Some(Face::Mono),
         Font::Bitmap => None,
     }
 }
 
 impl TextEngine {
-    /// An engine with every font the enabled cargo features bundle registered. The font data is used where it
-    /// is (it is `'static`), not copied.
+    /// An engine with every font file the build linked registered, drawing the default set
+    /// ([`FontSet::default_set`]). The font data is used where it is (it is `'static`), not copied.
     #[must_use]
     pub fn new() -> Self {
         let mut fonts = FontContext::new();
-        let mut has = [false; 3];
-        for f in fusuma_fonts::ALL {
+        for f in fusuma_fonts::files() {
             let blob: Blob<u8> = Blob::new(Arc::new(f.data));
             fonts.collection.register_fonts(blob, None);
-            let slot = match (f.family, f.bold) {
-                ("Inter", false) => 0,
-                ("Inter", true) => 1,
-                _ => 2,
-            };
-            has[slot] = true;
         }
-        // Without the bold face a request for it is the regular one, which is what Parley would pick too.
-        has[1] |= has[0] && !fusuma_fonts::ALL.iter().any(|f| f.bold);
         Self {
             fonts,
             layouts: LayoutContext::new(),
-            has,
+            set: FontSet::default_set(),
             cache: Vec::new(),
         }
+    }
+
+    /// Draws the roles with `set`'s families from now on.
+    pub fn set_fonts(&mut self, set: FontSet) {
+        if set != self.set {
+            self.set = set;
+            self.cache.clear();
+        }
+    }
+
+    /// The families the roles are drawn with.
+    #[must_use]
+    pub const fn fonts(&self) -> &FontSet {
+        &self.set
+    }
+
+    /// The family name and weight that draw `font`, if a family fills its role.
+    fn spec(&self, font: Font) -> Option<(&'static str, f32)> {
+        let (family, file) = self.set.file(face(font)?)?;
+        Some((family.name, if file.bold { 700.0 } else { 400.0 }))
     }
 
     /// Whether `font` can be laid out here: a bitmap font never can (a backend draws that itself), and a
     /// vector font only when its cargo feature bundled it.
     #[must_use]
     pub fn has(&self, font: Font) -> bool {
-        spec(font).is_some_and(|(_, _, slot)| self.has[slot])
+        self.spec(font).is_some()
     }
 
     /// The font size that makes the line `size` pixels high: Inter and JetBrains Mono have a line height of
@@ -148,8 +160,8 @@ impl TextEngine {
     /// `text` laid out on one line in `font` with a line `size` pixels high; `None` when the font is not
     /// available, for the caller to use its bitmap font. Cached.
     pub fn layout(&mut self, text: &str, font: Font, size: u32) -> Option<&Laid> {
-        let (family, weight, slot) = spec(font)?;
-        if !self.has[slot] || size == 0 {
+        let (family, weight) = self.spec(font)?;
+        if size == 0 {
             return None;
         }
         let key = Key {
@@ -236,13 +248,8 @@ mod tests {
     #[test]
     fn the_bundled_fonts_are_available_and_the_bitmap_font_is_not_this_engines_business() {
         let e = engine();
-        assert!(e.has(Font::Sans));
+        assert!(e.has(Font::Sans) && e.has(Font::SansBold) && e.has(Font::Mono));
         assert!(!e.has(Font::Bitmap));
-        assert_eq!(
-            e.has(Font::SansBold),
-            cfg!(feature = "inter-bold") || cfg!(feature = "inter")
-        );
-        assert_eq!(e.has(Font::Mono), cfg!(feature = "jetbrains-mono"));
     }
 
     #[test]
@@ -293,7 +300,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "inter-bold")]
     #[test]
     fn bold_is_a_different_face_and_wider_than_regular() {
         let mut e = engine();
@@ -309,7 +315,6 @@ mod tests {
         assert_ne!(r.data.id(), b.data.id(), "two font files");
     }
 
-    #[cfg(feature = "jetbrains-mono")]
     #[test]
     fn the_mono_font_gives_every_character_the_same_width() {
         let mut e = engine();
@@ -318,12 +323,37 @@ mod tests {
         assert_eq!(w(&mut e, "abcdefgh"), 2 * w(&mut e, "abcd"));
     }
 
-    #[cfg(not(feature = "jetbrains-mono"))]
     #[test]
-    fn a_font_that_was_not_bundled_is_refused_so_the_caller_uses_the_bitmap_font() {
+    fn a_role_without_a_family_is_refused_so_the_caller_uses_the_bitmap_font() {
         let mut e = engine();
+        e.set_fonts(FontSet {
+            mono: None,
+            ..FontSet::default_set()
+        });
         assert!(e.layout("x", Font::Mono, 20).is_none());
         assert!(e.measure("x", Font::Mono, 20).is_none());
+        assert!(e.measure("x", Font::Sans, 20).is_some());
+    }
+
+    #[test]
+    fn another_family_lays_text_out_in_its_own_glyphs_and_widths() {
+        let mut e = engine();
+        let inter = e.measure("Settings and more", Font::Sans, 24).unwrap();
+        let font_of = |e: &mut TextEngine| {
+            e.layout("Settings", Font::Sans, 24).unwrap().runs[0]
+                .font
+                .data
+                .id()
+        };
+        let inter_file = font_of(&mut e);
+        e.set_fonts(FontSet::choose(None, Some("roboto"), None).unwrap());
+        let roboto = e.measure("Settings and more", Font::Sans, 24).unwrap();
+        assert_ne!(font_of(&mut e), inter_file, "another file");
+        assert_ne!(
+            roboto.w, inter.w,
+            "another width: Roboto is narrower than Inter"
+        );
+        assert_eq!(e.fonts().sans.unwrap().name, "Roboto");
     }
 
     #[test]

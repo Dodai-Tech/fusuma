@@ -1,16 +1,7 @@
 //! Glyph atlases: the bundled fonts rasterised at build time (feature `atlas`), for a renderer that draws text by
 //! blending coverage rather than filling outlines. No allocator, no floating point.
 
-/// The face an atlas was made from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AtlasFont {
-    /// Inter Regular.
-    Sans,
-    /// Inter Bold.
-    SansBold,
-    /// JetBrains Mono Regular.
-    Mono,
-}
+use crate::{Face, FontSet};
 
 /// One glyph: where its coverage is and how it sits on the line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,8 +25,10 @@ pub struct AtlasGlyph {
 /// A face at one line height.
 #[derive(Clone, Copy, Debug)]
 pub struct Atlas {
-    /// The face.
-    pub font: AtlasFont,
+    /// The family's id.
+    pub family: &'static str,
+    /// Whether it is the bold face.
+    pub bold: bool,
     /// The line height in pixels: what `TextStyle::size` asks for.
     pub line: u16,
     /// The baseline, from the top of the line.
@@ -90,13 +83,31 @@ impl Atlas {
         total.div_ceil(64)
     }
 
-    /// The atlas of `font` that best fits a line of `size` pixels: the largest not above it, else the smallest.
+    /// The atlas of `family` (bold or not) that best fits a line of `size` pixels: the largest not above it, else the
+    /// smallest.
     #[must_use]
-    pub fn pick(atlases: &'static [Atlas], font: AtlasFont, size: u32) -> Option<&'static Atlas> {
-        let of = || atlases.iter().filter(move |a| a.font == font);
+    pub fn pick(
+        atlases: &'static [Atlas],
+        family: &str,
+        bold: bool,
+        size: u32,
+    ) -> Option<&'static Atlas> {
+        let of = || {
+            atlases
+                .iter()
+                .filter(move |a| a.family == family && a.bold == bold)
+        };
         of().filter(|a| u32::from(a.line) <= size)
             .max_by_key(|a| a.line)
             .or_else(|| of().min_by_key(|a| a.line))
+    }
+
+    /// The atlas that draws `face` of `set` at a line of `size` pixels; `None` when the face has no family (draw
+    /// the bitmap font). A sans without a bold face draws bold with its regular atlas.
+    #[must_use]
+    pub fn for_face(set: &FontSet, face: Face, size: u32) -> Option<&'static Atlas> {
+        let (family, file) = set.file(face)?;
+        Self::pick(ATLASES, family.id, file.bold, size)
     }
 }
 
@@ -108,7 +119,7 @@ mod tests {
     use super::*;
 
     fn inter(line: u32) -> &'static Atlas {
-        Atlas::pick(ATLASES, AtlasFont::Sans, line).unwrap()
+        Atlas::pick(ATLASES, "inter", false, line).unwrap()
     }
 
     #[test]
@@ -116,8 +127,9 @@ mod tests {
         assert!(!ATLASES.is_empty());
         for a in ATLASES {
             assert!(a.glyphs.windows(2).all(|w| w[0].ch < w[1].ch), "sorted");
-            for c in ['A', 'z', '0', 'é', 'ș', 'ț', 'Ă', '€', '…', '→'] {
-                assert!(a.glyph(c).is_some(), "{:?} {} has {c}", a.font, a.line);
+            // What every family must have; arrows and the like only if the font does.
+            for c in ['A', 'z', '0', 'é', 'ș', 'ț', 'Ă', 'ă', '€', '…'] {
+                assert!(a.glyph(c).is_some(), "{} {} has {c}", a.family, a.line);
             }
             for g in a.glyphs {
                 let stride = u32::from(g.width).div_ceil(2);
@@ -187,8 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn the_build_covers_what_coverage_says_and_nothing_else() {
-        // The build's ranges and `COVERAGE` are written apart; they must agree both ways.
+    fn every_glyph_is_inside_the_coverage_and_every_linked_face_has_its_atlases() {
         let ranges: std::vec::Vec<(u32, u32)> = crate::COVERAGE
             .split(", ")
             .map(|part| {
@@ -201,12 +212,6 @@ mod tests {
             })
             .collect();
         for a in ATLASES {
-            for &(lo, hi) in &ranges {
-                assert!(
-                    a.glyphs.iter().any(|g| (lo..=hi).contains(&g.ch)),
-                    "{lo:x}-{hi:x} has glyphs"
-                );
-            }
             for g in a.glyphs {
                 assert!(
                     ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&g.ch)),
@@ -215,5 +220,25 @@ mod tests {
                 );
             }
         }
+        for f in crate::FAMILIES {
+            for bold in [false, true].into_iter().filter(|b| !b || f.bold.is_some()) {
+                for &line in crate::ATLAS_SIZES {
+                    let a = Atlas::pick(ATLASES, f.id, bold, u32::from(line)).unwrap();
+                    assert_eq!((a.line, a.bold), (line, bold), "{}", f.id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_face_of_a_set_finds_its_atlas_and_a_role_without_a_family_none() {
+        let set = FontSet::default_set();
+        let bold = Atlas::for_face(&set, Face::SansBold, 15).unwrap();
+        assert_eq!((bold.family, bold.bold, bold.line), ("inter", true, 15));
+        assert_eq!(
+            Atlas::for_face(&set, Face::Mono, 20).unwrap().family,
+            "jetbrains-mono"
+        );
+        assert!(Atlas::for_face(&FontSet::NONE, Face::Sans, 15).is_none());
     }
 }

@@ -17,8 +17,8 @@ categories = ["gui", "embedded", "no-std"]
 toml = ["dep:toml", "dep:serde"]
 
 [dependencies]
-serde = { version = "1", default-features = false, features = ["derive", "std"], optional = true }
-toml = { version = "1", default-features = false, features = ["parse", "serde", "std"], optional = true }
+serde = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
 
 [lints]
 workspace = true

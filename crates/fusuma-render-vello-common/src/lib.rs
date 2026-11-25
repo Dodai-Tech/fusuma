@@ -163,6 +163,9 @@ struct Inner<S> {
     /// Vector fonts, set up on first use.
     #[cfg(feature = "text")]
     text: Option<fusuma_text::TextEngine>,
+    /// Which linked family draws each font role.
+    #[cfg(feature = "text")]
+    fonts: fusuma_text::FontSet,
 }
 
 /// The Fusuma renderer on a Vello scene.
@@ -259,7 +262,19 @@ impl<S: Scene> Backend<S> {
                 stack: Vec::new(),
                 #[cfg(feature = "text")]
                 text: None,
+                #[cfg(feature = "text")]
+                fonts: fusuma_text::FontSet::default_set(),
             }),
+        }
+    }
+
+    /// Draws the font roles with `set`'s families from now on; a role without one is the bitmap font.
+    #[cfg(feature = "text")]
+    pub fn set_fonts(&mut self, set: fusuma_text::FontSet) {
+        let i = self.inner.get_mut();
+        i.fonts = set;
+        if let Some(engine) = i.text.as_mut() {
+            engine.set_fonts(set);
         }
     }
 
@@ -287,7 +302,12 @@ impl<S: Scene> Inner<S> {
     /// The text engine, made on first use.
     #[cfg(feature = "text")]
     fn engine(&mut self) -> &mut fusuma_text::TextEngine {
-        self.text.get_or_insert_with(fusuma_text::TextEngine::new)
+        let fonts = self.fonts;
+        self.text.get_or_insert_with(|| {
+            let mut engine = fusuma_text::TextEngine::new();
+            engine.set_fonts(fonts);
+            engine
+        })
     }
 
     /// The size of `text` in a vector font, if the style asks for one that is bundled.

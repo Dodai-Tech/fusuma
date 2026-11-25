@@ -1011,6 +1011,7 @@ name = "fusuma"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-fonts",
  "fusuma-platform",
  "fusuma-render",
  "fusuma-render-embedded",
@@ -1028,6 +1029,9 @@ name = "fusuma-fonts"
 version = "0.2.0"
 dependencies = [
  "ab_glyph",
+ "serde",
+ "toml 1.2.2+spec-1.1.0",
+ "ttf-parser",
 ]
 
 [[package]]

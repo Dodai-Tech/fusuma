@@ -90,6 +90,9 @@ pub struct Embedded<T> {
     state: State,
     stack: [State; STATE_DEPTH],
     depth: usize,
+    /// Which linked family draws each font role (smooth text).
+    #[cfg(feature = "fonts")]
+    fonts: fusuma_fonts::FontSet,
 }
 
 impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
@@ -108,6 +111,8 @@ impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
             state,
             stack: [state; STATE_DEPTH],
             depth: 0,
+            #[cfg(feature = "fonts")]
+            fonts: fusuma_fonts::FontSet::default_set(),
         }
     }
 
@@ -119,6 +124,12 @@ impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
     /// The target, mutable (to flush a frame, for example).
     pub fn target_mut(&mut self) -> &mut T {
         &mut self.target
+    }
+
+    /// Draws the font roles with `set`'s families from now on; a role without one is the bitmap font.
+    #[cfg(feature = "fonts")]
+    pub fn set_fonts(&mut self, set: fusuma_fonts::FontSet) {
+        self.fonts = set;
     }
 
     /// Gives the target back.
@@ -163,7 +174,7 @@ impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
 
 impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
     /// Draws `text` from a glyph atlas (smooth text), clipped, each glyph's coverage blended into the target.
-    #[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+    #[cfg(feature = "fonts")]
     fn draw_atlas_text(
         &mut self,
         atlas: &fusuma_fonts::atlas::Atlas,
@@ -227,17 +238,20 @@ impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
     }
 }
 
-/// The atlas for `style`'s font at its size, when smooth text is built in and the font is not the bitmap one.
-#[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
-fn atlas_for(style: &TextStyle) -> Option<&'static fusuma_fonts::atlas::Atlas> {
-    use fusuma_fonts::atlas::{ATLASES, Atlas, AtlasFont};
+/// The atlas for `style`'s font at its size in `set`, when smooth text is built in and the font is not the bitmap one.
+#[cfg(feature = "fonts")]
+fn atlas_for(
+    set: &fusuma_fonts::FontSet,
+    style: &TextStyle,
+) -> Option<&'static fusuma_fonts::atlas::Atlas> {
+    use fusuma_fonts::Face;
     let face = match style.font {
-        fusuma_render::Font::Sans => AtlasFont::Sans,
-        fusuma_render::Font::SansBold => AtlasFont::SansBold,
-        fusuma_render::Font::Mono => AtlasFont::Mono,
+        fusuma_render::Font::Sans => Face::Sans,
+        fusuma_render::Font::SansBold => Face::SansBold,
+        fusuma_render::Font::Mono => Face::Mono,
         fusuma_render::Font::Bitmap => return None,
     };
-    Atlas::pick(ATLASES, face, style.size)
+    fusuma_fonts::atlas::Atlas::for_face(set, face, style.size)
 }
 
 impl<T: DrawTarget<Color = Rgb565> + Blend> Renderer for Embedded<T>
@@ -488,8 +502,8 @@ where
         if text.is_empty() || style.color.a == 0 {
             return Ok(());
         }
-        #[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
-        if let Some(atlas) = atlas_for(style) {
+        #[cfg(feature = "fonts")]
+        if let Some(atlas) = atlas_for(&self.fonts, style) {
             return self.draw_atlas_text(atlas, text, at, style);
         }
         let font = font_for(style.size);
@@ -508,8 +522,8 @@ where
     }
 
     fn measure_text(&self, text: &str, style: &TextStyle) -> Size {
-        #[cfg(any(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
-        if let Some(atlas) = atlas_for(style) {
+        #[cfg(feature = "fonts")]
+        if let Some(atlas) = atlas_for(&self.fonts, style) {
             let width = atlas.width(text);
             return Size::new(
                 width,
@@ -728,7 +742,7 @@ mod tests {
 }
 
 #[cfg(test)]
-#[cfg(all(feature = "inter", feature = "inter-bold", feature = "jetbrains-mono"))]
+#[cfg(feature = "fonts")]
 mod atlas_text_tests {
     extern crate std;
     use std::vec;

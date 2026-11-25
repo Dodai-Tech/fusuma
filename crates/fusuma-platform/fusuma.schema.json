@@ -11,7 +11,12 @@
       "properties": {
         "backend": {
           "description": "auto (the default) picks by hardware; or name a backend.",
-          "enum": ["auto", "integer", "vello-cpu", "vello-gpu"]
+          "enum": [
+            "auto",
+            "integer",
+            "vello-cpu",
+            "vello-gpu"
+          ]
         },
         "fallback": {
           "type": "boolean",
@@ -21,6 +26,35 @@
           "type": "integer",
           "minimum": 0,
           "description": "Internal RAM, in kilobytes, that must stay free after the frame. Default 100, a conservative guess, not a measurement."
+        }
+      }
+    },
+    "fonts": {
+      "type": "object",
+      "description": "Which of the linked font families draw (fusuma-fonts). Every key is optional.",
+      "additionalProperties": false,
+      "properties": {
+        "preset": {
+          "type": "string",
+          "description": "A preset of fusuma-fonts' catalog: fusuma, material, legible, plex or noto. Default: the first one the build linked."
+        },
+        "sans": {
+          "type": "string",
+          "description": "The sans family's id (inter, roboto, atkinson-hyperlegible, ibm-plex-sans, noto-sans), over the preset's."
+        },
+        "mono": {
+          "type": "string",
+          "description": "The mono family's id (jetbrains-mono, roboto-mono, atkinson-hyperlegible-mono, ibm-plex-mono, noto-sans-mono), over the preset's."
+        },
+        "sizes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 96
+          },
+          "minItems": 1,
+          "description": "Line heights of the glyph atlases the integer renderer draws with, read at build time (FUSUMA_SETTINGS). Default 10, 15 and 20."
         }
       }
     }

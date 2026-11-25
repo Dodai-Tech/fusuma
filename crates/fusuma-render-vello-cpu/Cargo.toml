@@ -19,12 +19,9 @@ std = ["fusuma-render-vello-common/std", "vello_cpu/std"]
 libm = ["fusuma-render-vello-common/libm", "vello_cpu/libm"]
 # `png()`: the surface as a PNG file.
 png = ["std", "vello_cpu/png"]
-# Vector fonts for `draw_text` and `measure_text` (bundled by `fusuma-text`); see `fusuma-fonts` for which.
+# Vector fonts for `draw_text` and `measure_text`, from the families `fusuma-fonts` links (an app turns them on
+# there, or through the `fusuma` facade's `fonts-*` features).
 text = ["fusuma-render-vello-common/text", "vello_cpu/text", "dep:fusuma-text"]
-# The bundled fonts, each implying `text`: see `fusuma-fonts`.
-inter = ["text", "fusuma-text/inter"]
-inter-bold = ["text", "fusuma-text/inter-bold"]
-jetbrains-mono = ["text", "fusuma-text/jetbrains-mono"]
 
 [dependencies]
 fusuma-render.workspace = true
@@ -33,6 +30,7 @@ vello_cpu.workspace = true
 fusuma-text = { workspace = true, optional = true }
 
 [dev-dependencies]
+fusuma-fonts = { workspace = true, features = ["preset-fusuma"] }
 fusuma-render = { workspace = true, features = ["conformance"] }
 fusuma-render-embedded.workspace = true
 

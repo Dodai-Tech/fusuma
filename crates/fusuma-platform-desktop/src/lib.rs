@@ -9,8 +9,9 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use fusuma::fonts::FontSet;
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
-use fusuma::platform::{Plan, Render};
+use fusuma::platform::{FontChoice, Plan, Render, Settings};
 use fusuma::{App, Input, Pointer, Shell};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -69,17 +70,19 @@ pub fn run<A: App + 'static>(
     make: impl FnOnce(u32, u32) -> A + 'static,
     options: Options,
 ) -> anyhow::Result<()> {
-    let file = match options.settings {
-        Some(text) => RenderLayer::from_toml(text)
+    let settings = match options.settings {
+        Some(text) => Settings::from_toml(text)
             .map_err(|e| anyhow::anyhow!("fusuma.toml is not valid: {e}"))?,
-        None => RenderLayer::EMPTY,
+        None => Settings::default(),
     };
-    let layers = [file, options.build];
+    let fonts = font_set(&settings.fonts)?;
+    let layers = [settings.render, options.build];
     let event_loop = EventLoop::new()?;
     let mut handler = Handler {
         make: Some(Box::new(make)),
         options,
         layers,
+        fonts,
         state: None,
         error: None,
     };
@@ -89,6 +92,8 @@ pub fn run<A: App + 'static>(
 
 /// Everything that exists once the window does.
 struct State<A> {
+    /// The font families every canvas draws with.
+    fonts: FontSet,
     window: Arc<Window>,
     surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
     canvas: Canvas,
@@ -112,18 +117,35 @@ struct Handler<A> {
     make: Option<Box<dyn FnOnce(u32, u32) -> A>>,
     options: Options,
     layers: [RenderLayer; 2],
+    fonts: FontSet,
     state: Option<State<A>>,
     error: Option<anyhow::Error>,
 }
 
-/// A canvas for `plan`, stepping down to the CPU when the GPU surface cannot be made.
-fn canvas_for(plan: &Plan, w: u32, h: u32) -> Option<Canvas> {
-    Canvas::new(plan.uses, w, h).or_else(|| {
+/// A canvas for `plan` drawing with `fonts`, stepping down to the CPU when the GPU surface cannot be made.
+fn canvas_for(plan: &Plan, w: u32, h: u32, fonts: FontSet) -> Option<Canvas> {
+    Canvas::new(plan.uses, w, h, fonts).or_else(|| {
         (plan.uses != Backend::VelloCpu).then(|| {
             log::warn!("{} failed, using vello-cpu", plan.uses.name());
-            Canvas::new(Backend::VelloCpu, w, h)
+            Canvas::new(Backend::VelloCpu, w, h, fonts)
         })?
     })
+}
+
+/// The font families the `[fonts]` table asks for, among those the build linked.
+fn font_set(choice: &FontChoice) -> anyhow::Result<FontSet> {
+    let set = FontSet::choose(
+        choice.preset.as_deref(),
+        choice.sans.as_deref(),
+        choice.mono.as_deref(),
+    )
+    .map_err(|e| anyhow::anyhow!("fusuma.toml [fonts]: {e}"))?;
+    log::info!(
+        "fonts: sans {}, mono {}",
+        set.sans.map_or("the bitmap font", |f| f.name),
+        set.mono.map_or("the bitmap font", |f| f.name)
+    );
+    Ok(set)
 }
 
 impl<A: App> Handler<A> {
@@ -144,7 +166,7 @@ impl<A: App> Handler<A> {
             render.min_free_kb
         );
         log::info!("renderer: {plan}");
-        let canvas = canvas_for(&plan, w, h)
+        let canvas = canvas_for(&plan, w, h, self.fonts)
             .ok_or_else(|| anyhow::anyhow!("cannot make a {w}x{h} surface"))?;
         log::info!("drawing with {}", canvas.backend().name());
         let context = softbuffer::Context::new(window.clone())
@@ -162,6 +184,7 @@ impl<A: App> Handler<A> {
             scale_percent: input::scale_percent(window.scale_factor()),
         });
         Ok(State {
+            fonts: self.fonts,
             window,
             surface,
             canvas,
@@ -256,7 +279,7 @@ impl<A: App> State<A> {
         let Some(plan) = plan::plan_for(w, h, gpu, layers) else {
             return;
         };
-        match canvas_for(&plan, w, h) {
+        match canvas_for(&plan, w, h, self.fonts) {
             Some(canvas) => self.canvas = canvas,
             None => {
                 log::warn!("cannot make a {w}x{h} surface, keeping the old one");
@@ -409,5 +432,27 @@ mod wake_tests {
             }
             other => panic!("expected a timed wake, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_fonts_table_picks_linked_families_and_names_a_mistake() {
+        let set = font_set(&FontChoice::default()).unwrap();
+        assert_eq!(set, FontSet::default_set());
+        let bad = FontChoice {
+            preset: Some("nope".into()),
+            ..FontChoice::default()
+        };
+        let e = font_set(&bad).unwrap_err().to_string();
+        assert!(e.contains("[fonts]") && e.contains("'nope'"), "{e}");
+        let mono_as_sans = FontChoice {
+            sans: Some("jetbrains-mono".into()),
+            ..FontChoice::default()
+        };
+        assert!(font_set(&mono_as_sans).is_err());
     }
 }

@@ -560,7 +560,7 @@ mod tests {
     }
 
     /// The GPU draws vector text through `glyph_run` like the CPU does. Skipped where there is no GPU.
-    #[cfg(feature = "inter")]
+    #[cfg(feature = "text")]
     #[test]
     fn vector_text_draws_on_the_gpu_and_matches_the_cpu() {
         use fusuma_render::{Color, Font, Point, Probe, Renderer, TextStyle};
