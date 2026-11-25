@@ -15,7 +15,7 @@ pub const QUEUE: usize = 16;
 /// An Elm program.
 pub trait Program {
     /// Everything the program knows.
-    type State;
+    type State: 'static;
     /// What can happen: small, and `Copy`, so a task and a subscription can hold it and a log can keep it. A value that
     /// comes with an event (a slider's position, the text of a field) is made by a `fn(..) -> Msg`, such as a variant.
     type Msg: Copy;
@@ -30,12 +30,27 @@ pub trait Program {
     /// the display, so the layout can change with it.
     fn view<'a>(state: &'a Self::State, screen: &Screen) -> impl Children<Self::Msg> + 'a;
 
+    /// Named starting states: a place to begin a demo, a screenshot or a test from (`Runner::from_preset`). None by
+    /// default.
+    fn presets() -> &'static [Preset<Self::State>] {
+        &[]
+    }
+
     /// What the program wants to hear while its state is this. Nothing by default: the program sleeps until an input
     /// comes.
     fn subscription(state: &Self::State) -> Sub<Self::Msg> {
         let _ = state;
         Sub::none()
     }
+}
+
+/// A named starting state.
+#[derive(Debug)]
+pub struct Preset<S> {
+    /// What it is called (in an address, a script, a test).
+    pub name: &'static str,
+    /// Makes the state.
+    pub state: fn() -> S,
 }
 
 /// A recipe that is running.
@@ -87,6 +102,13 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> Runner<P, N, K,
 }
 
 impl<P: Program, const N: usize, const K: usize, const L: usize> Runner<P, N, K, L> {
+    /// The program started from the preset called `name` (see [`Program::presets`]), or `None` if there is none.
+    #[must_use]
+    pub fn from_preset(name: &str, width: u32, height: u32) -> Option<Self> {
+        let preset = P::presets().iter().find(|p| p.name == name)?;
+        Some(Self::with_state((preset.state)(), width, height))
+    }
+
     /// The program, starting from `state` (a preset, or a state a log replayed to).
     ///
     /// # Panics

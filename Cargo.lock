@@ -1138,6 +1138,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-test"
+version = "0.2.0"
+dependencies = [
+ "fusuma-render",
+ "fusuma-render-vello-cpu",
+ "fusuma-ui",
+ "fusuma-view",
+]
+
+[[package]]
 name = "fusuma-text"
 version = "0.2.0"
 dependencies = [

@@ -1,0 +1,22 @@
+[package]
+name = "fusuma-test"
+description = "Test a Fusuma program like a user: find widgets by what they say, click, type, let time pass, read the messages and compare pictures (std)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "testing", "elm", "simulator"]
+categories = ["gui", "development-tools::testing"]
+
+[dependencies]
+fusuma-ui.workspace = true
+fusuma-view.workspace = true
+fusuma-render.workspace = true
+fusuma-render-vello-cpu = { workspace = true, features = ["std", "png"] }
+
+[lints]
+workspace = true
