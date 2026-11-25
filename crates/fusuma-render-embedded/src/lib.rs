@@ -2,6 +2,7 @@
 #![no_std]
 
 mod cover;
+mod fill;
 mod frame;
 pub mod raster;
 
@@ -17,8 +18,8 @@ use embedded_graphics::{
         ascii::{FONT_6X10, FONT_9X15, FONT_10X20},
     },
     pixelcolor::{IntoStorage, Rgb565},
-    prelude::{DrawTarget, Drawable, Point as EgPoint, Primitive},
-    primitives::{Line, PrimitiveStyle, Rectangle},
+    prelude::{DrawTarget, Drawable, Point as EgPoint},
+    primitives::Rectangle,
     text::{Baseline, Text},
 };
 use fusuma_render::{
@@ -139,16 +140,6 @@ impl<T: DrawTarget<Color = Rgb565>> Embedded<T> {
             p.x.saturating_add(self.state.tx),
             p.y.saturating_add(self.state.ty),
         )
-    }
-
-    /// Whether every edge, moved by the translation, is inside the safe band.
-    fn edges_ok(&self, edges: &raster::Edges) -> bool {
-        edges.as_slice().iter().all(|e| {
-            [e.a, e.b].iter().all(|p| {
-                in_band(i64::from(p.x) + i64::from(self.state.tx))
-                    && in_band(i64::from(p.y) + i64::from(self.state.ty))
-            })
-        })
     }
 
     /// Whether a device-space point is inside the safe band.
@@ -274,6 +265,57 @@ impl<T: DrawTarget<Color = Rgb565> + Blend> Embedded<T> {
             }
         }
         Ok(())
+    }
+
+    /// The translation, in pixels.
+    fn offset(&self) -> (i64, i64) {
+        (i64::from(self.state.tx), i64::from(self.state.ty))
+    }
+
+    /// Whether every point of `path`, moved by the translation, is inside the safe band.
+    fn path_ok(&self, path: &[PathCmd]) -> bool {
+        let (tx, ty) = self.offset();
+        path.iter().all(|c| {
+            let pts: &[Point] = match c {
+                PathCmd::MoveTo(a) | PathCmd::LineTo(a) => core::slice::from_ref(a),
+                PathCmd::QuadTo(a, b) => &[*a, *b],
+                PathCmd::CubicTo(a, b, c) => &[*a, *b, *c],
+                PathCmd::Close => &[],
+            };
+            pts.iter()
+                .all(|p| in_band(i64::from(p.x) + tx) && in_band(i64::from(p.y) + ty))
+        })
+    }
+
+    /// Paints an outline's coverage in `color`, clipped.
+    fn coverage(
+        &mut self,
+        outline: &fill::Outline,
+        rule: fill::Rule,
+        color: Color,
+    ) -> Result<(), Error<T::Error>> {
+        let clip = self.state.clip;
+        if clip.is_empty() || outline.is_empty() {
+            return Ok(());
+        }
+        let (x0, y0) = (i64::from(clip.x), i64::from(clip.y));
+        let bounds = (x0, y0, x0 + i64::from(clip.w), y0 + i64::from(clip.h));
+        let value = rgb565(color);
+        let opacity = u32::from(color.a);
+        let mut result = Ok(());
+        let mut buf = [0u8; 256];
+        fill::rasterize(outline, rule, bounds, |y, x, alpha| {
+            if result.is_err() {
+                return;
+            }
+            let n = alpha.len().min(256);
+            for (b, &a) in buf.iter_mut().zip(&alpha[..n]) {
+                *b = (u32::from(a) * opacity / 255) as u8;
+            }
+            result = self.blend(x as i32, y as i32, &buf[..n], value);
+        })
+        .map_err(|_| Error::TooComplex)?;
+        result
     }
 
     /// Draws `text` from a glyph atlas (smooth text), clipped, each glyph's coverage blended into the target.
@@ -501,31 +543,11 @@ where
     }
 
     fn fill_path(&mut self, path: &[PathCmd], color: Color) -> Result<(), Self::Error> {
-        if color.a == 0 {
+        if color.a == 0 || !self.path_ok(path) {
             return Ok(());
         }
-        let edges = raster::flatten(path, true).map_err(|_| Error::TooComplex)?;
-        let (tx, ty) = (self.state.tx, self.state.ty);
-        if !self.edges_ok(&edges) {
-            return Ok(());
-        }
-        let local = self
-            .state
-            .clip
-            .translate(tx.saturating_neg(), ty.saturating_neg());
-        let value = rgb565(color);
-        let mut result = Ok(());
-        let spans = raster::fill_spans(&edges, local, |y, x0, x1| {
-            if result.is_ok() {
-                let run = Rectangle::new(
-                    EgPoint::new(x0.saturating_add(tx), y.saturating_add(ty)),
-                    EgSize::new((i64::from(x1) - i64::from(x0)) as u32, 1),
-                );
-                result = self.target.fill_solid(&run, value);
-            }
-        });
-        spans.map_err(|_| Error::TooComplex)?;
-        result.map_err(Error::Target)
+        let outline = fill::Outline::fill(path, self.offset()).map_err(|_| Error::TooComplex)?;
+        self.coverage(&outline, fill::Rule::EvenOdd, color)
     }
 
     fn stroke_path(
@@ -534,71 +556,13 @@ where
         width: u32,
         color: Color,
     ) -> Result<(), Self::Error> {
-        if width == 0 || color.a == 0 {
-            return Ok(());
-        }
-        let edges = raster::flatten(path, false).map_err(|_| Error::TooComplex)?;
-        let (tx, ty) = (self.state.tx, self.state.ty);
-        if !self.edges_ok(&edges) {
+        if width == 0 || color.a == 0 || !self.path_ok(path) {
             return Ok(());
         }
         let width = width.min(MAX_STROKE);
-        let value = rgb565(color);
-        let style = PrimitiveStyle::with_stroke(value, width);
-        // Cut every segment to the visible area plus the stroke's reach: `embedded-graphics`
-        // squares the length of a line in `i32`, which a long off-screen line would overflow.
-        let m = width + 2;
-        let clip = self.state.clip;
-        let reach = Rect::new(
-            clip.x.saturating_sub(m as i32),
-            clip.y.saturating_sub(m as i32),
-            clip.w.saturating_add(2 * m),
-            clip.h.saturating_add(2 * m),
-        );
-        self.draw(|t| {
-            for e in edges.as_slice() {
-                let a = Point::new(e.a.x.saturating_add(tx), e.a.y.saturating_add(ty));
-                let b = Point::new(e.b.x.saturating_add(tx), e.b.y.saturating_add(ty));
-                let Some((a, b)) = raster::clip_segment(a, b, reach) else {
-                    continue;
-                };
-                let (dx, dy) = (
-                    i64::from(b.x) - i64::from(a.x),
-                    i64::from(b.y) - i64::from(a.y),
-                );
-                // `embedded-graphics` computes (2 * width)^2 * length^2 in an i32.
-                let thick = (i64::from(width) * 2).pow(2) * (dx * dx + dy * dy);
-                if thick <= i64::from(i32::MAX) {
-                    Line::new(EgPoint::new(a.x, a.y), EgPoint::new(b.x, b.y))
-                        .into_styled(style)
-                        .draw(t)?;
-                } else if let Some(q) = raster::stroke_quad(a, b, width) {
-                    // Too thick and long for that line: fill the band around it instead.
-                    let band = [
-                        PathCmd::MoveTo(q[0]),
-                        PathCmd::LineTo(q[1]),
-                        PathCmd::LineTo(q[2]),
-                        PathCmd::LineTo(q[3]),
-                        PathCmd::Close,
-                    ];
-                    let Ok(edges) = raster::flatten(&band, true) else {
-                        continue;
-                    };
-                    let mut failed = None;
-                    let _ = raster::fill_spans(&edges, clip, |y, x0, x1| {
-                        let width = (i64::from(x1) - i64::from(x0)) as u32;
-                        let run = Rectangle::new(EgPoint::new(x0, y), EgSize::new(width, 1));
-                        if let Err(e) = t.fill_solid(&run, value) {
-                            failed.get_or_insert(e);
-                        }
-                    });
-                    if let Some(e) = failed {
-                        return Err(e);
-                    }
-                }
-            }
-            Ok(())
-        })
+        let outline =
+            fill::Outline::stroke(path, width, self.offset()).map_err(|_| Error::TooComplex)?;
+        self.coverage(&outline, fill::Rule::NonZero, color)
     }
 
     fn draw_text(&mut self, text: &str, at: Point, style: &TextStyle) -> Result<(), Self::Error> {
@@ -793,6 +757,142 @@ mod tests {
         assert!((ia - iv).abs() * 100 < iv, "ink within 1%: {ia} vs {iv}");
         assert!(diff * 100 < iv * 3, "pixels within 3% of the ink: {diff}");
         assert!(soft > 200, "{soft} soft edge pixels");
+    }
+
+    /// Draws `paint` on the integer renderer and on Vello and returns (ink ours, ink Vello's, pixel difference, soft
+    /// pixels), the ink being the green channel summed.
+    fn compare(w: u32, h: u32, paint: impl Fn(&mut dyn DynPaths)) -> (i64, i64, i64, usize) {
+        let mut a = backend(w as u16, h as u16);
+        let mut v = fusuma_render_vello_cpu::new(w, h).unwrap();
+        paint(&mut a);
+        paint(&mut v);
+        let grey = |r: &dyn Probe| -> Vec<i64> {
+            (0..h as i32)
+                .flat_map(|y| (0..w as i32).map(move |x| (x, y)))
+                .map(|(x, y)| r.pixel(x, y).map_or(0, |c| i64::from(c.g)))
+                .collect()
+        };
+        let (pa, pv) = (grey(&a), grey(&v));
+        let diff = pa.iter().zip(&pv).map(|(x, y)| (x - y).abs()).sum();
+        let soft = pa.iter().filter(|&&g| g > 20 && g < 235).count();
+        (pa.iter().sum(), pv.iter().sum(), diff, soft)
+    }
+
+    /// Paths on either renderer.
+    trait DynPaths {
+        fn wipe(&mut self);
+        fn fill(&mut self, path: &[PathCmd]);
+        fn stroke(&mut self, path: &[PathCmd], width: u32);
+    }
+    impl<R: Renderer> DynPaths for R {
+        fn wipe(&mut self) {
+            Renderer::clear(self, Color::BLACK).unwrap();
+        }
+        fn fill(&mut self, path: &[PathCmd]) {
+            self.fill_path(path, Color::WHITE).unwrap();
+        }
+        fn stroke(&mut self, path: &[PathCmd], width: u32) {
+            self.stroke_path(path, width, Color::WHITE).unwrap();
+        }
+    }
+
+    fn poly(pts: &[(i32, i32)], close: bool) -> Vec<PathCmd> {
+        let mut v: Vec<PathCmd> = pts
+            .iter()
+            .enumerate()
+            .map(|(i, &(x, y))| {
+                let p = Point::new(x, y);
+                if i == 0 {
+                    PathCmd::MoveTo(p)
+                } else {
+                    PathCmd::LineTo(p)
+                }
+            })
+            .collect();
+        if close {
+            v.push(PathCmd::Close);
+        }
+        v
+    }
+
+    fn assert_like_vello(name: &str, got: (i64, i64, i64, usize), ink_pct: i64, diff_pct: i64) {
+        let (ia, iv, diff, soft) = got;
+        std::println!(
+            "{name}: ink {ia} vs {iv}, difference {:.2}% of the ink, {soft} soft pixels",
+            diff as f64 * 100.0 / iv as f64
+        );
+        assert!(
+            (ia - iv).abs() * 100 <= iv * ink_pct,
+            "{name}: ink {ia} vs {iv}"
+        );
+        assert!(
+            diff * 100 <= iv * diff_pct,
+            "{name}: pixels differ by {diff} of {iv}"
+        );
+        assert!(soft > 0, "{name}: no soft edge pixels");
+    }
+
+    #[test]
+    fn strokes_along_paths_look_like_vellos() {
+        // The checkbox tick, a chevron, a slanted line and a closed triangle, flat and curved.
+        let tick = poly(&[(6, 18), (12, 25), (26, 8)], false);
+        let chevron = poly(&[(6, 6), (18, 20), (6, 34)], false);
+        let slant = poly(&[(4, 4), (60, 30)], false);
+        let tri = poly(&[(10, 10), (50, 14), (30, 44)], true);
+        let curve = [
+            PathCmd::MoveTo(Point::new(5, 40)),
+            PathCmd::CubicTo(Point::new(20, -10), Point::new(50, 60), Point::new(70, 10)),
+        ];
+        for (name, path, width) in [
+            ("tick", &tick[..], 2),
+            ("fat tick", &tick[..], 4),
+            ("chevron", &chevron[..], 3),
+            ("slant", &slant[..], 5),
+            ("triangle", &tri[..], 2),
+            ("curve", &curve[..], 3),
+        ] {
+            let got = compare(80, 60, |r| {
+                r.wipe();
+                r.stroke(path, width);
+            });
+            assert_like_vello(name, got, 4, 8);
+        }
+    }
+
+    #[test]
+    fn filled_paths_look_like_vellos() {
+        let tri = poly(&[(10, 50), (70, 40), (30, 6)], true);
+        let arrow = poly(
+            &[
+                (5, 20),
+                (30, 20),
+                (30, 8),
+                (55, 30),
+                (30, 52),
+                (30, 40),
+                (5, 40),
+            ],
+            true,
+        );
+        let blob = [
+            PathCmd::MoveTo(Point::new(10, 30)),
+            PathCmd::QuadTo(Point::new(30, -10), Point::new(60, 25)),
+            PathCmd::CubicTo(Point::new(75, 60), Point::new(20, 70), Point::new(10, 30)),
+            PathCmd::Close,
+        ];
+        let thin = poly(&[(2, 2), (70, 6), (2, 8)], true);
+        for (name, path) in [
+            ("triangle", &tri[..]),
+            ("arrow", &arrow[..]),
+            ("blob", &blob[..]),
+            ("sliver", &thin[..]),
+        ] {
+            let got = compare(80, 60, |r| {
+                r.wipe();
+                r.fill(path);
+            });
+            assert_like_vello(name, got, 3, 9);
+        }
     }
 
     /// The few shapes the comparison draws, on either renderer.
