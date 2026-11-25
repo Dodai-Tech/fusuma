@@ -435,6 +435,8 @@ pub(crate) struct Node {
     pub(crate) gestures: u8,
     /// How far the node is moved from where its parent puts it, in pixels (a slide in progress, see `transition`).
     pub(crate) shift: (i32, i32),
+    /// Alive but not on the screen: no room in its parent, no drawing, no focus, no presses (see `Tree::set_hidden`).
+    pub(crate) hidden: bool,
 }
 
 impl Node {
@@ -463,7 +465,13 @@ impl Node {
         disabled_eff: false,
         gestures: 0,
         shift: (0, 0),
+        hidden: false,
     };
+
+    /// Whether the parent leaves this node out of its flow: a dialog or toast (placed on their own) or a hidden node.
+    pub(crate) const fn skipped(&self) -> bool {
+        self.hidden || self.kind.out_of_flow()
+    }
 }
 
 /// What a widget reports to the application.

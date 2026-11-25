@@ -66,7 +66,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Whether node `i` is inside (a descendant of) node `ancestor`.
-    fn is_inside(&self, i: usize, ancestor: usize) -> bool {
+    pub(crate) fn is_inside(&self, i: usize, ancestor: usize) -> bool {
         let mut cur = self.nodes[i].parent.map(usize::from);
         while let Some(p) = cur {
             if p == ancestor {
@@ -99,6 +99,11 @@ impl<const N: usize> Tree<N> {
                 depth -= 1;
                 let done = self.end_scroll(open[depth], r, theme);
                 result = result.and(done);
+            }
+            // A hidden node, and all it holds, is not drawn.
+            if i != root && self.nodes[i].hidden {
+                cur = self.after_subtree(i, root);
+                continue;
             }
             // A dialog is drawn after everything else, on top (see `paint_dialogs`), not here in its tree order.
             if i != root && self.nodes[i].kind.out_of_flow() {

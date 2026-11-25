@@ -455,6 +455,10 @@ impl<const N: usize> Tree<N> {
         // Dialogs and menus, in tree order, on top.
         let mut cur = Some(root);
         while let Some(i) = cur {
+            if self.nodes[i].hidden {
+                cur = self.after_subtree(i, root);
+                continue;
+            }
             match self.nodes[i].kind {
                 Kind::Dialog {
                     open,
@@ -474,7 +478,7 @@ impl<const N: usize> Tree<N> {
             }
         }
         for i in 0..N {
-            if self.nodes[i].alive {
+            if self.nodes[i].alive && !self.in_hidden(i) {
                 pen.clip = screen;
                 self.cells_toast(i, &mut pen, &look);
             }
@@ -530,7 +534,7 @@ impl<const N: usize> Tree<N> {
     fn cells_children<S: CellSink>(&self, i: usize, pen: &mut Pen<'_, S>, look: &Look<'_>) {
         let mut c = self.nodes[i].first.map(usize::from);
         while let Some(ci) = c {
-            if !self.nodes[ci].kind.out_of_flow() {
+            if !self.nodes[ci].skipped() {
                 self.cells_node(ci, pen, look);
             }
             c = self.nodes[ci].next.map(usize::from);

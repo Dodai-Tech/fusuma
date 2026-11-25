@@ -187,6 +187,7 @@ impl<const N: usize> Tree<N> {
         while let Some(c) = cur {
             match self.nodes[c].kind {
                 Kind::Dialog { open: false, .. } => return true,
+                _ if self.nodes[c].hidden => return true,
                 Kind::Dialog { open: true, .. } if Some(c) == modal => inside_modal = true,
                 _ => {}
             }
@@ -225,6 +226,10 @@ impl<const N: usize> Tree<N> {
         let alpha = r.capabilities().alpha;
         let mut cur = Some(root);
         while let Some(i) = cur {
+            if self.nodes[i].hidden {
+                cur = self.after_subtree(i, root);
+                continue;
+            }
             match self.nodes[i].kind {
                 Kind::Dialog {
                     open,

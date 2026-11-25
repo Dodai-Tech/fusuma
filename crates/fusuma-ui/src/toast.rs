@@ -223,7 +223,7 @@ impl<const N: usize> Tree<N> {
             let Kind::Toast { text, phase, t, .. } = n.kind else {
                 continue;
             };
-            if !n.alive || phase == Phase::Hidden || n.rect.is_empty() {
+            if !n.alive || phase == Phase::Hidden || n.rect.is_empty() || self.in_hidden(i) {
                 continue;
             }
             let travel = self.toast_travel(i);

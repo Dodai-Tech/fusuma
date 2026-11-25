@@ -124,6 +124,9 @@ impl<const N: usize> Tree<N> {
 
     /// Whether node `i` is not on the screen by itself: a closed dialog, a toast that is not showing.
     fn is_absent(&self, i: usize) -> bool {
+        if self.nodes[i].hidden {
+            return true;
+        }
         match self.nodes[i].kind {
             Kind::Dialog { open, .. } => !open && !self.dialog_visible(i),
             Kind::Toast { phase, .. } => phase == crate::toast::Phase::Hidden,

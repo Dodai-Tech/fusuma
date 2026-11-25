@@ -210,6 +210,11 @@ impl<const N: usize> Tree<N> {
     fn place_from(&mut self, start: usize, top: usize, bounds: Rect, margin: u32) {
         let mut cur = Some(start);
         while let Some(i) = cur {
+            // A hidden node is given no place and nothing in it is placed: it keeps what it had for when it is shown.
+            if self.nodes[i].hidden {
+                cur = self.after_subtree(i, top);
+                continue;
+            }
             if let Kind::Dialog { open, popover, .. } = self.nodes[i].kind {
                 // A dialog sits in the middle of the screen at its own size, kept `margin` from the edges; a closed
                 // one takes no room at all (one that is closing still has its place until it is gone). A menu hangs
@@ -285,7 +290,7 @@ impl<const N: usize> Tree<N> {
                 while let Some(ci) = c {
                     let child = &self.nodes[usize::from(ci)];
                     // A dialog under this container is out of its flow: it takes no room here.
-                    if child.kind.out_of_flow() {
+                    if child.skipped() {
                         c = child.next;
                         continue;
                     }
@@ -334,7 +339,7 @@ impl<const N: usize> Tree<N> {
         let mut c = self.nodes[i].first;
         while let Some(ci) = c {
             let child = &self.nodes[usize::from(ci)];
-            if child.kind.out_of_flow() {
+            if child.skipped() {
                 c = child.next;
                 continue;
             }
@@ -375,7 +380,12 @@ impl<const N: usize> Tree<N> {
                 let child = &self.nodes[ci];
                 (child.style, child.size, child.next)
             };
-            if self.nodes[ci].kind.out_of_flow() {
+            if self.nodes[ci].skipped() {
+                if self.nodes[ci].hidden {
+                    // No room, and no place: it keeps the state of what it holds for when it comes back.
+                    let at = self.nodes[i].rect;
+                    self.set_rect(ci, Rect::new(at.x, at.y, 0, 0));
+                }
                 c = next;
                 continue;
             }

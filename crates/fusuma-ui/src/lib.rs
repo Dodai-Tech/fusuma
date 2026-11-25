@@ -11,6 +11,7 @@ mod dialog;
 mod event;
 mod focus;
 mod gesture;
+mod hidden;
 mod iconed;
 mod layout;
 mod menu;
