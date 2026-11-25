@@ -67,9 +67,9 @@ impl<const N: usize> Tree<N> {
         self.wake_bar(i);
         if self.try_shift(i, old_pos) {
             // Marked without damage: the moved rows are not a change, only the strip is.
-            self.request_quiet(i, Flags::LAYOUT | Flags::PAINT);
+            self.request_quiet(i, Flags::PLACE | Flags::PAINT);
         } else {
-            self.request(i, Flags::LAYOUT | Flags::PAINT);
+            self.request(i, Flags::PLACE | Flags::PAINT);
         }
     }
 

@@ -12,6 +12,18 @@ use crate::tree::{Action, ActionKind, BuildError, Flags, Kind, NodeId, Style, Tr
 /// translucent black would be painted opaque and hide the whole screen.
 const SCRIM: Color = Color::rgba(0, 0, 0, 150);
 
+/// How many pixels lower than its place a dialog sits while it is coming in (or going out) at `shown` thousandths.
+fn slide_of(shown: u16) -> i32 {
+    let left = fusuma_anim::Fx::ONE
+        - fusuma_anim::Easing::CubicOut.apply(fusuma_anim::Fx::from_ratio(i32::from(shown), 1000));
+    (left * fusuma_anim::Fx::from_int(SLIDE))
+        .round()
+        .clamp(0, SLIDE)
+}
+
+/// How far a dialog slides while it comes in, in pixels.
+const SLIDE: i32 = 16;
+
 impl<const N: usize> Tree<N> {
     /// Adds a dialog under `parent` (usually the root), closed. Its children are the content; its `style` sets the
     /// padding, the gap and, if wanted, a fixed width. It is laid out out of the flow of its parent, centred on the
@@ -27,6 +39,7 @@ impl<const N: usize> Tree<N> {
                 open: false,
                 prev: None,
                 popover: None,
+                shown: 0,
             },
             style,
         )
@@ -198,7 +211,8 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Draws the open dialogs over what is already drawn: a dimming layer over the whole screen where the renderer
-    /// can blend, then the dialog and what is in it. `region` limits the drawing to what overlaps it.
+    /// can blend, then the dialog and what is in it. A dialog that is opening or closing fades its dimming layer and
+    /// slides. `region` limits the drawing to what overlaps it.
     pub(crate) fn paint_dialogs<R: Renderer>(
         &self,
         r: &mut R,
@@ -213,27 +227,108 @@ impl<const N: usize> Tree<N> {
         while let Some(i) = cur {
             match self.nodes[i].kind {
                 Kind::Dialog {
-                    open: true,
+                    open,
                     popover,
+                    shown,
                     ..
-                } => {
+                } if open || (popover.is_none() && shown > 0) => {
+                    // A menu is simply there; a dialog is as far in as `shown` says.
+                    let p = if popover.is_some() { 1000 } else { shown };
                     if alpha && popover.is_none() {
-                        r.fill_rect(self.nodes[root].rect, 0, SCRIM)?;
+                        let a = u32::from(SCRIM.a) * u32::from(p) / 1000;
+                        r.fill_rect(
+                            self.nodes[root].rect,
+                            0,
+                            Color::rgba(SCRIM.r, SCRIM.g, SCRIM.b, a as u8),
+                        )?;
                     }
                     let seen = region.is_none_or(|g| {
                         let o = self.nodes[i].rect.intersect(&g);
                         o.w > 0 && o.h > 0
                     });
                     if seen {
-                        self.paint_walk(i, r, theme, region)?;
+                        let slide = if popover.is_some() { 0 } else { slide_of(p) };
+                        r.save()?;
+                        let moved = r
+                            .translate(0, slide)
+                            .and_then(|()| self.paint_walk(i, r, theme, region));
+                        let restored = r.restore();
+                        moved?;
+                        restored?;
                     }
                     cur = self.preorder_next(i, root);
                 }
-                Kind::Dialog { open: false, .. } => cur = self.after_subtree(i, root),
+                Kind::Dialog { .. } => cur = self.after_subtree(i, root),
                 _ => cur = self.preorder_next(i, root),
             }
         }
         Ok(())
+    }
+
+    /// Whether dialog `i` still has to be drawn although it is closed: it is sliding out.
+    pub(crate) fn dialog_visible(&self, i: usize) -> bool {
+        matches!(
+            self.nodes[i].kind,
+            Kind::Dialog {
+                popover: None,
+                shown: 1..,
+                ..
+            }
+        )
+    }
+
+    /// Moves the openness of the dialogs towards open or closed. True while one is on its way.
+    pub(crate) fn advance_dialogs(&mut self, theme: &Theme, dt_ms: u32) -> bool {
+        let ms = theme.motion.normal_ms;
+        let mut running = false;
+        for i in 0..N {
+            if !self.nodes[i].alive {
+                continue;
+            }
+            let Kind::Dialog {
+                open,
+                popover: None,
+                shown,
+                ..
+            } = self.nodes[i].kind
+            else {
+                continue;
+            };
+            let target: u16 = if open { 1000 } else { 0 };
+            if shown == target {
+                self.nodes[i].own.remove(Flags::ANIM);
+                continue;
+            }
+            // No time asked for, no time passes; a budget of no motion jumps.
+            let step = if ms == 0 {
+                1000
+            } else {
+                (u64::from(dt_ms) * 1000 / u64::from(ms)).min(1000) as u16
+            };
+            let now = if shown < target {
+                shown.saturating_add(step).min(target)
+            } else {
+                shown.saturating_sub(step).max(target)
+            };
+            if let Kind::Dialog { shown, .. } = &mut self.nodes[i].kind {
+                *shown = now;
+            }
+            if now != shown {
+                self.damage_all();
+                self.request_quiet(i, Flags::PAINT);
+            }
+            if now == 0 {
+                // Gone: it takes no room again.
+                self.request(i, Flags::LAYOUT | Flags::PAINT);
+            }
+            if now == target {
+                self.nodes[i].own.remove(Flags::ANIM);
+            } else {
+                self.nodes[i].own.insert(Flags::ANIM);
+                running = true;
+            }
+        }
+        running
     }
 
     /// The panel of an open dialog: a raised surface with an outline.
@@ -356,6 +451,8 @@ mod tests {
 
     fn open(u: &mut Ui) {
         u.t.open_dialog(u.dialog);
+        // Fully in: the entrance animation has its own tests.
+        u.t.advance(&THEME, 1000);
         relayout(u);
     }
 
@@ -599,6 +696,7 @@ mod tests {
             "the whole screen is dimmed, not only the widgets"
         );
         u.t.close_dialog(u.dialog);
+        u.t.advance(&THEME, 1000);
         paint(&mut u, &mut s);
         assert_eq!(
             s.pixel(spot.0, spot.1),
@@ -630,6 +728,7 @@ mod tests {
         )
         .unwrap();
         t.open_dialog(dialog);
+        t.advance(&THEME, 1000);
         let mut s = screen();
         t.update(&s, &THEME, Rect::new(0, 0, W, H));
         s.clear(THEME.colors.background).unwrap();
@@ -778,5 +877,168 @@ mod tests {
         let p = centre(&u, u.behind);
         tap(&mut u, p);
         assert_eq!(u.t.pop_action().map(|a| a.source), Some(u.behind));
+    }
+
+    /// How dark the page behind the dialog is at `spot`, 0 to 765.
+    fn dark(u: &mut Ui, spot: (i32, i32)) -> (u32, VelloCpu) {
+        let mut s = screen();
+        paint(u, &mut s);
+        let c = s.pixel(spot.0, spot.1).unwrap();
+        (u32::from(c.r) + u32::from(c.g) + u32::from(c.b), s)
+    }
+
+    #[test]
+    fn a_dialog_fades_the_screen_and_slides_in_and_the_same_going_out() {
+        let mut u = ui();
+        let behind = u.t.rect(u.behind).unwrap();
+        let spot = (behind.x + 2, behind.y + 2);
+        let (plain, _) = dark(&mut u, spot);
+        u.t.open_dialog(u.dialog);
+        relayout(&mut u);
+        let (start, s0) = dark(&mut u, spot);
+        assert_eq!(start, plain, "nothing is dimmed at the first frame");
+        let d = u.t.rect(u.dialog).unwrap();
+        let panel_top = |s: &VelloCpu| {
+            (d.y..H as i32)
+                .find(|&y| s.pixel(d.x + (d.w / 2) as i32, y) == Some(THEME.colors.surface_raised))
+        };
+        let mut levels = vec![start];
+        let mut tops = vec![panel_top(&s0)];
+        let step = THEME.motion.normal_ms / 5;
+        for _ in 0..5 {
+            assert!(
+                u.t.advance(&THEME, step) || levels.len() == 5,
+                "frames are wanted while it moves"
+            );
+            let (v, s) = dark(&mut u, spot);
+            levels.push(v);
+            tops.push(panel_top(&s));
+        }
+        assert!(
+            levels.windows(2).all(|w| w[1] <= w[0]),
+            "it only gets darker: {levels:?}"
+        );
+        assert!(
+            levels[0] > levels[3] && levels[3] >= levels[5],
+            "{levels:?}"
+        );
+        // The first frame has no dimming yet, so the page's own raised surfaces are in the way of the search.
+        let tops: Vec<i32> = tops.into_iter().skip(1).flatten().collect();
+        assert!(
+            tops.windows(2).all(|w| w[1] <= w[0]),
+            "the panel only rises: {tops:?}"
+        );
+        // Its outline is the first row, so the fill starts a pixel in.
+        assert!(
+            (d.y..=d.y + 2).contains(tops.last().unwrap()),
+            "and ends in its place: {tops:?} for {d:?}"
+        );
+        assert!(tops[0] > d.y + 4, "it started lower: {tops:?}");
+        assert!(!u.t.advance(&THEME, 50), "at rest, no more frames");
+        let (full, _) = dark(&mut u, spot);
+        assert_eq!(full, *levels.last().unwrap());
+        // Out again: lighter step by step, and exactly the page at the end.
+        u.t.close_dialog(u.dialog);
+        let mut out = vec![full];
+        for _ in 0..5 {
+            u.t.advance(&THEME, step);
+            out.push(dark(&mut u, spot).0);
+        }
+        assert!(
+            out.windows(2).all(|w| w[1] >= w[0]),
+            "it only gets lighter: {out:?}"
+        );
+        u.t.advance(&THEME, 50);
+        assert_eq!(dark(&mut u, spot).0, plain, "back to the page");
+        assert_eq!(
+            u.t.rect(u.dialog).map(|r| (r.w, r.h)),
+            Some((0, 0)),
+            "and it takes no room again"
+        );
+        assert!(!u.t.needs_frame());
+    }
+
+    #[test]
+    fn a_closing_dialog_no_longer_blocks_the_page_and_a_reopened_one_turns_round() {
+        let mut u = ui();
+        open(&mut u);
+        u.t.close_dialog(u.dialog);
+        u.t.advance(&THEME, THEME.motion.normal_ms / 2);
+        relayout(&mut u);
+        assert!(!u.t.is_dialog_open(u.dialog));
+        let p = centre(&u, u.behind);
+        tap(&mut u, p);
+        assert_eq!(
+            u.t.pop_action().map(|a| a.source),
+            Some(u.behind),
+            "the page answers while the dialog fades"
+        );
+        // Opening it again from half way goes in again, not from nothing.
+        let behind = u.t.rect(u.behind).unwrap();
+        let spot = (behind.x + 2, behind.y + 2);
+        let (half, _) = dark(&mut u, spot);
+        u.t.open_dialog(u.dialog);
+        u.t.advance(&THEME, 1);
+        let (again, _) = dark(&mut u, spot);
+        assert!(again <= half + 3, "{again} after {half}");
+        u.t.advance(&THEME, 1000);
+        assert!(u.t.is_dialog_open(u.dialog));
+    }
+
+    #[test]
+    fn a_motion_budget_shortens_or_removes_the_animation() {
+        let behind = |u: &Ui| u.t.rect(u.behind).unwrap();
+        let mut u = ui();
+        let b = behind(&u);
+        let spot = (b.x + 2, b.y + 2);
+        let (plain, _) = dark(&mut u, spot);
+        // Off: one frame of any length, even none, and it is all the way in.
+        let off = THEME.with_motion(crate::MotionBudget::Off);
+        u.t.open_dialog(u.dialog);
+        assert!(!u.t.advance(&off, 0), "nothing to animate");
+        let (v, _) = dark(&mut u, spot);
+        assert!(v < plain, "dimmed at once");
+        u.t.close_dialog(u.dialog);
+        u.t.advance(&off, 0);
+        relayout(&mut u);
+        assert_eq!(dark(&mut u, spot).0, plain);
+        // Reduced: half the time.
+        let half = THEME.with_motion(crate::MotionBudget::Reduced);
+        assert_eq!(half.motion.normal_ms, THEME.motion.normal_ms / 2);
+        u.t.open_dialog(u.dialog);
+        assert!(
+            !u.t.advance(&half, half.motion.normal_ms),
+            "in after half the usual time"
+        );
+        assert_eq!(THEME.with_motion(crate::MotionBudget::Full), THEME);
+    }
+
+    #[test]
+    fn what_is_drawn_part_way_is_the_same_picture_whole_or_by_region() {
+        let mut u = ui();
+        u.t.open_dialog(u.dialog);
+        u.t.advance(&THEME, THEME.motion.normal_ms / 3);
+        let mut full = screen();
+        paint(&mut u, &mut full);
+        let b = u.t.rect(u.ok).unwrap();
+        let region = Rect::new(b.x - 5, b.y - 5, b.w + 10, b.h + 30);
+        let mut part = screen();
+        paint(&mut u, &mut part);
+        part.save().unwrap();
+        part.clip(region).unwrap();
+        part.clear(THEME.colors.background).unwrap();
+        u.t.paint_region(&mut part, &THEME, region).unwrap();
+        part.restore().unwrap();
+        for y in 0..H as i32 {
+            for x in 0..W as i32 {
+                assert_eq!(part.pixel(x, y), full.pixel(x, y), "({x}, {y})");
+            }
+        }
+        // Removing a dialog while it is moving frees the screen.
+        let d = u.dialog;
+        u.t.remove(d);
+        u.t.advance(&THEME, 5000);
+        paint(&mut u, &mut part);
+        assert!(!u.t.needs_frame());
     }
 }

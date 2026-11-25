@@ -19,7 +19,7 @@ impl<const N: usize> Tree<N> {
         // After the scroll step, so a bar that a fling moved this frame is shown, not faded.
         let bars = self.advance_bars(theme, dt_ms);
         // Before the buttons: their pass rebuilds the "something below is animated" flags from what is still running.
-        let toasts = self.advance_toasts(theme, dt_ms);
+        let toasts = self.advance_toasts(theme, dt_ms) | self.advance_dialogs(theme, dt_ms);
         let fading = self.advance_buttons(theme, dt_ms);
         let held = self.advance_gesture(dt_ms);
         scrolling || bars || fading || toasts || held
@@ -88,7 +88,7 @@ impl<const N: usize> Tree<N> {
         };
         let Kind::Button { blend, .. } = &mut self.nodes[i].kind else {
             // A toast runs its own clock (`advance_toasts`) and keeps its flag.
-            if !matches!(self.nodes[i].kind, Kind::Toast { .. }) {
+            if !matches!(self.nodes[i].kind, Kind::Toast { .. } | Kind::Dialog { .. }) {
                 self.nodes[i].own.remove(Flags::ANIM);
             }
             return;

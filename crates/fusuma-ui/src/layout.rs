@@ -104,49 +104,69 @@ impl<const N: usize> Tree<N> {
         let Some(root) = self.root.map(usize::from) else {
             return;
         };
-        if !self.nodes[root].sub.has(Flags::LAYOUT) && self.bounds == Some(bounds) {
+        let full = self.nodes[root].sub.has(Flags::LAYOUT) || self.bounds != Some(bounds);
+        if !full && !self.nodes[root].sub.has(Flags::PLACE) {
             return;
         }
         self.bounds = Some(bounds);
-        // Measure: every node after its children.
-        let mut cur = Some(self.leftmost_leaf(root));
-        while let Some(i) = cur {
-            self.nodes[i].size = self.measure(i, renderer, theme);
-            cur = if i == root { None } else { self.post_next(i) };
-        }
-        // Place: every node before its children.
-        self.place_all(root, bounds, theme.spacing.lg);
-        // A paragraph wraps to the width its parent gave it, which is only known now: if that is not the width it was
-        // measured at, measure again with it (a paragraph's height depends on its width). Twice is enough for text
-        // nested in text-sized containers; more would only chase a layout that does not settle.
-        for _ in 0..2 {
-            if !self.settle_paragraphs() {
-                break;
-            }
+        let margin = theme.spacing.lg;
+        if full {
+            // Measure: every node after its children.
             let mut cur = Some(self.leftmost_leaf(root));
             while let Some(i) = cur {
                 self.nodes[i].size = self.measure(i, renderer, theme);
                 cur = if i == root { None } else { self.post_next(i) };
             }
-            self.place_all(root, bounds, theme.spacing.lg);
+            // Place: every node before its children.
+            self.place_all(root, bounds, margin);
+            // A paragraph wraps to the width its parent gave it, which is only known now: if that is not the width it
+            // was measured at, measure again with it (a paragraph's height depends on its width). Twice is enough for
+            // text nested in text-sized containers; more would only chase a layout that does not settle.
+            for _ in 0..2 {
+                if !self.settle_paragraphs() {
+                    break;
+                }
+                let mut cur = Some(self.leftmost_leaf(root));
+                while let Some(i) = cur {
+                    self.nodes[i].size = self.measure(i, renderer, theme);
+                    cur = if i == root { None } else { self.post_next(i) };
+                }
+                self.place_all(root, bounds, margin);
+            }
+        } else {
+            // Only where children sit changed (a scroll moved, a node slid): sizes are the same, so place the
+            // subtrees that asked and leave the rest of the tree alone.
+            self.place_dirty(bounds, margin);
         }
         // A widget the keyboard moved to may be scrolled out of sight: scroll to it with the fresh
         // positions, then place again with the new offsets.
         if let Some(target) = self.pending_reveal.take().and_then(|id| self.slot(id)) {
             self.reveal(target);
             if self.nodes[root].sub.has(Flags::LAYOUT) {
-                self.place_all(root, bounds, theme.spacing.lg);
+                self.place_all(root, bounds, margin);
+            } else if self.nodes[root].sub.has(Flags::PLACE) {
+                self.place_dirty(bounds, margin);
             }
         }
         // The cursor of a text field a press landed on, and where the caret is.
         self.resolve_input(renderer, theme);
         self.clear_flag(Flags::LAYOUT);
+        self.clear_flag(Flags::PLACE);
         // From here the rows are where they will be drawn, so a change in the shifting window can be drawn over it.
         self.shift_laid = self.shift.is_some();
         // Things may have moved under the pointer.
         if let Some(p) = self.pointer {
             let h = self.hit(p);
             self.set_hover(h);
+        }
+    }
+
+    /// Places the subtrees of the nodes that asked for it ([`Flags::PLACE`]).
+    fn place_dirty(&mut self, bounds: Rect, margin: u32) {
+        for i in 0..N {
+            if self.nodes[i].alive && self.nodes[i].own.has(Flags::PLACE) {
+                self.place_from(i, i, bounds, margin);
+            }
         }
     }
 
@@ -178,12 +198,18 @@ impl<const N: usize> Tree<N> {
     /// Puts every node where its parent says, from the root down.
     fn place_all(&mut self, root: usize, bounds: Rect, margin: u32) {
         self.set_rect(root, bounds);
-        let mut cur = Some(root);
+        self.place_from(root, root, bounds, margin);
+    }
+
+    /// Puts node `start` and everything under it where its parent says (`top` is the node the walk stays inside).
+    fn place_from(&mut self, start: usize, top: usize, bounds: Rect, margin: u32) {
+        let mut cur = Some(start);
         while let Some(i) = cur {
             if let Kind::Dialog { open, popover, .. } = self.nodes[i].kind {
                 // A dialog sits in the middle of the screen at its own size, kept `margin` from the edges; a closed
-                // one takes no room at all. A menu hangs from its widget instead.
-                let rect = if !open {
+                // one takes no room at all (one that is closing still has its place until it is gone). A menu hangs
+                // from its widget instead.
+                let rect = if !(open || self.dialog_visible(i)) {
                     Rect::new(bounds.x, bounds.y, 0, 0)
                 } else if let Some(p) = popover {
                     self.popover_rect(i, p, bounds, margin.min(4))
@@ -201,7 +227,7 @@ impl<const N: usize> Tree<N> {
                 self.set_rect(i, rect);
             }
             self.place_children(i);
-            cur = self.preorder_next(i, root);
+            cur = self.preorder_next(i, top);
         }
     }
 
@@ -388,7 +414,8 @@ impl<const N: usize> Tree<N> {
                     cross_px,
                 ),
             };
-            self.set_rect(ci, rect);
+            let (sx, sy) = self.nodes[ci].shift;
+            self.set_rect(ci, rect.translate(sx, sy));
             pos += i64::from(main_px) + i64::from(st.gap);
             c = next;
         }

@@ -269,6 +269,9 @@ pub(crate) enum Kind {
         /// A menu: a popover that sits next to this widget, has no dimming layer and closes itself when something
         /// in it is pressed or the user presses outside. `None` for an ordinary dialog.
         popover: Option<Popover>,
+        /// How far in it is, in thousandths: it fades and slides in while it opens and out while it closes (the
+        /// animation pass moves it). A menu has no animation.
+        shown: u16,
     },
     /// A message that shows for a while at the bottom of the screen, out of the flow, drawn over everything: it
     /// fades and slides in, stays, then fades out ([`Tree::show_toast`]).
@@ -388,6 +391,8 @@ impl Flags {
     pub(crate) const LAYOUT: u8 = 1;
     pub(crate) const PAINT: u8 = 2;
     pub(crate) const ANIM: u8 = 4;
+    /// Only the placing of children is stale (a scroll moved, a node slid), not any size: no measuring is needed.
+    pub(crate) const PLACE: u8 = 8;
 
     pub(crate) const fn has(self, f: u8) -> bool {
         self.0 & f != 0
@@ -428,6 +433,8 @@ pub(crate) struct Node {
     pub(crate) disabled_eff: bool,
     /// Which gestures the node listens for (see `gesture`).
     pub(crate) gestures: u8,
+    /// How far the node is moved from where its parent puts it, in pixels (a slide in progress, see `transition`).
+    pub(crate) shift: (i32, i32),
 }
 
 impl Node {
@@ -455,6 +462,7 @@ impl Node {
         disabled: false,
         disabled_eff: false,
         gestures: 0,
+        shift: (0, 0),
     };
 }
 

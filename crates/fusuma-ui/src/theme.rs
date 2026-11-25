@@ -86,6 +86,18 @@ pub struct MotionTimes {
     pub bar_fade_ms: u32,
 }
 
+/// How much motion a screen can afford: a chip that redraws slowly looks worse animating than standing still.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum MotionBudget {
+    /// Every transition at its full length.
+    #[default]
+    Full,
+    /// Transitions at half the length: fewer frames to draw.
+    Reduced,
+    /// No transitions: everything is there at once.
+    Off,
+}
+
 /// A complete theme.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Theme {
@@ -137,6 +149,26 @@ impl Fonts {
 }
 
 impl Theme {
+    /// This theme with its motion cut to `budget`: half the durations, or none. Apply it to the base theme.
+    #[must_use]
+    pub const fn with_motion(self, budget: MotionBudget) -> Self {
+        let f = match budget {
+            MotionBudget::Full => 100,
+            MotionBudget::Reduced => 50,
+            MotionBudget::Off => 0,
+        };
+        let m = self.motion;
+        Self {
+            motion: MotionTimes {
+                fast_ms: m.fast_ms * f / 100,
+                normal_ms: m.normal_ms * f / 100,
+                slow_ms: m.slow_ms * f / 100,
+                ..m
+            },
+            ..self
+        }
+    }
+
     /// This theme for a display at `percent` scale (100 is one pixel per logical pixel, 200 a 2x screen): every
     /// length is multiplied and rounded, and nothing that was visible disappears (a 1 pixel outline stays at
     /// least 1). Colours and motion are unchanged. `percent` is held between 50 and 800, and 100 returns the

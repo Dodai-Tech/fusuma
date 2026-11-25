@@ -38,8 +38,8 @@ pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{
-    Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, MotionTimes,
-    Palette, Radii, Round, Spacing, Surface, TextRole, TextSizes, Theme, ThemeError,
+    Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, MotionBudget,
+    MotionTimes, Palette, Radii, Round, Spacing, Surface, TextRole, TextSizes, Theme, ThemeError,
 };
 pub use tree::{
     Action, ActionKind, Axis, BuildError, CrossAlign, Length, NodeId, SmallText, Style, TEXT_CAP,

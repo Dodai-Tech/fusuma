@@ -26,6 +26,7 @@ impl<const N: usize> Tree<N> {
                 open: false,
                 prev: None,
                 popover: Some(Popover { anchor: None }),
+                shown: 0,
             },
             style.align(CrossAlign::Stretch),
         )
