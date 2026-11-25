@@ -29,6 +29,7 @@ mod theme;
 mod toast;
 mod transition;
 mod tree;
+mod virtual_list;
 mod widgets;
 
 pub use app::App;
@@ -49,3 +50,4 @@ pub use tree::{
     Action, ActionKind, Axis, BuildError, CrossAlign, Length, NodeId, SmallText, Style, TEXT_CAP,
     Tree,
 };
+pub use virtual_list::Window;

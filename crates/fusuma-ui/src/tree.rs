@@ -544,6 +544,8 @@ pub struct Tree<const N: usize> {
     pub(crate) track: Option<crate::gesture::Track>,
     /// The slides in progress (see `transition`).
     pub(crate) moves: [Option<crate::transition::Slide>; crate::transition::MAX_SLIDES],
+    /// The virtual lists (see `virtual_list`).
+    pub(crate) virts: [Option<crate::virtual_list::Virt>; crate::virtual_list::MAX_LISTS],
     pub(crate) hovered: Option<NodeId>,
     /// The widget the keyboard acts on.
     pub(crate) focus: Option<NodeId>,
@@ -601,6 +603,7 @@ impl<const N: usize> Tree<N> {
             last_press: None,
             track: None,
             moves: [None; crate::transition::MAX_SLIDES],
+            virts: [None; crate::virtual_list::MAX_LISTS],
             hovered: None,
             focus: None,
             focus_visible: false,
@@ -1557,4 +1560,3 @@ mod tests {
         assert_eq!(&post[..n], &want);
     }
 }
-
