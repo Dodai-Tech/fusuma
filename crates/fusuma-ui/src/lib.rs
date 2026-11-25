@@ -12,6 +12,7 @@ mod iconed;
 mod layout;
 mod menu;
 mod paint;
+mod paragraph;
 mod pieces;
 #[cfg(test)]
 mod scroll;

@@ -116,6 +116,20 @@ impl<const N: usize> Tree<N> {
         }
         // Place: every node before its children.
         self.place_all(root, bounds, theme.spacing.lg);
+        // A paragraph wraps to the width its parent gave it, which is only known now: if that is not the width it was
+        // measured at, measure again with it (a paragraph's height depends on its width). Twice is enough for text
+        // nested in text-sized containers; more would only chase a layout that does not settle.
+        for _ in 0..2 {
+            if !self.settle_paragraphs() {
+                break;
+            }
+            let mut cur = Some(self.leftmost_leaf(root));
+            while let Some(i) = cur {
+                self.nodes[i].size = self.measure(i, renderer, theme);
+                cur = if i == root { None } else { self.post_next(i) };
+            }
+            self.place_all(root, bounds, theme.spacing.lg);
+        }
         // A widget the keyboard moved to may be scrolled out of sight: scroll to it with the fresh
         // positions, then place again with the new offsets.
         if let Some(target) = self.pending_reveal.take().and_then(|id| self.slot(id)) {
@@ -134,6 +148,23 @@ impl<const N: usize> Tree<N> {
             let h = self.hit(p);
             self.set_hover(h);
         }
+    }
+
+    /// Remembers for every paragraph the width it was placed at; true when one changed.
+    fn settle_paragraphs(&mut self) -> bool {
+        let mut changed = false;
+        for n in &mut self.nodes {
+            if let Kind::Paragraph { wrap_w, .. } = &mut n.kind
+                && n.alive
+            {
+                let width = n.rect.w.saturating_sub(n.style.padding.saturating_mul(2));
+                if *wrap_w != width {
+                    *wrap_w = width;
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 
     /// Lays the tree out again at the same bounds, for a test that moves things between frames.
@@ -189,6 +220,16 @@ impl<const N: usize> Tree<N> {
                     t.h.saturating_add(theme.spacing.sm.saturating_mul(2))
                         .max(theme.control_height),
                 )
+            }
+            Kind::Paragraph { text, role, wrap_w } => {
+                // Wrapped to the width it was given, its own if that is fixed, else the last one it got, else the
+                // screen's.
+                let wrap = match n.style.width {
+                    Length::Fixed(w) => w.saturating_sub(pad),
+                    _ if wrap_w > 0 => wrap_w,
+                    _ => self.bounds.map_or(u32::MAX, |b| b.w).saturating_sub(pad),
+                };
+                Self::measure_paragraph(renderer, theme, text.as_str(), role, wrap)
             }
             Kind::Spacer => Size::new(0, 0),
             Kind::Checkbox { .. }

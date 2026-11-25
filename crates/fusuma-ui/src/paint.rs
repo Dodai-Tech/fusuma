@@ -270,6 +270,7 @@ impl<const N: usize> Tree<N> {
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))
             }
             Kind::Tab { .. } => self.paint_tab(i, r, theme),
+            Kind::Paragraph { .. } => self.paint_paragraph(i, r, theme),
             Kind::Button { text, icon, .. } => {
                 let Some(look) = self.button_look(i, theme) else {
                     return Ok(());

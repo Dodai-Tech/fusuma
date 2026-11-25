@@ -210,6 +210,14 @@ pub(crate) enum Kind {
         icon: Option<char>,
     },
     Spacer,
+    /// Text that wraps to the width it is given, over as many lines as it needs.
+    Paragraph {
+        text: crate::paragraph::Para,
+        role: TextRole,
+        /// The width the text was last wrapped to, in pixels (0 before the first layout): what the layout measured
+        /// with, and what it checks against the width the parent finally gives.
+        wrap_w: u32,
+    },
     Checkbox {
         text: SmallText,
         checked: bool,
@@ -344,6 +352,10 @@ impl Kind {
 
     pub(crate) const fn text_mut(&mut self) -> Option<&mut SmallText> {
         match self {
+            Self::Paragraph {
+                text: crate::paragraph::Para::Inline(text),
+                ..
+            } => Some(text),
             Self::Label { text, .. }
             | Self::Button { text, .. }
             | Self::Checkbox { text, .. }
@@ -1118,6 +1130,7 @@ impl<const N: usize> Tree<N> {
         let kind = &self.nodes[self.slot(id)?].kind;
         match kind {
             Kind::TextInput { text, .. } => Some(text.as_str()),
+            Kind::Paragraph { text, .. } => Some(text.as_str()),
             _ => kind.text().map(SmallText::as_str),
         }
     }
