@@ -380,6 +380,21 @@ impl<const N: usize> Tree<N> {
         }
     }
 
+    /// The state of node `i` as a style asks for it: disabled, pressed, hovered, or at rest.
+    pub(crate) fn widget_state(&self, i: usize) -> crate::theme::ButtonState {
+        use crate::theme::ButtonState;
+        let n = &self.nodes[i];
+        if n.disabled_eff {
+            ButtonState::Disabled
+        } else if n.active {
+            ButtonState::Pressed
+        } else if n.hovered {
+            ButtonState::Hovered
+        } else {
+            ButtonState::Idle
+        }
+    }
+
     fn focus_ring_shown(&self, i: usize) -> bool {
         self.focus_visible && self.focus == Some(self.id_of(i))
     }
@@ -482,24 +497,16 @@ impl<const N: usize> Tree<N> {
                 selected,
                 icon,
             } => {
-                let (fill, label) = if n.disabled_eff {
-                    (selected.then_some(c.border), c.text_disabled)
-                } else if selected {
-                    (Some(c.primary), c.on_primary)
-                } else if n.active {
-                    (Some(c.border), c.text)
-                } else if n.hovered {
-                    (Some(c.surface_raised), c.text)
-                } else {
-                    (None, c.text)
-                };
-                if let Some(fill) = fill {
-                    r.fill_rect(rect, theme.radii.sm, fill)?;
+                let state = self.widget_state(i);
+                let look = theme.item(state, selected);
+                if let Some(fill) = look.fill {
+                    r.fill_rect(rect, look.radius, fill)?;
                 }
+                let label = look.text;
                 let m = Self::measure_icon_text(r, theme, icon, text.as_str());
                 let x = px(rect.x, theme.spacing.md);
                 Self::paint_icon_text(r, theme, rect, x, m, text.as_str(), label)?;
-                self.ring(i, r, theme, theme.radii.sm)
+                self.ring(i, r, theme, look.radius)
             }
             Kind::Switch { text, on } => {
                 let look = self.mark_look(i, theme, on);

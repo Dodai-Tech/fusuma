@@ -223,10 +223,12 @@ impl<const N: usize> Tree<N> {
                     (u32::from(c.a) * u32::from(alpha) / 255) as u8,
                 )
             };
-            let c = &theme.colors;
-            let radius = theme.radius(crate::theme::Round::Medium);
-            r.fill_rect(rect, radius, with(c.text))?;
-            let style = TextStyle::new(theme.text.body, with(c.background)).font(theme.fonts.body);
+            let look = theme.panel(crate::theme::PanelKind::Toast);
+            r.fill_rect(rect, look.radius, with(look.fill))?;
+            if let Some(border) = look.border {
+                r.stroke_rect(rect, look.radius, theme.border_width, with(border))?;
+            }
+            let style = TextStyle::new(theme.text.body, with(look.text)).font(theme.fonts.body);
             let size = r.measure_text(text.as_str(), &style);
             let at: Point = centred(rect, size);
             Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;

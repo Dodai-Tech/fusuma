@@ -121,6 +121,97 @@ pub struct Theme {
     pub track_height: u32,
     /// Motion durations.
     pub motion: MotionTimes,
+    /// Functions that replace how a kind of widget looks (see [`Hooks`]).
+    pub hooks: Hooks,
+}
+
+/// Where a design system plugs in. Tokens (colours, radii, sizes) restyle most of what a theme says; a hook is a
+/// function that decides one kind of widget's look itself, in every state, and takes the place of the default. A hook
+/// gets the theme it is called for, so it can still use the tokens. Each is `None` in the defaults.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Hooks {
+    /// How a button looks in a variant and a state.
+    pub button: Option<fn(&Theme, ButtonVariant, ButtonState) -> ButtonStyle>,
+    /// The colour of a container background.
+    pub surface: Option<fn(&Theme, Surface) -> Option<Color>>,
+    /// How a list item or a menu row looks in a state, chosen or not.
+    pub item: Option<fn(&Theme, ButtonState, bool) -> ItemStyle>,
+    /// How a tab looks in a state, chosen or not.
+    pub tab: Option<fn(&Theme, ButtonState, bool) -> TabStyle>,
+    /// How a dialog, a menu or a toast panel looks.
+    pub panel: Option<fn(&Theme, PanelKind) -> PanelStyle>,
+}
+
+impl Hooks {
+    /// No hooks: every widget looks as the theme's tokens say.
+    pub const NONE: Self = Self {
+        button: None,
+        surface: None,
+        item: None,
+        tab: None,
+        panel: None,
+    };
+}
+
+/// Two sets of hooks are the same when they hold the same functions.
+impl PartialEq for Hooks {
+    fn eq(&self, other: &Self) -> bool {
+        self.button.map(|f| f as usize) == other.button.map(|f| f as usize)
+            && self.surface.map(|f| f as usize) == other.surface.map(|f| f as usize)
+            && self.item.map(|f| f as usize) == other.item.map(|f| f as usize)
+            && self.tab.map(|f| f as usize) == other.tab.map(|f| f as usize)
+            && self.panel.map(|f| f as usize) == other.panel.map(|f| f as usize)
+    }
+}
+
+impl Eq for Hooks {}
+
+/// How a list item or a menu row looks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemStyle {
+    /// Fill, if any.
+    pub fill: Option<Color>,
+    /// Text colour.
+    pub text: Color,
+    /// Corner radius in pixels.
+    pub radius: u32,
+}
+
+/// How a tab looks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabStyle {
+    /// Fill, if any.
+    pub fill: Option<Color>,
+    /// Text and icon colour.
+    pub text: Color,
+    /// The bar along the bottom edge of the chosen tab, if any.
+    pub indicator: Option<Color>,
+    /// Corner radius of the fill in pixels.
+    pub radius: u32,
+}
+
+/// Which floating panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PanelKind {
+    /// A modal dialog.
+    Dialog,
+    /// A menu.
+    Menu,
+    /// A toast.
+    Toast,
+}
+
+/// How a floating panel looks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PanelStyle {
+    /// Fill.
+    pub fill: Color,
+    /// Outline, if any.
+    pub border: Option<Color>,
+    /// Text colour (a toast's message).
+    pub text: Color,
+    /// Corner radius in pixels.
+    pub radius: u32,
 }
 
 /// The font of each kind of text. A backend without that font (or built without vector fonts) draws its bitmap
@@ -680,6 +771,7 @@ impl Theme {
             bar_hold_ms: 300,
             bar_fade_ms: 250,
         },
+        hooks: Hooks::NONE,
     };
 
     /// The light default: the same shapes with light colours.
@@ -710,7 +802,16 @@ impl Theme {
 
     /// The colour of a container background; `None` for [`Surface::None`].
     #[must_use]
-    pub const fn surface(&self, surface: Surface) -> Option<Color> {
+    pub fn surface(&self, surface: Surface) -> Option<Color> {
+        match self.hooks.surface {
+            Some(f) => f(self, surface),
+            None => self.default_surface(surface),
+        }
+    }
+
+    /// What [`surface`](Self::surface) gives without a hook.
+    #[must_use]
+    pub const fn default_surface(&self, surface: Surface) -> Option<Color> {
         match surface {
             Surface::None => None,
             Surface::Background => Some(self.colors.background),
@@ -754,7 +855,96 @@ impl Theme {
 
     /// How a button looks.
     #[must_use]
-    pub const fn button(&self, variant: ButtonVariant, state: ButtonState) -> ButtonStyle {
+    pub fn button(&self, variant: ButtonVariant, state: ButtonState) -> ButtonStyle {
+        match self.hooks.button {
+            Some(f) => f(self, variant, state),
+            None => self.default_button(variant, state),
+        }
+    }
+
+    /// How a list item or a menu row looks in `state`, chosen (`selected`) or not.
+    #[must_use]
+    pub fn item(&self, state: ButtonState, selected: bool) -> ItemStyle {
+        if let Some(f) = self.hooks.item {
+            return f(self, state, selected);
+        }
+        let c = &self.colors;
+        let (fill, text) = match (state, selected) {
+            (ButtonState::Disabled, sel) => (sel.then_some(c.border), c.text_disabled),
+            (_, true) => (Some(c.primary), c.on_primary),
+            (ButtonState::Pressed, _) => (Some(c.border), c.text),
+            (ButtonState::Hovered, _) => (Some(c.surface_raised), c.text),
+            (ButtonState::Idle, _) => (None, c.text),
+        };
+        ItemStyle {
+            fill,
+            text,
+            radius: self.radii.sm,
+        }
+    }
+
+    /// How a tab looks in `state`, chosen (`selected`) or not.
+    #[must_use]
+    pub fn tab(&self, state: ButtonState, selected: bool) -> TabStyle {
+        if let Some(f) = self.hooks.tab {
+            return f(self, state, selected);
+        }
+        let c = &self.colors;
+        let (fill, text) = match state {
+            ButtonState::Disabled => (None, c.text_disabled),
+            ButtonState::Pressed => (Some(c.border), c.text),
+            ButtonState::Hovered => (
+                Some(c.surface_raised),
+                if selected { c.primary } else { c.text },
+            ),
+            ButtonState::Idle => (None, if selected { c.primary } else { c.text_muted }),
+        };
+        let indicator = selected.then_some(if state == ButtonState::Disabled {
+            c.border
+        } else {
+            c.primary
+        });
+        TabStyle {
+            fill,
+            text,
+            indicator,
+            radius: self.radii.sm,
+        }
+    }
+
+    /// How a floating panel looks.
+    #[must_use]
+    pub fn panel(&self, kind: PanelKind) -> PanelStyle {
+        if let Some(f) = self.hooks.panel {
+            return f(self, kind);
+        }
+        let c = &self.colors;
+        match kind {
+            PanelKind::Dialog => PanelStyle {
+                fill: c.surface_raised,
+                border: Some(c.border_strong),
+                text: c.text,
+                radius: self.radius(Round::Large),
+            },
+            PanelKind::Menu => PanelStyle {
+                fill: c.surface_raised,
+                border: Some(c.border_strong),
+                text: c.text,
+                radius: self.radius(Round::Medium),
+            },
+            // The reverse of the page, so it stands out on either.
+            PanelKind::Toast => PanelStyle {
+                fill: c.text,
+                border: None,
+                text: c.background,
+                radius: self.radius(Round::Medium),
+            },
+        }
+    }
+
+    /// What [`button`](Self::button) gives without a hook.
+    #[must_use]
+    pub const fn default_button(&self, variant: ButtonVariant, state: ButtonState) -> ButtonStyle {
         let c = &self.colors;
         let radius = self.radii.md;
         if matches!(state, ButtonState::Disabled) {
@@ -1073,6 +1263,226 @@ mod tests {
             mono_body.text_style(TextRole::Body).font,
             Font::Mono,
             "a theme can pick any font"
+        );
+    }
+}
+
+#[cfg(test)]
+mod hook_tests {
+    use fusuma_render::{Color, Point, Probe, Rect, Renderer};
+    use fusuma_render_vello_cpu::VelloCpu;
+
+    use super::*;
+    use crate::event::Pointer;
+    use crate::tree::{CrossAlign, Style, Tree};
+
+    const PINK: Color = Color::rgb(250, 40, 160);
+    const LIME: Color = Color::rgb(160, 250, 40);
+    const TEAL: Color = Color::rgb(30, 200, 210);
+    const GOLD: Color = Color::rgb(240, 190, 20);
+
+    fn button(_: &Theme, v: ButtonVariant, s: ButtonState) -> ButtonStyle {
+        ButtonStyle {
+            background: match (v, s) {
+                (_, ButtonState::Pressed) => LIME,
+                (ButtonVariant::Primary, _) => PINK,
+                _ => TEAL,
+            },
+            border: None,
+            text: Color::WHITE,
+            radius: 3,
+        }
+    }
+
+    fn item(t: &Theme, s: ButtonState, selected: bool) -> ItemStyle {
+        ItemStyle {
+            fill: if selected { Some(GOLD) } else { None },
+            text: if s == ButtonState::Disabled {
+                t.colors.text_disabled
+            } else {
+                Color::BLACK
+            },
+            radius: 0,
+        }
+    }
+
+    fn tab(_: &Theme, _: ButtonState, selected: bool) -> TabStyle {
+        TabStyle {
+            fill: None,
+            text: Color::WHITE,
+            indicator: selected.then_some(LIME),
+            radius: 0,
+        }
+    }
+
+    fn panel(t: &Theme, kind: PanelKind) -> PanelStyle {
+        PanelStyle {
+            fill: GOLD,
+            border: None,
+            text: Color::BLACK,
+            radius: t.radii.sm,
+        }
+        .tap(kind)
+    }
+
+    trait Tap: Sized {
+        fn tap(self, _: PanelKind) -> Self {
+            self
+        }
+    }
+    impl Tap for PanelStyle {}
+
+    fn surface(_: &Theme, s: Surface) -> Option<Color> {
+        match s {
+            Surface::None => None,
+            _ => Some(PINK),
+        }
+    }
+
+    fn hooked() -> Theme {
+        let mut t = crate::theme::BITMAP_TEST;
+        t.hooks = Hooks {
+            button: Some(button),
+            surface: Some(surface),
+            item: Some(item),
+            tab: Some(tab),
+            panel: Some(panel),
+        };
+        t
+    }
+
+    fn screen() -> VelloCpu {
+        fusuma_render_vello_cpu::new(220, 260).unwrap()
+    }
+
+    #[test]
+    fn without_hooks_the_defaults_are_the_tokens_and_a_hook_set_compares_by_its_functions() {
+        let plain = crate::theme::BITMAP_TEST;
+        assert_eq!(plain.hooks, Hooks::NONE);
+        assert_eq!(
+            plain.button(ButtonVariant::Primary, ButtonState::Idle),
+            plain.default_button(ButtonVariant::Primary, ButtonState::Idle)
+        );
+        assert_eq!(
+            plain.surface(Surface::Raised),
+            plain.default_surface(Surface::Raised)
+        );
+        assert_eq!(
+            plain.panel(PanelKind::Toast).fill,
+            plain.colors.text,
+            "the reverse of the page"
+        );
+        assert_ne!(hooked(), plain);
+        assert_eq!(hooked(), hooked());
+        // The theme keeps its hooks through the changes an app makes to it.
+        assert_eq!(hooked().scaled(200).hooks, hooked().hooks);
+        assert_eq!(
+            hooked().with_motion(MotionBudget::Off).hooks,
+            hooked().hooks
+        );
+        let big = hooked().scaled(200);
+        assert_eq!(
+            big.panel(PanelKind::Menu).radius,
+            big.radii.sm,
+            "a hook sees the scaled tokens"
+        );
+    }
+
+    #[test]
+    fn a_hook_replaces_how_each_kind_of_widget_is_drawn_in_every_state() {
+        let t = hooked();
+        let mut tree = Tree::<24>::new();
+        let root = tree
+            .column(
+                None,
+                Style::new()
+                    .gap(6)
+                    .padding(6)
+                    .align(CrossAlign::Start)
+                    .background(Surface::Surface),
+            )
+            .unwrap();
+        let primary = tree
+            .button(Some(root), "Go", ButtonVariant::Primary)
+            .unwrap();
+        let secondary = tree
+            .button(Some(root), "No", ButtonVariant::Secondary)
+            .unwrap();
+        let row = tree.list_item(Some(root), "Chosen", true).unwrap();
+        let plain_row = tree.list_item(Some(root), "Other", false).unwrap();
+        let bar = tree.tab_bar(Some(root), Style::new()).unwrap();
+        let on = tree.tab(Some(bar), None, "A", true).unwrap();
+        let off = tree.tab(Some(bar), None, "B", false).unwrap();
+        let dialog = tree.dialog(Some(root), Style::new().padding(10)).unwrap();
+        tree.label(Some(dialog), "Hello", crate::theme::TextRole::Body)
+            .unwrap();
+        let toast = tree.toast(Some(root)).unwrap();
+        let mut s = screen();
+        let b = Rect::new(0, 0, 220, 260);
+        tree.update(&s, &t, b);
+        s.clear(t.colors.background).unwrap();
+        tree.paint(&mut s, &t).unwrap();
+        let at = |tree: &Tree<24>, id, dx: i32, dy: i32| {
+            let r = tree.rect(id).unwrap();
+            Point::new(r.x + dx, r.y + dy)
+        };
+        // The page itself: the container's surface comes from the hook.
+        assert_eq!(s.pixel(2, 2), Some(PINK), "a container");
+        let p = at(&tree, primary, 4, 4);
+        assert_eq!(s.pixel(p.x, p.y), Some(PINK));
+        let p = at(&tree, secondary, 4, 4);
+        assert_eq!(s.pixel(p.x, p.y), Some(TEAL), "the other variant");
+        let p = at(&tree, row, 3, 3);
+        assert_eq!(s.pixel(p.x, p.y), Some(GOLD), "the chosen row");
+        let p = at(&tree, plain_row, 3, 3);
+        assert_eq!(
+            s.pixel(p.x, p.y),
+            Some(PINK),
+            "an unchosen row has no fill: the container shows"
+        );
+        let (ron, roff) = (tree.rect(on).unwrap(), tree.rect(off).unwrap());
+        assert_eq!(
+            s.pixel(ron.x + (ron.w / 2) as i32, ron.bottom() - 1),
+            Some(LIME),
+            "the chosen tab's bar"
+        );
+        assert_eq!(
+            s.pixel(roff.x + (roff.w / 2) as i32, roff.bottom() - 1),
+            Some(PINK),
+            "none under the other"
+        );
+        // A press shows the hook's pressed look.
+        let c = at(&tree, primary, 4, 4);
+        tree.pointer(Pointer::Down(c));
+        tree.update(&s, &t, b);
+        s.clear(t.colors.background).unwrap();
+        tree.paint(&mut s, &t).unwrap();
+        assert_eq!(s.pixel(c.x, c.y), Some(LIME), "pressed");
+        tree.pointer(Pointer::Up(Point::new(0, 250)));
+        tree.pointer(Pointer::Leave);
+        // The panels: a dialog and a toast, from the panel hook.
+        tree.open_dialog(dialog);
+        tree.show_toast(toast, "Saved", 1000);
+        tree.advance(&t, 500);
+        tree.update(&s, &t, b);
+        s.clear(t.colors.background).unwrap();
+        tree.paint(&mut s, &t).unwrap();
+        let d = tree.rect(dialog).unwrap();
+        assert_eq!(
+            s.pixel(d.x + (d.w / 2) as i32, d.y + 4),
+            Some(GOLD),
+            "the dialog panel"
+        );
+        assert_ne!(
+            s.pixel(d.x, d.y + (d.h / 2) as i32),
+            Some(t.colors.border_strong),
+            "and it has no outline"
+        );
+        let r = tree.rect(toast).unwrap();
+        assert_eq!(
+            s.pixel(r.x + (r.w / 2) as i32, r.y + 2),
+            Some(GOLD),
+            "the toast panel"
         );
     }
 }

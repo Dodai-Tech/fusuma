@@ -188,39 +188,24 @@ impl<const N: usize> Tree<N> {
             return Ok(());
         };
         let rect = n.rect;
-        let c = &theme.colors;
-        let (fill, color) = if n.disabled_eff {
-            (None, c.text_disabled)
-        } else if n.active {
-            (Some(c.border), c.text)
-        } else if n.hovered {
-            (
-                Some(c.surface_raised),
-                if selected { c.primary } else { c.text },
-            )
-        } else {
-            (None, if selected { c.primary } else { c.text_muted })
-        };
+        let look = theme.tab(self.widget_state(i), selected);
+        let (fill, color) = (look.fill, look.text);
         if let Some(fill) = fill {
-            r.fill_rect(rect, theme.radii.sm, fill)?;
+            r.fill_rect(rect, look.radius, fill)?;
         }
         let m = Self::measure_icon_text(r, theme, icon, text.as_str());
         let size = m.size();
         let x = centred(rect, size).x;
         Self::paint_icon_text(r, theme, rect, x, m, text.as_str(), color)?;
-        if selected {
+        if let Some(color) = look.indicator {
             // The indicator of the chosen tab: a bar along the bottom edge.
             let bar = theme.border_width.max(3);
             let h = bar.min(rect.h);
             let bottom = i64::from(rect.y) + i64::from(rect.h) - i64::from(h);
             let line = Rect::new(rect.x, bottom as i32, rect.w, h);
-            r.fill_rect(
-                line,
-                h / 2,
-                if n.disabled_eff { c.border } else { c.primary },
-            )?;
+            r.fill_rect(line, h / 2, color)?;
         }
-        self.ring(i, r, theme, theme.radii.sm)
+        self.ring(i, r, theme, look.radius)
     }
 }
 

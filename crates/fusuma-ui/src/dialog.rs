@@ -339,14 +339,18 @@ impl<const N: usize> Tree<N> {
         theme: &Theme,
     ) -> Result<(), R::Error> {
         let rect = self.nodes[i].rect;
-        let round = if self.is_popover(i) {
-            crate::theme::Round::Medium
+        let kind = if self.is_popover(i) {
+            crate::theme::PanelKind::Menu
         } else {
-            crate::theme::Round::Large
+            crate::theme::PanelKind::Dialog
         };
-        let radius = theme.radius(round);
-        r.fill_rect(rect, radius, theme.colors.surface_raised)?;
-        r.stroke_rect(rect, radius, theme.border_width, theme.colors.border_strong)
+        let look = theme.panel(kind);
+        let radius = look.radius;
+        r.fill_rect(rect, radius, look.fill)?;
+        if let Some(border) = look.border {
+            r.stroke_rect(rect, radius, theme.border_width, border)?;
+        }
+        Ok(())
     }
 }
 
