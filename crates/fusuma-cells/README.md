@@ -16,8 +16,10 @@ grid of characters. `no_std`, **no allocator** and no dependencies, so it runs o
 - **`Decoder`**: turns the bytes a terminal sends (keys, arrows, escape sequences, UTF-8) into `CellKey`s, one byte at
   a time, for a serial console. A lone Escape is told from the start of a sequence by `flush` when input pauses.
 
-A character takes one cell; wide characters (CJK, emoji) are not handled yet.
+A character takes the columns it has: one, or two for a wide one (CJK, emoji; a tail cell follows it and writes
+nothing), none for a combining mark (`char_width`, `str_width`). The decoder also reads Alt and a key, and mouse
+reports (SGR).
 
-This is the bottom of Fusuma's text UI. Not built yet (see `docs/ROADMAP.md`): the toolkit painting its widgets into
-cells (`CellSink` in `fusuma-ui`), layout in cells (`Measure`), the cell theme, and mouse input in the decoder. The
-terminal itself is `fusuma-platform-tui`.
+This is the bottom of Fusuma's text UI. The toolkit draws into it with `Tree::paint_cells` (`fusuma-ui`); the outputs are
+`fusuma-platform-tui` (a terminal), `fusuma-platform-console` (a serial console) and `fusuma-cells-panel` (a pixel
+panel).

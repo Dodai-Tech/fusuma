@@ -8,8 +8,8 @@ Waveshare ESP32-S3-Touch-AMOLED-2.06 (410x502), the P4 the Waveshare ESP32-P4 7"
 
 1. **GUI renderers** (done): the integer renderer has Vello's look at its own speed on microcontrollers.
 2. **UI components and logic** (done, see [Toolkit](#toolkit)).
-3. **TUI**: cells in the toolkit, then running apps in a terminal, a serial console and on a panel. See
-   [Text UI](#text-ui); the `fusuma-cells` and `fusuma-platform-tui` scaffolds wait until then.
+3. **TUI** (done, see [Text UI](#text-ui)): the showcase runs in a terminal, over a serial console and on a panel.
+4. **Web** (see [Boards and platforms](#boards-and-platforms)).
 
 Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 
@@ -68,7 +68,9 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 | `fusuma-platform-embedded` | what every board shares: `Board`, `Driver`, the renderer surface, touch tracking, timing | yes |
 | `fusuma-platform-esp` | ESP-IDF runtime and drivers per controller; boards are files (not a workspace member) | no |
 | `fusuma-platform-desktop` | a `winit` window, GPU Vello else CPU | no |
-| `fusuma-cells`, `fusuma-platform-tui` | scaffolds of the text UI: cell grid, diff, ANSI; a `crossterm` terminal | yes / no |
+| `fusuma-cells` | the text UI's cells: grid, diff, ANSI encoder, key and mouse decoder, wide characters | yes |
+| `fusuma-platform-tui`, `fusuma-platform-console` | the text UI in a terminal (`crossterm`) and over a serial console (any `fmt::Write`) | no / yes |
+| `fusuma-cells-panel` | the text UI on a pixel panel through any renderer, one region a frame | yes |
 | planned: `fusuma-shaders`, `fusuma-platform-mobile`, `fusuma-platform-web` | shader engine; Android and iOS; the web on Vello (WebGPU, else CPU in wasm) | no |
 
 ## Renderers
@@ -245,15 +247,26 @@ A separate platform with the same tree and widgets, each drawn in its cell form 
 terminal, over SSH, on a chip's serial console or on a panel. Better than `ratatui` should be shown with numbers:
 retained (focus, scrolling, dialogs built in), one app for pixels and cells, `no_std`, diffed output.
 
-- [x] `fusuma-cells` scaffold (`no_std`, no allocator): cells, colour depth with fall-back, `Grid`, a diff into runs,
-  an ANSI encoder that sends only changes, a byte-at-a-time key decoder; builds for RISC-V and Cortex-M0
-- [x] `fusuma-platform-tui` scaffold: `Terminal` (raw mode, alternate screen, restored on drop), colour depth
-  detection, `crossterm` events as `fusuma::Input`; an example (a 50x16 first frame 968 bytes, a key press 54)
-- [ ] A `Measure` trait so layout needs no `Renderer`; a `CellSink` paint pass; a cell theme (glyph sets, colour
-  depth, emphasis per state) loadable as data; text snapshot tests
-- [ ] Running an app; then the serial console of a chip, then a panel (cells through the integer renderer, one region
-  a frame)
-- [ ] Mouse, wide characters and Alt in the decoder
+- [x] `fusuma-cells` (`no_std`, no allocator): cells, colour depth with fall-back, `Grid`, a diff into runs, an ANSI
+  encoder that sends only changes, a key decoder with Alt, SGR mouse reports and UTF-8, wide characters (two columns,
+  a tail cell the encoder skips); builds for RISC-V and Cortex-M0
+- [x] **A `Measure` trait** (`fusuma-render`): layout asks only for text sizes, so `CellMeasure` lays out in cells with
+  no pixel renderer; `Theme::CELLS` is the cell-sized theme (brackets, markers and a switch's width counted)
+- [x] **A `CellSink` paint pass** (`Tree::paint_cells`): every widget in its text form (`[x] Wi-Fi`, `(•) Medium`,
+  `[ ON ]`, `███░░░`, `[ OK ]`, `▸ row`, `[ Home ]`, a field with caret and selection, a scrollbar, boxes for dialogs, the
+  page dimmed behind one, a toast)
+- [x] **A cell theme as data** (`CellTheme`): glyphs and the attributes each state adds, `UNICODE`, `ASCII` and `MONO`
+  (no colour, every state by attributes); the `[cells]` table of `fusuma.toml` picks a preset and changes glyphs and
+  emphasis by name, checked on load (a box must be 3 wide), with the schema
+- [x] **Text snapshot tests**: the gallery (every widget, every state) and the overlays in each cell theme, against
+  golden files in `crates/fusuma-ui/tests/golden` (`FUSUMA_UPDATE_GOLDEN=1` rewrites them)
+- [x] **`just showcase-tui`**: the showcase in a terminal (mouse, keys, resize; `--dump 80x24 Page` prints a frame as
+  text; `--ascii`, `--mono`, `--settings`), the same app as the window and the watch; run through a pty in a check
+- [x] **A serial console** (`fusuma-platform-console`): frames to any `fmt::Write`, bytes in as `Input`; the showcase
+  runs over it in a test (a click as bytes: the next frame is a fifth of the first)
+- [x] **A panel** (`fusuma-cells-panel`): a grid drawn through any renderer (blocks, box drawing and bullets as
+  shapes, bold, dim, reverse, underline), only the changed runs, one rectangle for the board to send. Not yet flashed
+  to a board
 - [ ] Measure `ratatui` with `mousefood` on the watch before claiming anything
 
 ## Out of scope
