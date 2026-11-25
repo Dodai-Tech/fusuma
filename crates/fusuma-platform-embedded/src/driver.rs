@@ -273,7 +273,8 @@ mod tests {
     #[test]
     fn far_apart_changes_are_shown_as_separate_rectangles_and_the_middle_is_not_sent() {
         for backend in backends() {
-            let mut d = Driver::new(Showcase::new(1024, 600), Fake::new(1024, 600), backend).unwrap();
+            let mut d =
+                Driver::new(Showcase::new(1024, 600), Fake::new(1024, 600), backend).unwrap();
             d.step(0).unwrap();
             d.board_mut().shown.clear();
             // A click on the Buttons page changes the button and its counter near the top, and the status line at
@@ -294,7 +295,10 @@ mod tests {
                 bounding.w * bounding.h
             );
             for r in &shown {
-                assert!(bounding.intersect(r) == *r, "{backend:?}: {r:?} inside {bounding:?}");
+                assert!(
+                    bounding.intersect(r) == *r,
+                    "{backend:?}: {r:?} inside {bounding:?}"
+                );
             }
         }
     }

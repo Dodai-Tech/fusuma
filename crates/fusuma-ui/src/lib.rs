@@ -44,8 +44,9 @@ pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{
-    Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, MotionBudget,
-    MotionTimes, Palette, Radii, Round, Spacing, Surface, TextRole, TextSizes, Theme, ThemeError,
+    Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Colors, Fonts, Hooks, ItemStyle,
+    MotionBudget, MotionTimes, Palette, PanelKind, PanelStyle, Radii, Round, Spacing, Surface,
+    TabStyle, TextRole, TextSizes, Theme, ThemeError,
 };
 pub use transition::Edge;
 pub use tree::{
