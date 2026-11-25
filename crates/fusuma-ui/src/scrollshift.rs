@@ -226,6 +226,7 @@ impl<const N: usize> Tree<N> {
 #[cfg(test)]
 mod tests {
     use fusuma_render::{Color, Point, Probe, Rect, Renderer, Size, TextStyle};
+    use fusuma_render_embedded::{Embedded, Frame};
     use fusuma_render_vello_cpu::{Scene, VelloCpu};
 
     use crate::event::Pointer;
@@ -233,21 +234,73 @@ mod tests {
     use crate::tree::{CrossAlign, Length, NodeId, Style, Tree};
 
     const THEME: Theme = crate::theme::BITMAP_TEST;
+
+    /// What the same tests need of a renderer beyond [`Renderer`]: a new one, and its start and end of a frame.
+    trait Back: Renderer + Probe {
+        fn make(w: u32, h: u32) -> Self;
+        /// The start of a platform's frame.
+        fn begin(&mut self);
+        /// The end of a frame, after which a platform reads its pixels (`drew`: the frame drew something).
+        fn after(&mut self, drew: bool);
+        /// A platform that does not know `paint_frame` hints the region it was told.
+        fn hint(&mut self, region: Rect);
+    }
+
+    impl Back for VelloCpu {
+        fn make(w: u32, h: u32) -> Self {
+            fusuma_render_vello_cpu::new(w, h).unwrap()
+        }
+        fn begin(&mut self) {
+            self.with_scene(Scene::reset);
+        }
+        fn after(&mut self, drew: bool) {
+            // Vello renders when the pixels are first read; a platform does that at the end of every frame that
+            // drew. After a frame that drew nothing, reading them must not render the empty scene over the picture.
+            if drew {
+                let _ = self.pixel(0, 0);
+            } else {
+                self.with_scene(|sc| Scene::add_damage(sc, (0, 0, 0, 0)));
+            }
+        }
+        fn hint(&mut self, region: Rect) {
+            self.with_scene(|s| Scene::set_damage(s, (region.x, region.y, region.w, region.h)));
+        }
+    }
+
+    type Integer = Embedded<Frame<Vec<u16>>>;
+
+    impl Back for Integer {
+        fn make(w: u32, h: u32) -> Self {
+            Embedded::new(Frame::new(w as u16, h as u16, vec![0u16; (w * h) as usize]).unwrap())
+        }
+        fn begin(&mut self) {}
+        fn after(&mut self, _drew: bool) {}
+        fn hint(&mut self, _region: Rect) {}
+    }
+
+    /// Every test below, on both renderers: the toolkit's scroll shift must be exact on each.
+    macro_rules! on_both {
+        ($($name:ident),* $(,)?) => {
+            mod vello_cpu { $(#[test] fn $name() { super::$name::<super::VelloCpu>(); })* }
+            mod integer { $(#[test] fn $name() { super::$name::<super::Integer>(); })* }
+        };
+    }
+
     const W: u32 = 160;
     const H: u32 = 220;
 
     /// A renderer that records what the toolkit asked of it, and can refuse to shift.
-    struct Spy {
-        inner: VelloCpu,
+    struct Spy<B: Back> {
+        inner: B,
         allow: bool,
         shifts: Vec<(Rect, i32)>,
         draws: Vec<Rect>,
     }
 
-    impl Spy {
+    impl<B: Back> Spy<B> {
         fn new(allow: bool) -> Self {
             Self {
-                inner: fusuma_render_vello_cpu::new(W, H).unwrap(),
+                inner: B::make(W, H),
                 allow,
                 shifts: Vec::new(),
                 draws: Vec::new(),
@@ -256,14 +309,14 @@ mod tests {
 
         /// The start of a platform's frame: the scene forgets what it drew before.
         fn begin(&mut self) {
-            self.inner.with_scene(Scene::reset);
+            self.inner.begin();
             self.shifts.clear();
             self.draws.clear();
         }
     }
 
-    impl Renderer for Spy {
-        type Error = <VelloCpu as Renderer>::Error;
+    impl<B: Back> Renderer for Spy<B> {
+        type Error = <B as Renderer>::Error;
         fn size(&self) -> Size {
             self.inner.size()
         }
@@ -351,7 +404,7 @@ mod tests {
         }
     }
 
-    impl Probe for Spy {
+    impl<B: Back> Probe for Spy<B> {
         fn pixel(&self, x: i32, y: i32) -> Option<Color> {
             self.inner.pixel(x, y)
         }
@@ -363,7 +416,7 @@ mod tests {
     }
 
     /// A page: a header, a window of `rows` rows (with the style given) and a footer. The window is 120 px high.
-    fn ui(rows: usize, window: Style) -> Ui {
+    fn ui<B: Back>(rows: usize, window: Style) -> Ui {
         let mut t = Tree::<48>::new();
         let root = t
             .column(None, Style::new().gap(6).align(CrossAlign::Stretch))
@@ -381,7 +434,7 @@ mod tests {
         t.label(Some(root), "Footer", crate::theme::TextRole::Caption)
             .unwrap();
         let mut u = Ui { t, sc };
-        u.t.update(&Spy::new(true), &THEME, Rect::new(0, 0, W, H));
+        u.t.update(&Spy::<B>::new(true), &THEME, Rect::new(0, 0, W, H));
         u
     }
 
@@ -392,24 +445,17 @@ mod tests {
             .align(CrossAlign::Stretch)
     }
 
-    fn frame(u: &mut Ui, r: &mut Spy) -> Option<Rect> {
+    fn frame<B: Back>(u: &mut Ui, r: &mut Spy<B>) -> Option<Rect> {
         r.begin();
         u.t.update(&*r, &THEME, Rect::new(0, 0, W, H));
         let shown = u.t.paint_frame(r, &THEME, Rect::new(0, 0, W, H)).unwrap();
-        // Vello renders when the pixels are first read; a platform does that at the end of every frame that drew.
-        if shown.is_some() {
-            let _ = r.pixel(0, 0);
-        } else {
-            // A platform does not read pixels after a frame that drew nothing; reading them here, for the
-            // comparison, must not render the empty scene over the picture.
-            r.inner.with_scene(|sc| Scene::add_damage(sc, (0, 0, 0, 0)));
-        }
+        r.inner.after(shown.is_some());
         shown
     }
 
     /// A reference picture of the tree as it is now, drawn all at once.
-    fn full(u: &mut Ui) -> Spy {
-        let mut r = Spy::new(false);
+    fn full<B: Back>(u: &mut Ui) -> Spy<B> {
+        let mut r = Spy::<B>::new(false);
         r.begin();
         u.t.update(&r, &THEME, Rect::new(0, 0, W, H));
         r.clear(THEME.colors.background).unwrap();
@@ -417,7 +463,7 @@ mod tests {
         r
     }
 
-    fn same(a: &Spy, b: &Spy, what: &str) {
+    fn same<B: Back>(a: &Spy<B>, b: &Spy<B>, what: &str) {
         for y in 0..H as i32 {
             for x in 0..W as i32 {
                 assert_eq!(a.pixel(x, y), b.pixel(x, y), "{what}: ({x}, {y})");
@@ -426,9 +472,9 @@ mod tests {
     }
 
     /// Scrolls a window by `dy` pixels with the wheel and checks the picture against a full redraw.
-    fn wheel_then_compare(window: Style, dy: i32) -> (Spy, Option<Rect>) {
-        let mut u = ui(10, window);
-        let mut r = Spy::new(true);
+    fn wheel_then_compare<B: Back>(window: Style, dy: i32) -> (Spy<B>, Option<Rect>) {
+        let mut u = ui::<B>(10, window);
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r).unwrap();
         let first = u.t.rect(u.sc).unwrap();
         u.t.pointer(Pointer::Wheel(Point::new(first.x + 20, first.y + 20), dy));
@@ -438,9 +484,8 @@ mod tests {
         (r, shown)
     }
 
-    #[test]
-    fn a_scroll_moves_the_pixels_and_redraws_only_the_strip_and_the_scrollbar() {
-        let (r, shown) = wheel_then_compare(plain(), 13);
+    fn a_scroll_moves_the_pixels_and_redraws_only_the_strip_and_the_scrollbar<B: Back>() {
+        let (r, shown) = wheel_then_compare::<B>(plain(), 13);
         let window = Rect::new(0, 0, W, H);
         let shown = shown.unwrap();
         assert!(shown.w * shown.h <= window.w * window.h, "{shown:?}");
@@ -465,17 +510,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_picture_is_exactly_a_full_redraw_for_every_distance_and_direction() {
+    fn the_picture_is_exactly_a_full_redraw_for_every_distance_and_direction<B: Back>() {
         for dy in [1, 2, 7, 30, 59, 100, 119, 121, 400] {
-            wheel_then_compare(plain(), dy);
+            wheel_then_compare::<B>(plain(), dy);
         }
     }
 
-    #[test]
-    fn scrolling_back_up_and_across_many_frames_stays_exact() {
-        let mut u = ui(12, plain());
-        let mut r = Spy::new(true);
+    fn scrolling_back_up_and_across_many_frames_stays_exact<B: Back>() {
+        let mut u = ui::<B>(12, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         let wheel = Point::new(at.x + 20, at.y + 20);
@@ -486,10 +529,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn several_scrolls_before_one_frame_are_one_move() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn several_scrolls_before_one_frame_are_one_move<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         let wheel = Point::new(at.x + 20, at.y + 20);
@@ -505,10 +547,9 @@ mod tests {
         same(&r, &full(&mut u), "combined");
     }
 
-    #[test]
-    fn a_renderer_that_cannot_shift_gets_the_whole_window_drawn_and_the_same_picture() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(false);
+    fn a_renderer_that_cannot_shift_gets_the_whole_window_drawn_and_the_same_picture<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(false);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         u.t.pointer(Pointer::Wheel(Point::new(at.x + 20, at.y + 20), 13));
@@ -522,10 +563,9 @@ mod tests {
         same(&r, &full(&mut u), "no shift");
     }
 
-    #[test]
-    fn a_change_inside_the_window_cancels_the_shift_and_the_window_is_redrawn() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn a_change_inside_the_window_cancels_the_shift_and_the_window_is_redrawn<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         u.t.pointer(Pointer::Wheel(Point::new(at.x + 20, at.y + 20), 13));
@@ -541,10 +581,9 @@ mod tests {
         same(&r, &full(&mut u), "cancelled");
     }
 
-    #[test]
-    fn a_change_before_the_scroll_over_the_window_means_no_shift_either() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn a_change_before_the_scroll_over_the_window_means_no_shift_either<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let row = u.t.children(u.sc).nth(1).unwrap();
         u.t.set_text(row, "edited");
@@ -555,10 +594,9 @@ mod tests {
         same(&r, &full(&mut u), "dirty first");
     }
 
-    #[test]
-    fn a_change_elsewhere_is_drawn_next_to_the_shifted_window() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn a_change_elsewhere_is_drawn_next_to_the_shifted_window<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         u.t.pointer(Pointer::Wheel(Point::new(at.x + 20, at.y + 20), 13));
@@ -579,12 +617,11 @@ mod tests {
         same(&r, &full(&mut u), "footer");
     }
 
-    #[test]
-    fn rounded_corners_at_the_edge_of_the_window_are_not_moved_with_the_rows() {
+    fn rounded_corners_at_the_edge_of_the_window_are_not_moved_with_the_rows<B: Back>() {
         let style = plain().background(Surface::Surface).round(Round::Large);
         for dy in [3_i32, 20, -20] {
-            let mut u = ui(10, style);
-            let mut r = Spy::new(true);
+            let mut u = ui::<B>(10, style);
+            let mut r = Spy::<B>::new(true);
             frame(&mut u, &mut r);
             if dy < 0 {
                 u.t.scroll_to(u.sc, 60);
@@ -597,21 +634,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn padding_and_a_background_do_not_break_the_move() {
+    fn padding_and_a_background_do_not_break_the_move<B: Back>() {
         let style = plain()
             .padding(10)
             .background(Surface::Surface)
             .round(Round::Medium);
         for dy in [5, 33, 90] {
-            wheel_then_compare(style, dy);
+            wheel_then_compare::<B>(style, dy);
         }
     }
 
-    #[test]
-    fn a_touch_drag_and_a_fling_are_moves_too_and_stay_exact() {
-        let mut u = ui(12, plain());
-        let mut r = Spy::new(true);
+    fn a_touch_drag_and_a_fling_are_moves_too_and_stay_exact<B: Back>() {
+        let mut u = ui::<B>(12, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         let x = at.x + 30;
@@ -638,10 +673,9 @@ mod tests {
         assert_eq!(u.t.scroll_over(u.sc), Some(0));
     }
 
-    #[test]
-    fn a_pull_past_the_end_and_the_bounce_back_stay_exact() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn a_pull_past_the_end_and_the_bounce_back_stay_exact<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         u.t.pointer(Pointer::Down(Point::new(at.x + 30, at.y + 20)));
@@ -662,10 +696,9 @@ mod tests {
         assert_eq!(u.t.scroll_over(u.sc), Some(0));
     }
 
-    #[test]
-    fn the_old_paint_calls_still_work_after_a_scroll() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn the_old_paint_calls_still_work_after_a_scroll<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         frame(&mut u, &mut r);
         let at = u.t.rect(u.sc).unwrap();
         u.t.pointer(Pointer::Wheel(Point::new(at.x + 20, at.y + 20), 13));
@@ -680,17 +713,32 @@ mod tests {
         u.t.paint_region(&mut r, &THEME, region).unwrap();
         r.restore().unwrap();
         // What a platform that does not know `paint_frame` does: it hints the region it was told.
-        r.inner
-            .with_scene(|s| Scene::set_damage(s, (region.x, region.y, region.w, region.h)));
+        r.inner.hint(region);
         same(&r, &full(&mut u), "old API");
     }
 
-    #[test]
-    fn a_tree_with_nothing_to_do_draws_nothing() {
-        let mut u = ui(10, plain());
-        let mut r = Spy::new(true);
+    fn a_tree_with_nothing_to_do_draws_nothing<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
         assert!(frame(&mut u, &mut r).is_some());
         assert_eq!(frame(&mut u, &mut r), None);
         assert!(r.draws.is_empty() && r.shifts.is_empty());
     }
+
+    on_both!(
+        a_scroll_moves_the_pixels_and_redraws_only_the_strip_and_the_scrollbar,
+        the_picture_is_exactly_a_full_redraw_for_every_distance_and_direction,
+        scrolling_back_up_and_across_many_frames_stays_exact,
+        several_scrolls_before_one_frame_are_one_move,
+        a_renderer_that_cannot_shift_gets_the_whole_window_drawn_and_the_same_picture,
+        a_change_inside_the_window_cancels_the_shift_and_the_window_is_redrawn,
+        a_change_before_the_scroll_over_the_window_means_no_shift_either,
+        a_change_elsewhere_is_drawn_next_to_the_shifted_window,
+        rounded_corners_at_the_edge_of_the_window_are_not_moved_with_the_rows,
+        padding_and_a_background_do_not_break_the_move,
+        a_touch_drag_and_a_fling_are_moves_too_and_stay_exact,
+        a_pull_past_the_end_and_the_bounce_back_stay_exact,
+        the_old_paint_calls_still_work_after_a_scroll,
+        a_tree_with_nothing_to_do_draws_nothing,
+    );
 }

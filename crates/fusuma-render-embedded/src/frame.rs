@@ -36,6 +36,14 @@ pub trait Blend {
         let _ = (x, y, alpha, colors);
         false
     }
+
+    /// Moves the pixels inside the rectangle `x, y, w, h` (which lies inside the target) down by `dy` rows (up when
+    /// negative), the way a scroll does; the rows that come into view are left as they were. False when the target
+    /// cannot (the default), changing nothing.
+    fn shift_rows(&mut self, x: i32, y: i32, w: u32, h: u32, dy: i32) -> bool {
+        let _ = (x, y, w, h, dy);
+        false
+    }
 }
 
 /// `color` over `dst` (both RGB565) with coverage `a` out of 255, rounded.
@@ -77,6 +85,33 @@ impl<S: AsRef<[u16]> + AsMut<[u16]>> Blend for Frame<S> {
             } else {
                 mix565(*p, color, a)
             };
+        }
+        true
+    }
+
+    fn shift_rows(&mut self, x: i32, y: i32, w: u32, h: u32, dy: i32) -> bool {
+        let (fw, fh) = (usize::from(self.width), usize::from(self.height));
+        let (Ok(x), Ok(y)) = (usize::try_from(x), usize::try_from(y)) else {
+            return false;
+        };
+        let (w, h) = (w as usize, h as usize);
+        if x + w > fw || y + h > fh {
+            return false;
+        }
+        let by = dy.unsigned_abs() as usize;
+        if by == 0 || by >= h {
+            return true;
+        }
+        let px = self.pixels.as_mut();
+        // The rows that stay in view, from the far end first so none is overwritten before it is copied.
+        for i in 0..h - by {
+            let (from, to) = if dy > 0 {
+                let r = h - by - 1 - i;
+                (y + r, y + r + by)
+            } else {
+                (y + by + i, y + i)
+            };
+            px.copy_within(from * fw + x..from * fw + x + w, to * fw + x);
         }
         true
     }
@@ -199,6 +234,7 @@ mod tests {
     extern crate std;
     use super::*;
     use std::vec;
+    use std::vec::Vec;
 
     #[test]
     fn size_must_match_and_pixels_read_back() {
@@ -260,5 +296,42 @@ mod tests {
         )
         .unwrap();
         assert!(f.pixels().iter().all(|&p| p == 0));
+    }
+
+    #[test]
+    fn shifting_rows_moves_a_window_both_ways_and_touches_nothing_else() {
+        let (w, h) = (6u16, 10u16);
+        let fresh = || {
+            let px: Vec<u16> = (0..usize::from(w) * usize::from(h))
+                .map(|i| i as u16)
+                .collect();
+            Frame::new(w, h, px).unwrap()
+        };
+        for dy in [-3, -1, 1, 2, 4] {
+            let mut f = fresh();
+            let before = f.pixels().to_vec();
+            assert!(f.shift_rows(1, 2, 4, 6, dy));
+            for y in 0..i32::from(h) {
+                for x in 0..i32::from(w) {
+                    let at = (y * i32::from(w) + x) as usize;
+                    let inside = (1..5).contains(&x) && (2..8).contains(&y);
+                    let from = (y - dy) * i32::from(w) + x;
+                    let want = if inside && (2..8).contains(&(y - dy)) {
+                        before[from as usize]
+                    } else {
+                        before[at]
+                    };
+                    assert_eq!(f.pixels()[at], want, "dy {dy} at ({x}, {y})");
+                }
+            }
+        }
+        // Not inside the frame, or moving the whole window away or nowhere: refused or a no-op, never a panic.
+        let mut f = fresh();
+        assert!(!f.shift_rows(4, 0, 4, 2, 1), "past the right edge");
+        assert!(!f.shift_rows(-1, 0, 2, 2, 1), "before the left edge");
+        assert!(!f.shift_rows(0, 8, 2, 4, 1), "past the bottom");
+        let before = f.pixels().to_vec();
+        assert!(f.shift_rows(0, 0, 6, 4, 9) && f.shift_rows(0, 0, 6, 4, 0));
+        assert_eq!(f.pixels(), &before[..]);
     }
 }

@@ -444,6 +444,16 @@ where
         Ok(())
     }
 
+    fn shift_area(&mut self, rect: Rect, dy: i32) -> bool {
+        let device = rect.translate(self.state.tx, self.state.ty);
+        let surface = Rect::new(0, 0, self.size.w, self.size.h);
+        if device.is_empty() || device.intersect(&surface) != device {
+            return false;
+        }
+        self.target
+            .shift_rows(device.x, device.y, device.w, device.h, dy)
+    }
+
     fn translate(&mut self, dx: i32, dy: i32) -> Result<(), Self::Error> {
         self.state.tx = self.state.tx.saturating_add(dx);
         self.state.ty = self.state.ty.saturating_add(dy);
