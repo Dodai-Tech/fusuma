@@ -11,6 +11,10 @@
 //! sans = "roboto"       # or name the families one by one, overriding the preset's
 //! mono = "roboto-mono"
 //! sizes = [10, 15, 20]  # line heights of the glyph atlases (the integer renderer), read at build time
+//!
+//! [theme]
+//! palette = "forest"    # fusuma (default), forest, ocean, petrol or violet; the app can switch at run time
+//! accent = "violet"     # another palette's main-action colour on it
 //! ```
 //!
 //! Every key is optional, and a key left out says nothing, so the layer below it decides. An unknown key
@@ -92,6 +96,17 @@ pub struct FontChoice {
     pub sizes: Option<std::vec::Vec<u16>>,
 }
 
+/// The `[theme]` table: which palette and accent the app starts with. Names are checked by the platform against
+/// `fusuma::Palette::named` and `fusuma::Accent::named`; this crate knows no colours.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeChoice {
+    /// A palette's name (`forest`).
+    pub palette: Option<std::string::String>,
+    /// An accent's name (`violet`), put on the palette.
+    pub accent: Option<std::string::String>,
+}
+
 /// A settings file (`fusuma.toml`), read and checked.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
@@ -99,6 +114,8 @@ pub struct Settings {
     pub render: RenderLayer,
     /// The `[fonts]` table (all `None` when the file has none).
     pub fonts: FontChoice,
+    /// The `[theme]` table (all `None` when the file has none).
+    pub theme: ThemeChoice,
 }
 
 #[derive(Deserialize)]
@@ -106,6 +123,7 @@ pub struct Settings {
 struct File {
     render: Option<RawRender>,
     fonts: Option<FontChoice>,
+    theme: Option<ThemeChoice>,
 }
 
 impl Settings {
@@ -133,6 +151,7 @@ impl Settings {
                 .render
                 .map_or(Ok(RenderLayer::EMPTY), RawRender::into_layer)?,
             fonts,
+            theme: file.theme.unwrap_or_default(),
         })
     }
 }
@@ -213,6 +232,30 @@ mod tests {
                 SETTINGS_SCHEMA.contains(&std::format!("\"{key}\"")),
                 "the schema has fonts.{key}"
             );
+        }
+    }
+
+    #[test]
+    fn the_theme_table_is_read() {
+        let s =
+            Settings::from_toml("[theme]\npalette = \"forest\"\naccent = \"violet\"\n").unwrap();
+        assert_eq!(
+            s.theme,
+            ThemeChoice {
+                palette: Some("forest".into()),
+                accent: Some("violet".into()),
+            }
+        );
+        assert_eq!(
+            Settings::from_toml("").unwrap().theme,
+            ThemeChoice::default()
+        );
+        let e = Settings::from_toml("[theme]\ncolour = \"red\"\n")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("colour"), "{e}");
+        for key in ["\"theme\"", "\"palette\"", "\"accent\""] {
+            assert!(SETTINGS_SCHEMA.contains(key), "the schema has {key}");
         }
     }
 

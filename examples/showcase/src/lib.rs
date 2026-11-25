@@ -9,8 +9,8 @@ use core::fmt::{self, Write};
 
 use fusuma::render::{Rect, Renderer};
 use fusuma::{
-    ActionKind, App, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Round, Style,
-    Surface, TextRole, Theme, Tree,
+    ActionKind, App, ButtonVariant, CrossAlign, Key, Length, NodeId, Palette, Pointer, Round,
+    Style, Surface, TextRole, Theme, Tree,
 };
 
 /// Nodes the tree can hold; the busiest page uses about 40.
@@ -19,11 +19,11 @@ pub const NODES: usize = 64;
 /// How long the progress bar takes to fill, in milliseconds.
 const FILL_MS: u32 = 8000;
 
-/// The theme the showcase uses: Fusuma's neutral default, sized for a 7" 1024 x 600 touch screen (bigger
+/// The theme the showcase uses: `palette`'s dark or light colours, sized for a 7" 1024 x 600 touch screen (bigger
 /// controls and spacing than the phone-sized defaults).
 #[must_use]
-pub const fn theme(dark: bool) -> Theme {
-    let base = if dark { Theme::DARK } else { Theme::LIGHT };
+pub const fn theme(dark: bool, palette: &Palette) -> Theme {
+    let base = if dark { Theme::DARK } else { Theme::LIGHT }.with_colors(palette.colors(dark));
     Theme {
         spacing: fusuma::Spacing {
             xs: 4,
@@ -100,6 +100,18 @@ impl Class {
     #[must_use]
     pub const fn is_compact(self) -> bool {
         matches!(self, Self::Watch | Self::Phone)
+    }
+}
+
+/// The text of the palette button: the palette's name.
+fn palette_button_text(palette: &Palette) -> &'static str {
+    match palette.name {
+        "fusuma" => "Fusuma",
+        "forest" => "Forest",
+        "ocean" => "Ocean",
+        "petrol" => "Petrol",
+        "violet" => "Violet",
+        _ => "Colours",
     }
 }
 
@@ -225,6 +237,8 @@ pub struct Showcase {
     tree: Tree<NODES>,
     theme: Theme,
     dark: bool,
+    /// The colours: the settings' palette at start, then whatever the palette button stepped to.
+    palette: Palette,
     /// Display scale in percent; the theme and the fixed sizes follow it.
     scale: u32,
     bounds: Rect,
@@ -248,6 +262,7 @@ pub struct Showcase {
     body: Option<NodeId>,
     content: Option<NodeId>,
     theme_button: Option<NodeId>,
+    palette_button: Option<NodeId>,
     status: Option<NodeId>,
     live: Live,
     clicks: u32,
@@ -264,9 +279,10 @@ impl Showcase {
     pub fn new(width: u32, height: u32) -> Self {
         let mut s = Self {
             tree: Tree::new(),
-            theme: theme(true),
+            theme: theme(true, &Palette::FUSUMA),
             scale: 100,
             dark: true,
+            palette: Palette::FUSUMA,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
             sidebar: [None; 7],
@@ -281,6 +297,7 @@ impl Showcase {
             body: None,
             content: None,
             theme_button: None,
+            palette_button: None,
             status: None,
             live: Live::default(),
             clicks: 0,
@@ -379,6 +396,18 @@ impl Showcase {
     #[must_use]
     pub const fn theme_button(&self) -> Option<NodeId> {
         self.theme_button
+    }
+
+    /// The button that steps through the palettes.
+    #[must_use]
+    pub const fn palette_button(&self) -> Option<NodeId> {
+        self.palette_button
+    }
+
+    /// The colours in use.
+    #[must_use]
+    pub const fn palette(&self) -> &Palette {
+        &self.palette
     }
 
     /// The widgets of the page on show, by role: for tests and demos that tap them.
@@ -500,6 +529,16 @@ impl Showcase {
             )?;
         }
         t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
+        // On a watch the header has no room for it: it is a tile of the home screen instead.
+        self.palette_button = if class == Class::Watch {
+            None
+        } else {
+            Some(t.button(
+                Some(header),
+                palette_button_text(&self.palette),
+                ButtonVariant::Secondary,
+            )?)
+        };
         self.theme_button = Some(t.button(
             Some(header),
             theme_button_text(self.dark, compact),
@@ -543,7 +582,19 @@ impl Showcase {
                     self.tiles[r * 2 + k] = Some(id);
                 }
                 if pair.len() == 1 {
-                    t.spacer(Some(row), Style::new().width(Length::Fill(1)))?;
+                    // The last row has room for one more: the palette switcher.
+                    let id = t.button(
+                        Some(row),
+                        palette_button_text(&self.palette),
+                        ButtonVariant::Primary,
+                    )?;
+                    t.set_style(
+                        id,
+                        Style::new()
+                            .width(Length::Fill(1))
+                            .height(Length::Fixed(tile_h)),
+                    );
+                    self.palette_button = Some(id);
                 }
             }
             return Ok(());
@@ -804,9 +855,18 @@ impl Showcase {
         }
     }
 
+    fn set_palette(&mut self, palette: Palette) {
+        self.palette = palette;
+        self.theme = theme(self.dark, &palette).scaled(self.scale);
+        if let Some(b) = self.palette_button {
+            self.tree.set_text(b, palette_button_text(&palette));
+        }
+        self.tree.invalidate();
+    }
+
     fn set_dark(&mut self, dark: bool) {
         self.dark = dark;
-        self.theme = theme(dark).scaled(self.scale);
+        self.theme = theme(dark, &self.palette).scaled(self.scale);
         if let Some(b) = self.theme_button {
             self.tree
                 .set_text(b, theme_button_text(dark, self.class.is_compact()));
@@ -866,6 +926,9 @@ impl Showcase {
                         let _ = write!(b, "Submitted: {}", self.typed.as_str());
                     } else if id == self.theme_button {
                         self.set_dark(!self.dark);
+                    } else if id == self.palette_button {
+                        self.set_palette(*self.palette.next());
+                        let _ = write!(b, "Colours: {}", self.palette.name);
                     } else if id == self.live.click_me {
                         self.clicks += 1;
                         let _ = write!(b, "Clicked {} times", self.clicks);
@@ -1049,6 +1112,10 @@ impl App for Showcase {
         self.tree.selected_text()
     }
 
+    fn palette(&mut self, palette: Palette) {
+        self.set_palette(palette);
+    }
+
     fn shape(&mut self, shape: fusuma::Shape) {
         let (w, h) = (self.bounds.w, self.bounds.h);
         let insets = shape.safe_insets(w, h);
@@ -1071,7 +1138,7 @@ impl App for Showcase {
             self.class = class;
             self.open = false;
             self.insets = self.shape.safe_insets(width, height);
-            self.theme = theme(self.dark).scaled(scale);
+            self.theme = theme(self.dark, &self.palette).scaled(scale);
             self.bounds = bounds;
             self.tree.clear();
             self.sidebar = [None; 7];
@@ -1286,14 +1353,74 @@ mod tests {
     }
 
     #[test]
+    fn the_palette_button_steps_through_every_palette_and_keeps_dark_or_light() {
+        let (mut s, mut r) = app();
+        let target = s.palette_button().unwrap();
+        assert_eq!(s.tree().text(target), Some("Fusuma"));
+        for want in ["forest", "ocean", "petrol", "violet", "fusuma"] {
+            tap(&mut s, target);
+            assert_eq!(s.palette().name, want);
+            assert!(s.is_dark(), "the palette does not switch dark and light");
+            let p = Palette::named(want).unwrap();
+            assert_eq!(s.theme().colors, p.dark);
+            let region = s.frame(&mut r).unwrap().unwrap();
+            assert_eq!(
+                region,
+                Rect::new(0, 0, 1024, 600),
+                "{want}: everything repaints"
+            );
+            assert_eq!(r.pixel(0, 0).unwrap(), p.dark.background, "{want}");
+        }
+        let (p, t) = (s.palette_button().unwrap(), s.theme_button().unwrap());
+        tap(&mut s, p);
+        tap(&mut s, t);
+        assert_eq!(s.theme().colors, Palette::FOREST.light, "light forest");
+        assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Forest"));
+    }
+
+    #[test]
+    fn on_a_watch_the_palette_switcher_is_a_tile_of_the_home_screen() {
+        let (mut s, _) = watch();
+        let tile = s.palette_button().unwrap();
+        let last = s.tile(Page::ALL[6]).unwrap();
+        let (a, b) = (s.rect_of(tile).unwrap(), s.rect_of(last).unwrap());
+        assert_eq!(
+            (a.y, a.h, a.w),
+            (b.y, b.h, b.w),
+            "beside the last page tile, the same size"
+        );
+        tap(&mut s, tile);
+        assert_eq!(s.palette().name, "forest");
+        assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Forest"));
+        assert!(!s.is_open(), "it switches colours, it opens no page");
+        open(&mut s, Page::Buttons);
+        assert_eq!(s.palette_button(), None, "not on a page");
+        close(&mut s);
+        assert_eq!(s.palette().name, "forest", "kept across pages");
+    }
+
+    #[test]
+    fn the_settings_palette_is_the_one_drawn_from_the_start() {
+        let (mut s, mut r) = app();
+        let green = Palette::choose(Some("petrol"), Some("forest")).unwrap();
+        App::palette(&mut s, green);
+        s.frame(&mut r).unwrap();
+        assert_eq!(r.pixel(0, 0).unwrap(), Palette::PETROL.dark.background);
+        assert_eq!(s.theme().colors.primary, Palette::FOREST.dark.primary);
+        assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Petrol"));
+    }
+
+    #[test]
     fn the_keyboard_drives_the_whole_app() {
         let (mut s, _) = app();
         s.key(Key::Next);
         assert_eq!(
             s.tree().focused(),
-            s.theme_button(),
+            s.palette_button(),
             "the header comes first"
         );
+        s.key(Key::Next);
+        assert_eq!(s.tree().focused(), s.theme_button());
         s.key(Key::Next);
         assert_eq!(s.tree().focused(), s.sidebar_item(Page::Buttons));
         s.key(Key::Down);

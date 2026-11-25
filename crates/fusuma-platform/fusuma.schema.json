@@ -57,6 +57,33 @@
           "description": "Line heights of the glyph atlases the integer renderer draws with, read at build time (FUSUMA_SETTINGS). Default 10, 15 and 20."
         }
       }
+    },
+    "theme": {
+      "type": "object",
+      "description": "The colours the app starts with (fusuma-ui's Palette and Accent). Every key is optional.",
+      "additionalProperties": false,
+      "properties": {
+        "palette": {
+          "enum": [
+            "fusuma",
+            "forest",
+            "ocean",
+            "petrol",
+            "violet"
+          ],
+          "description": "A whole set of colours for the dark and the light theme. Default fusuma."
+        },
+        "accent": {
+          "enum": [
+            "fusuma",
+            "forest",
+            "ocean",
+            "petrol",
+            "violet"
+          ],
+          "description": "Another palette's main-action colour, put on the palette."
+        }
+      }
     }
   }
 }

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use fusuma::fonts::FontSet;
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
-use fusuma::platform::{FontChoice, Plan, Render, Settings};
+use fusuma::platform::{FontChoice, Plan, Render, Settings, ThemeChoice};
 use fusuma::{App, Input, Pointer, Shell};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -76,6 +76,7 @@ pub fn run<A: App + 'static>(
         None => Settings::default(),
     };
     let fonts = font_set(&settings.fonts)?;
+    let palette = palette_for(&settings.theme)?;
     let layers = [settings.render, options.build];
     let event_loop = EventLoop::new()?;
     let mut handler = Handler {
@@ -83,6 +84,7 @@ pub fn run<A: App + 'static>(
         options,
         layers,
         fonts,
+        palette,
         state: None,
         error: None,
     };
@@ -118,6 +120,8 @@ struct Handler<A> {
     options: Options,
     layers: [RenderLayer; 2],
     fonts: FontSet,
+    /// The colours `[theme]` asks for, sent to the app before its first frame.
+    palette: fusuma::Palette,
     state: Option<State<A>>,
     error: Option<anyhow::Error>,
 }
@@ -130,6 +134,21 @@ fn canvas_for(plan: &Plan, w: u32, h: u32, fonts: FontSet) -> Option<Canvas> {
             Canvas::new(Backend::VelloCpu, w, h, fonts)
         })?
     })
+}
+
+/// The palette `[theme]` asks for, with its accent.
+fn palette_for(choice: &ThemeChoice) -> anyhow::Result<fusuma::Palette> {
+    let p = fusuma::Palette::choose(choice.palette.as_deref(), choice.accent.as_deref())
+        .map_err(|e| anyhow::anyhow!("fusuma.toml [theme]: {e}"))?;
+    log::info!(
+        "palette: {}{}",
+        p.name,
+        choice
+            .accent
+            .as_deref()
+            .map_or(String::new(), |a| format!(" with the {a} accent"))
+    );
+    Ok(p)
 }
 
 /// The font families the `[fonts]` table asks for, among those the build linked.
@@ -178,6 +197,7 @@ impl<A: App> Handler<A> {
             .take()
             .ok_or_else(|| anyhow::anyhow!("the app was already made"))?;
         let mut shell = Shell::new(make(w, h));
+        shell.input(Input::Palette(self.palette));
         shell.input(Input::Resize {
             width: w,
             height: h,
@@ -438,6 +458,25 @@ mod wake_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_theme_table_picks_a_palette_and_names_a_mistake() {
+        assert_eq!(
+            palette_for(&ThemeChoice::default()).unwrap(),
+            fusuma::Palette::FUSUMA
+        );
+        let forest = ThemeChoice {
+            palette: Some("forest".into()),
+            accent: None,
+        };
+        assert_eq!(palette_for(&forest).unwrap(), fusuma::Palette::FOREST);
+        let bad = ThemeChoice {
+            palette: None,
+            accent: Some("red".into()),
+        };
+        let e = palette_for(&bad).unwrap_err().to_string();
+        assert!(e.contains("[theme]") && e.contains("'red'"), "{e}");
+    }
 
     #[test]
     fn the_fonts_table_picks_linked_families_and_names_a_mistake() {

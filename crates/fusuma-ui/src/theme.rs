@@ -185,6 +185,323 @@ impl Theme {
 
 /// The dark theme drawn with the built-in bitmap font, whatever fonts the build bundles: tests that count
 /// pixels or check text metrics must not change with a cargo feature another crate turns on.
+/// The four colours of the main action: at rest, hovered, pressed, and the text on it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AccentColors {
+    /// At rest.
+    pub primary: Color,
+    /// Under the pointer.
+    pub hover: Color,
+    /// Pressed.
+    pub active: Color,
+    /// Text and icons on it.
+    pub on: Color,
+}
+
+/// A main-action colour for the dark and the light theme, to put on any palette ([`Palette::with_accent`]). Every
+/// palette's own main action is one ([`Accent::ALL`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Accent {
+    /// The name settings use (`"forest"`).
+    pub name: &'static str,
+    /// For the dark theme.
+    pub dark: AccentColors,
+    /// For the light theme.
+    pub light: AccentColors,
+}
+
+/// A whole set of colours, for the dark and the light theme: what a theme switcher switches. Named, so settings
+/// (`[theme] palette` in `fusuma.toml`) can pick one; every one keeps text readable on every surface and in every
+/// state of the main action (the tests check the contrast).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    /// The name settings use (`"forest"`).
+    pub name: &'static str,
+    /// The dark theme's colours.
+    pub dark: Colors,
+    /// The light theme's colours.
+    pub light: Colors,
+}
+
+impl Palette {
+    /// Fusuma's neutral blue-grey with a blue main action: the colours of [`Theme::DARK`] and [`Theme::LIGHT`].
+    pub const FUSUMA: Self = Self {
+        name: "fusuma",
+        dark: Theme::DARK.colors,
+        light: Theme::LIGHT.colors,
+    };
+
+    /// Greens from dark pine to sage, on a warm cream (light) or a near-black green (dark).
+    pub const FOREST: Self = Self {
+        name: "forest",
+        dark: Colors {
+            background: Color::rgb(12, 23, 12),
+            surface: Color::rgb(19, 36, 19),
+            surface_raised: Color::rgb(30, 58, 30),
+            border: Color::rgb(44, 95, 45),
+            border_strong: Color::rgb(90, 127, 82),
+            text: Color::rgb(250, 248, 245),
+            text_muted: Color::rgb(197, 213, 176),
+            text_disabled: Color::rgb(110, 138, 102),
+            primary: Color::rgb(135, 168, 120),
+            primary_hover: Color::rgb(165, 191, 151),
+            primary_active: Color::rgb(122, 156, 110),
+            on_primary: Color::rgb(15, 36, 15),
+            danger: Color::rgb(240, 122, 110),
+        },
+        light: Colors {
+            background: Color::rgb(250, 248, 245),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(238, 241, 232),
+            border: Color::rgb(197, 213, 176),
+            border_strong: Color::rgb(90, 127, 82),
+            text: Color::rgb(26, 61, 26),
+            text_muted: Color::rgb(75, 107, 68),
+            text_disabled: Color::rgb(151, 168, 143),
+            primary: Color::rgb(44, 95, 45),
+            primary_hover: Color::rgb(52, 107, 53),
+            primary_active: Color::rgb(26, 61, 26),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(179, 38, 30),
+        },
+    };
+    /// A bright, clear blue on blue-tinted surfaces.
+    pub const OCEAN: Self = Self {
+        name: "ocean",
+        dark: Colors {
+            background: Color::rgb(7, 17, 31),
+            surface: Color::rgb(13, 27, 48),
+            surface_raised: Color::rgb(21, 40, 74),
+            border: Color::rgb(36, 64, 107),
+            border_strong: Color::rgb(90, 127, 184),
+            text: Color::rgb(238, 244, 255),
+            text_muted: Color::rgb(169, 190, 220),
+            text_disabled: Color::rgb(94, 115, 150),
+            primary: Color::rgb(77, 163, 255),
+            primary_hover: Color::rgb(116, 184, 255),
+            primary_active: Color::rgb(47, 140, 240),
+            on_primary: Color::rgb(4, 16, 31),
+            danger: Color::rgb(255, 122, 122),
+        },
+        light: Colors {
+            background: Color::rgb(244, 248, 252),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(230, 238, 248),
+            border: Color::rgb(195, 212, 234),
+            border_strong: Color::rgb(91, 122, 163),
+            text: Color::rgb(11, 31, 58),
+            text_muted: Color::rgb(63, 88, 120),
+            text_disabled: Color::rgb(154, 170, 192),
+            primary: Color::rgb(10, 102, 224),
+            primary_hover: Color::rgb(10, 92, 208),
+            primary_active: Color::rgb(8, 72, 168),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(192, 38, 45),
+        },
+    };
+    /// Deep teal, between blue and green.
+    pub const PETROL: Self = Self {
+        name: "petrol",
+        dark: Colors {
+            background: Color::rgb(6, 20, 22),
+            surface: Color::rgb(11, 31, 34),
+            surface_raised: Color::rgb(18, 50, 54),
+            border: Color::rgb(31, 76, 81),
+            border_strong: Color::rgb(79, 138, 143),
+            text: Color::rgb(236, 247, 247),
+            text_muted: Color::rgb(166, 201, 203),
+            text_disabled: Color::rgb(90, 126, 129),
+            primary: Color::rgb(63, 184, 191),
+            primary_hover: Color::rgb(99, 200, 206),
+            primary_active: Color::rgb(42, 162, 169),
+            on_primary: Color::rgb(3, 24, 26),
+            danger: Color::rgb(242, 120, 111),
+        },
+        light: Colors {
+            background: Color::rgb(243, 248, 248),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(227, 239, 239),
+            border: Color::rgb(184, 211, 212),
+            border_strong: Color::rgb(79, 127, 130),
+            text: Color::rgb(11, 46, 49),
+            text_muted: Color::rgb(60, 97, 100),
+            text_disabled: Color::rgb(147, 171, 173),
+            primary: Color::rgb(11, 110, 116),
+            primary_hover: Color::rgb(19, 121, 127),
+            primary_active: Color::rgb(7, 85, 90),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(184, 50, 43),
+        },
+    };
+    /// Purple, from deep plum to lavender.
+    pub const VIOLET: Self = Self {
+        name: "violet",
+        dark: Colors {
+            background: Color::rgb(18, 13, 28),
+            surface: Color::rgb(26, 20, 40),
+            surface_raised: Color::rgb(38, 29, 59),
+            border: Color::rgb(60, 47, 92),
+            border_strong: Color::rgb(125, 106, 168),
+            text: Color::rgb(243, 239, 251),
+            text_muted: Color::rgb(196, 184, 222),
+            text_disabled: Color::rgb(111, 99, 144),
+            primary: Color::rgb(180, 155, 255),
+            primary_hover: Color::rgb(199, 180, 255),
+            primary_active: Color::rgb(157, 128, 245),
+            on_primary: Color::rgb(23, 13, 46),
+            danger: Color::rgb(255, 122, 138),
+        },
+        light: Colors {
+            background: Color::rgb(248, 246, 252),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(239, 233, 248),
+            border: Color::rgb(212, 200, 234),
+            border_strong: Color::rgb(122, 104, 163),
+            text: Color::rgb(36, 22, 61),
+            text_muted: Color::rgb(90, 74, 120),
+            text_disabled: Color::rgb(169, 159, 190),
+            primary: Color::rgb(107, 63, 209),
+            primary_hover: Color::rgb(119, 80, 218),
+            primary_active: Color::rgb(85, 48, 173),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(184, 38, 58),
+        },
+    };
+
+    /// Every palette, the default first: the order a switcher steps through.
+    pub const ALL: [Self; 5] = [
+        Self::FUSUMA,
+        Self::FOREST,
+        Self::OCEAN,
+        Self::PETROL,
+        Self::VIOLET,
+    ];
+
+    /// The palette called `name`.
+    #[must_use]
+    pub fn named(name: &str) -> Option<&'static Self> {
+        Self::ALL.iter().find(|p| p.name == name)
+    }
+
+    /// The palette after this one in [`ALL`](Self::ALL), back to the first after the last: a switcher's next step.
+    /// One that is not in the list (made by an app) steps to the first.
+    #[must_use]
+    pub fn next(&self) -> &'static Self {
+        let at = Self::ALL.iter().position(|p| p.name == self.name);
+        &Self::ALL[at.map_or(0, |i| (i + 1) % Self::ALL.len())]
+    }
+
+    /// The colours of the dark or the light theme.
+    #[must_use]
+    pub const fn colors(&self, dark: bool) -> Colors {
+        if dark { self.dark } else { self.light }
+    }
+
+    /// This palette's own main action, as an accent.
+    #[must_use]
+    pub const fn accent(&self) -> Accent {
+        const fn of(c: &Colors) -> AccentColors {
+            AccentColors {
+                primary: c.primary,
+                hover: c.primary_hover,
+                active: c.primary_active,
+                on: c.on_primary,
+            }
+        }
+        Accent {
+            name: self.name,
+            dark: of(&self.dark),
+            light: of(&self.light),
+        }
+    }
+
+    /// This palette with `accent`'s main action instead of its own.
+    #[must_use]
+    pub const fn with_accent(self, accent: &Accent) -> Self {
+        const fn put(mut c: Colors, a: &AccentColors) -> Colors {
+            c.primary = a.primary;
+            c.primary_hover = a.hover;
+            c.primary_active = a.active;
+            c.on_primary = a.on;
+            c
+        }
+        Self {
+            name: self.name,
+            dark: put(self.dark, &accent.dark),
+            light: put(self.light, &accent.light),
+        }
+    }
+}
+
+/// A palette or accent name that does not exist.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThemeError<'a> {
+    /// No palette has this name.
+    UnknownPalette(&'a str),
+    /// No accent has this name.
+    UnknownAccent(&'a str),
+}
+
+impl core::fmt::Display for ThemeError<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let names = |f: &mut core::fmt::Formatter<'_>| {
+            for (i, p) in Palette::ALL.iter().enumerate() {
+                write!(f, "{}{}", if i == 0 { "" } else { ", " }, p.name)?;
+            }
+            Ok(())
+        };
+        match self {
+            Self::UnknownPalette(n) => write!(f, "no palette '{n}'; there are ")?,
+            Self::UnknownAccent(n) => write!(f, "no accent '{n}'; there are ")?,
+        }
+        names(f)
+    }
+}
+
+impl Palette {
+    /// The palette the settings ask for (`[theme] palette`, default [`FUSUMA`](Self::FUSUMA)) with the accent
+    /// they ask for (`[theme] accent`) on it.
+    ///
+    /// # Errors
+    /// [`ThemeError`] naming an unknown palette or accent.
+    pub fn choose<'a>(
+        palette: Option<&'a str>,
+        accent: Option<&'a str>,
+    ) -> Result<Self, ThemeError<'a>> {
+        let p = match palette {
+            None => Self::FUSUMA,
+            Some(n) => *Self::named(n).ok_or(ThemeError::UnknownPalette(n))?,
+        };
+        Ok(match accent {
+            None => p,
+            Some(n) => p.with_accent(Accent::named(n).ok_or(ThemeError::UnknownAccent(n))?),
+        })
+    }
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        Self::FUSUMA
+    }
+}
+
+impl Accent {
+    /// Every palette's main action, in the palettes' order.
+    pub const ALL: [Self; 5] = [
+        Palette::FUSUMA.accent(),
+        Palette::FOREST.accent(),
+        Palette::OCEAN.accent(),
+        Palette::PETROL.accent(),
+        Palette::VIOLET.accent(),
+    ];
+
+    /// The accent called `name`.
+    #[must_use]
+    pub fn named(name: &str) -> Option<&'static Self> {
+        Self::ALL.iter().find(|a| a.name == name)
+    }
+}
+
 #[cfg(test)]
 pub(crate) const BITMAP_TEST: Theme = Theme {
     fonts: Fonts {
@@ -342,6 +659,12 @@ impl Theme {
         ..Self::DARK
     };
 
+    /// This theme with `colors`: how a palette is put on a theme (`theme.with_colors(palette.colors(dark))`).
+    #[must_use]
+    pub const fn with_colors(self, colors: Colors) -> Self {
+        Self { colors, ..self }
+    }
+
     /// The colour of a container background; `None` for [`Surface::None`].
     #[must_use]
     pub const fn surface(&self, surface: Surface) -> Option<Color> {
@@ -446,6 +769,103 @@ mod tests {
         0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
     }
 
+    /// Every palette in both modes, and every palette with every other's accent on it.
+    fn every_palette() -> std::vec::Vec<(std::string::String, Colors)> {
+        let mut out = std::vec::Vec::new();
+        for p in Palette::ALL {
+            for a in Accent::ALL {
+                let q = p.with_accent(&a);
+                out.push((std::format!("{} with {} dark", p.name, a.name), q.dark));
+                out.push((std::format!("{} with {} light", p.name, a.name), q.light));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_main_action_stands_out_from_the_page() {
+        for (name, c) in every_palette() {
+            assert!(
+                contrast(c.primary, c.background) >= 3.0,
+                "{name}: {:.2}",
+                contrast(c.primary, c.background)
+            );
+        }
+    }
+
+    #[test]
+    fn a_choice_from_the_settings_names_a_mistake() {
+        assert_eq!(Palette::choose(None, None), Ok(Palette::FUSUMA));
+        assert_eq!(Palette::choose(Some("ocean"), None), Ok(Palette::OCEAN));
+        let p = Palette::choose(Some("petrol"), Some("violet")).unwrap();
+        assert_eq!(
+            (p.light.background, p.light.primary),
+            (
+                Palette::PETROL.light.background,
+                Palette::VIOLET.light.primary
+            )
+        );
+        assert_eq!(
+            Palette::choose(Some("green"), None),
+            Err(ThemeError::UnknownPalette("green"))
+        );
+        assert_eq!(
+            Palette::choose(None, Some("red")),
+            Err(ThemeError::UnknownAccent("red"))
+        );
+        let e = std::format!("{}", ThemeError::UnknownPalette("green"));
+        assert_eq!(
+            e,
+            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet"
+        );
+    }
+
+    #[test]
+    fn palettes_are_named_step_round_and_take_an_accent() {
+        assert_eq!(Palette::default(), Palette::FUSUMA);
+        assert_eq!(Palette::FUSUMA.colors(true), Theme::DARK.colors);
+        assert_eq!(Palette::FUSUMA.colors(false), Theme::LIGHT.colors);
+        assert_eq!(Palette::named("forest"), Some(&Palette::FOREST));
+        assert_eq!(Palette::named("Forest"), None);
+        let names: std::vec::Vec<&str> = Palette::ALL.iter().map(|p| p.name).collect();
+        assert_eq!(names, ["fusuma", "forest", "ocean", "petrol", "violet"]);
+        let mut p = &Palette::ALL[0];
+        for want in ["forest", "ocean", "petrol", "violet", "fusuma"] {
+            p = p.next();
+            assert_eq!(p.name, want);
+        }
+        let own = Palette {
+            name: "mine",
+            ..Palette::OCEAN
+        };
+        assert_eq!(
+            own.next().name,
+            "fusuma",
+            "an app's own palette steps to the first"
+        );
+        let green = Palette::FUSUMA.with_accent(Accent::named("forest").unwrap());
+        assert_eq!(green.dark.primary, Palette::FOREST.dark.primary);
+        assert_eq!(green.light.on_primary, Palette::FOREST.light.on_primary);
+        assert_eq!(
+            green.dark.background,
+            Palette::FUSUMA.dark.background,
+            "only the main action changes"
+        );
+        assert_eq!(
+            Palette::VIOLET.with_accent(&Palette::VIOLET.accent()),
+            Palette::VIOLET
+        );
+        let t = Theme::LIGHT.with_colors(Palette::PETROL.light);
+        assert_eq!(
+            (t.colors, t.control_height),
+            (Palette::PETROL.light, Theme::LIGHT.control_height)
+        );
+        assert_eq!(
+            Accent::ALL.map(|a| a.name),
+            ["fusuma", "forest", "ocean", "petrol", "violet"]
+        );
+    }
+
     fn contrast(a: Color, b: Color) -> f64 {
         let (la, lb) = (luminance(a), luminance(b));
         (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
@@ -453,8 +873,8 @@ mod tests {
 
     #[test]
     fn text_is_readable_on_every_surface_in_both_themes() {
-        for (name, t) in [("dark", Theme::DARK), ("light", Theme::LIGHT)] {
-            let c = &t.colors;
+        for (name, c) in every_palette() {
+            let c = &c;
             for (what, bg) in [
                 ("background", c.background),
                 ("surface", c.surface),
@@ -480,8 +900,8 @@ mod tests {
 
     #[test]
     fn text_on_the_main_action_is_readable_in_every_state() {
-        for (name, t) in [("dark", Theme::DARK), ("light", Theme::LIGHT)] {
-            let c = &t.colors;
+        for (name, c) in every_palette() {
+            let c = &c;
             for (state, bg) in [
                 ("rest", c.primary),
                 ("hover", c.primary_hover),
@@ -498,8 +918,8 @@ mod tests {
 
     #[test]
     fn disabled_text_is_visibly_weaker_than_body_text() {
-        for t in [Theme::DARK, Theme::LIGHT] {
-            let c = &t.colors;
+        for (_, c) in every_palette() {
+            let c = &c;
             assert!(contrast(c.text_disabled, c.surface) < contrast(c.text_muted, c.surface));
             assert_ne!(c.text_disabled, c.surface);
         }

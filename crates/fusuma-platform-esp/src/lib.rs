@@ -176,6 +176,13 @@ fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyho
         .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;
     #[cfg(feature = "fonts")]
     driver.set_fonts(font_set(&settings.fonts)?);
+    let palette = fusuma::Palette::choose(
+        settings.theme.palette.as_deref(),
+        settings.theme.accent.as_deref(),
+    )
+    .map_err(|e| anyhow::anyhow!("fusuma.toml [theme]: {e}"))?;
+    log::info!("palette: {}", palette.name);
+    driver.input(fusuma::Input::Palette(palette));
     let started_at = Instant::now();
     let mut report = Instant::now();
     // (count, total ms, worst ms) of the updates after the first: small ones (under a tenth of the screen, a tap or a

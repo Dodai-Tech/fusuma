@@ -13,3 +13,8 @@
 # sans = "roboto"         # or a family per role, over the preset's
 # mono = "roboto-mono"
 # sizes = [10, 15, 20]    # line heights of the glyph atlases (the integer renderer), read at build time
+
+# The colours the app starts with; its palette button switches them at run time.
+# [theme]
+# palette = "forest"      # fusuma (default), forest, ocean, petrol or violet
+# accent = "violet"       # another palette's main-action colour on it

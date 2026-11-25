@@ -23,6 +23,8 @@ pub enum Input {
     Edit(Edit),
     /// The shape of the screen (rounded corners, a circle); a rectangle needs no message.
     Shape(crate::Shape),
+    /// The colours the settings ask for (`[theme]` in `fusuma.toml`); a platform sends it once at start.
+    Palette(crate::Palette),
     /// The drawing area changed size, or the display's scale did.
     Resize {
         /// Width in pixels.
@@ -61,6 +63,7 @@ pub fn deliver<A: App>(app: &mut A, input: Input) {
         Input::Preedit(t) => app.preedit(t.as_str()),
         Input::Edit(e) => app.edit(e),
         Input::Shape(s) => app.shape(s),
+        Input::Palette(p) => app.palette(p),
         Input::Resize {
             width,
             height,

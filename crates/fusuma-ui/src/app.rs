@@ -52,6 +52,13 @@ pub trait App {
         let _ = shape;
     }
 
+    /// The settings ask for `palette` (`[theme] palette` and `accent` in `fusuma.toml`, the accent already put on
+    /// it). A platform sends it once at start, before the first frame; an app that has its own colours can ignore
+    /// it, which the default does.
+    fn palette(&mut self, palette: crate::Palette) {
+        let _ = palette;
+    }
+
     /// The drawing area changed to `width` x `height` pixels, or the display's scale did (`scale_percent`: 100
     /// is one pixel per logical pixel). A window being resized or a phone being rotated calls this; a fixed
     /// screen never does, so the default does nothing.

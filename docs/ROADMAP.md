@@ -46,6 +46,12 @@ works and is tested.
      within 0.7 %, pixel by pixel within 1.5 % of the ink; the area within 1 % of pi r^2. On the S3 watch the first
      frame is 90 ms (83 with hard edges; 174 before the straight middle of a corner row became a span). Not yet:
      strokes along paths and images (opaque, hard edges), arbitrary filled paths (hard edges)
+   - [x] **Palettes and a switcher.** `Palette` (named colours for the dark and the light theme) and `Accent` (the
+     main action only) in `fusuma-ui`: fusuma (default), forest, ocean, petrol, violet; `Palette::choose` reads
+     `[theme] palette` and `accent` from `fusuma.toml`, a platform sends it at start (`Input::Palette`,
+     `App::palette`). Every palette with every accent keeps the contrast rules (text 7:1, muted 4.5:1, text on the
+     main action 4.5:1 in every state, the main action 3:1 on the page): checked for all 50 combinations. The
+     showcase switches at run time: a header button, on the watch a tile of the home screen
    - [ ] **Icon fonts** (Material Symbols, Lucide, Phosphor) through the same atlases, drawn by name
 2. **UI components and logic:** the missing widgets and behaviour (see Phase 4), each with a pixel look.
 3. **TUI:** the cells in the toolkit (`Measure`, `CellSink`, the cell theme), running apps, then the outputs (see
