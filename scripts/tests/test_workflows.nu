@@ -24,7 +24,8 @@ def cron [host: string, file: string]: nothing -> list<string> {
 const NIGHTLIES = [[file github gitea];
     ["deps-update.yml" "0 2 * * *" "30 2 * * *"]
     ["security.yml" "0 3 * * *" "0 3 * * *"]
-    ["fuzz.yml" "0 4 * * *" "0 4 * * *"]]
+    ["fuzz.yml" "0 4 * * *" "0 4 * * *"]
+    ["screenshots.yml" "0 5 * * *" "0 5 * * *"]]
 
 def "test workflows: both hosts have the same workflows" [] {
     let gh = (workflows ".github" | where $it != "auto-merge.yml")
@@ -71,7 +72,7 @@ def "test workflows: an auto-release nightly releases from GitHub only, after th
 
 def "test workflows: every nightly can be started from the justfile" [] {
     let just = (open --raw (root | path join "justfile"))
-    for r in ["deps-update-now:" "security-now:" "fuzz-now:" "gh-run workflow" "gitea-run workflow"] {
+    for r in ["deps-update-now:" "security-now:" "fuzz-now:" "screenshots-now:" "gh-run workflow" "gitea-run workflow"] {
         assert ($just | str contains $r) $"justfile has ($r)"
     }
 }

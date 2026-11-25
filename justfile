@@ -147,6 +147,14 @@ security-now: (gh-run "security")
 fuzz-now: (gh-run "fuzz")
     -just gitea-run fuzz
 
+# Web screenshot workflow, now, on both hosts
+screenshots-now: (gh-run "screenshots")
+    -just gitea-run screenshots
+
+# Compare the web showcase in a headless browser with the native renderer (needs a Chromium and ImageMagick)
+web-shots *args:
+    nu scripts/web_shots.nu {{ args }}
+
 # ── Changelog ─────────────────────────────────────────────────────────────────
 
 # Regenerate CHANGELOG.md from all tags

@@ -1,0 +1,40 @@
+name: Web screenshots
+
+# The web showcase, in a headless browser, against what the native renderer draws for the same start: every page in
+# both modes and the open dropdown. Nightly, and on demand; the quality gate on every push and pull request is CI.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  screenshots:
+    name: web screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: Install wasm-bindgen
+        run: nu scripts/web.nu install
+      - name: Install a browser and ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          which google-chrome chromium chromium-browser || sudo apt-get install -y chromium-browser chromium || true
+      - name: Compare the screenshots
+        run: nu scripts/web_shots.nu
+      - name: Upload the pictures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-screenshots
+          path: target/web-shots/

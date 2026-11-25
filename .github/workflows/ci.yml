@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main, master, develop]
+  # The gate also runs on what a merge queue is about to merge, so main is never red.
+  merge_group:
   workflow_dispatch:
     inputs:
       full_matrix:

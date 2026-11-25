@@ -651,8 +651,25 @@ async fn run() -> Result<(), JsValue> {
     }
     doc.body().ok_or("no body")?.append_child(&textarea)?;
 
-    let mut shell = Shell::new(Showcase::new(size.0, size.1));
+    let mut app = Showcase::new(size.0, size.1);
+    // The address can ask for a look, so a screenshot test takes the same picture every time: `?page=Navigation&dark=0
+    // &palette=ember&still=1&menu=1`.
+    let query = window()
+        .location()
+        .search()
+        .ok()
+        .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok());
+    let param = |k: &str| query.as_ref().and_then(|q| q.get(k));
+    let mut shell = Shell::new(app);
     shell.input(Input::Palette(palette));
+    shell.app.set_start(
+        param("page").as_deref(),
+        param("dark").map(|v| v != "0"),
+        param("palette").as_deref(),
+        param("still").is_some(),
+        param("menu").is_some(),
+    );
+
     shell.input(Input::Resize {
         width: size.0,
         height: size.1,

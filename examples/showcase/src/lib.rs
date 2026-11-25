@@ -1011,6 +1011,35 @@ impl Showcase {
         fusuma::render::Point::new(self.bounds.w as i32 - 3, self.bounds.h as i32 - 3)
     }
 
+    /// Starts in a given look, for a host that takes it from its address or its settings: `page`, dark or light and a
+    /// palette by name (what is not known is left alone), pages not sliding in, and the theme dropdown open.
+    pub fn set_start(
+        &mut self,
+        page: Option<&str>,
+        dark: Option<bool>,
+        palette: Option<&str>,
+        still: bool,
+        open_menu: bool,
+    ) {
+        if still {
+            self.slide = false;
+        }
+        if let Some(p) = palette.and_then(Palette::named) {
+            self.set_palette(*p);
+        }
+        if let Some(d) = dark {
+            self.set_dark(d);
+        }
+        if let Some(p) =
+            page.and_then(|n| Page::ALL.iter().find(|p| p.name().eq_ignore_ascii_case(n)))
+        {
+            self.choose_page(*p);
+        }
+        if open_menu && let (Some(m), Some(b)) = (self.theme_menu, self.theme_button) {
+            self.tree.open_menu(m, b);
+        }
+    }
+
     /// Everything is drawn again at the next frame (a new surface, a new theme).
     pub fn invalidate(&mut self) {
         self.tree.invalidate();
@@ -2740,6 +2769,40 @@ mod tests {
         s.frame(&mut r).unwrap();
         std::fs::write(
             std::format!("{dir}/dropdown.png"),
+            fusuma::renderers::vello_cpu::png(&r).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// The pictures the web build must draw: the same start as its address asks for (`set_start`), on Vello CPU at
+    /// 1024 x 600. `scripts/web_shots.nu` compares a browser's screenshots with them.
+    #[test]
+    fn the_web_reference_pictures_are_written_when_asked() {
+        let Ok(dir) = std::env::var("FUSUMA_WEB_REFERENCE") else {
+            return;
+        };
+        for (dark, mode) in [(true, "dark"), (false, "light")] {
+            for p in Page::ALL {
+                let mut s = Showcase::new(1024, 600);
+                s.set_start(Some(p.name()), Some(dark), None, true, false);
+                let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
+                App::tick(&mut s, 2000);
+                s.frame(&mut r).unwrap();
+                std::fs::write(
+                    std::format!("{dir}/{mode}-{}.png", p.name()),
+                    fusuma::renderers::vello_cpu::png(&r).unwrap(),
+                )
+                .unwrap();
+            }
+        }
+        // The dropdown open, over the first page.
+        let mut s = Showcase::new(1024, 600);
+        s.set_start(None, None, None, true, true);
+        let mut r = fusuma::renderers::vello_cpu::new(1024, 600).unwrap();
+        App::tick(&mut s, 2000);
+        s.frame(&mut r).unwrap();
+        std::fs::write(
+            std::format!("{dir}/dark-menu.png"),
             fusuma::renderers::vello_cpu::png(&r).unwrap(),
         )
         .unwrap();
