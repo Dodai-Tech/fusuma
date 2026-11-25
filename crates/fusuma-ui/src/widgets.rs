@@ -34,6 +34,20 @@ impl<const N: usize> Tree<N> {
             return;
         }
         let source = self.id_of(i);
+        // A row or a button of a menu is an action, and the menu closes once it was chosen.
+        if matches!(
+            self.nodes[i].kind,
+            Kind::Button { .. } | Kind::ListItem { .. } | Kind::Tab { .. }
+        ) && let Some(menu) = self.open_menu_of(i)
+        {
+            self.push_action(Action {
+                source,
+                kind: ActionKind::Clicked,
+            });
+            let menu = self.id_of(menu);
+            self.close_dialog(menu);
+            return;
+        }
         let kind = match self.nodes[i].kind {
             Kind::Button { .. } => Some(ActionKind::Clicked),
             Kind::Checkbox { checked: on, .. } | Kind::Switch { on, .. } => {

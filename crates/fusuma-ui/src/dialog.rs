@@ -26,6 +26,7 @@ impl<const N: usize> Tree<N> {
             Kind::Dialog {
                 open: false,
                 prev: None,
+                popover: None,
             },
             style,
         )
@@ -43,7 +44,7 @@ impl<const N: usize> Tree<N> {
     pub fn open_dialog(&mut self, id: NodeId) {
         let Some(i) = self.slot(id) else { return };
         let prev = self.focused();
-        let Kind::Dialog { open, prev: p } = &mut self.nodes[i].kind else {
+        let Kind::Dialog { open, prev: p, .. } = &mut self.nodes[i].kind else {
             return;
         };
         if *open {
@@ -52,7 +53,9 @@ impl<const N: usize> Tree<N> {
         *open = true;
         *p = prev;
         self.request(i, Flags::LAYOUT | Flags::PAINT);
-        self.damage_all();
+        if !self.is_popover(i) {
+            self.damage_all();
+        }
         if let Some(first) = self.first_focusable_in(i) {
             let visible = self.focus_visible;
             self.set_focus(Some(first), visible);
@@ -62,7 +65,7 @@ impl<const N: usize> Tree<N> {
     /// Closes dialog `id`, and gives the focus back to what had it before the dialog opened, if that can take it.
     pub fn close_dialog(&mut self, id: NodeId) {
         let Some(i) = self.slot(id) else { return };
-        let Kind::Dialog { open, prev } = &mut self.nodes[i].kind else {
+        let Kind::Dialog { open, prev, .. } = &mut self.nodes[i].kind else {
             return;
         };
         if !*open {
@@ -71,7 +74,9 @@ impl<const N: usize> Tree<N> {
         let back = prev.take();
         *open = false;
         self.request(i, Flags::LAYOUT | Flags::PAINT);
-        self.damage_all();
+        if !self.is_popover(i) {
+            self.damage_all();
+        }
         // Focus is only taken back if it was inside the dialog: a program that moved it elsewhere keeps it there.
         let inside = self
             .focus
@@ -84,6 +89,17 @@ impl<const N: usize> Tree<N> {
             let visible = self.focus_visible;
             self.set_focus(target, visible);
         }
+    }
+
+    /// Whether dialog `i` is a menu.
+    pub(crate) fn is_popover(&self, i: usize) -> bool {
+        matches!(
+            self.nodes[i].kind,
+            Kind::Dialog {
+                popover: Some(_),
+                ..
+            }
+        )
     }
 
     /// Everything on the screen has to be drawn again: a dialog dims all of it.
@@ -174,6 +190,10 @@ impl<const N: usize> Tree<N> {
                 source,
                 kind: ActionKind::Dismissed,
             });
+            // A menu closes itself; the app learns it was dismissed.
+            if self.is_popover(m) {
+                self.close_dialog(source);
+            }
         }
     }
 
@@ -192,8 +212,12 @@ impl<const N: usize> Tree<N> {
         let mut cur = Some(root);
         while let Some(i) = cur {
             match self.nodes[i].kind {
-                Kind::Dialog { open: true, .. } => {
-                    if alpha {
+                Kind::Dialog {
+                    open: true,
+                    popover,
+                    ..
+                } => {
+                    if alpha && popover.is_none() {
                         r.fill_rect(self.nodes[root].rect, 0, SCRIM)?;
                     }
                     let seen = region.is_none_or(|g| {
@@ -220,7 +244,12 @@ impl<const N: usize> Tree<N> {
         theme: &Theme,
     ) -> Result<(), R::Error> {
         let rect = self.nodes[i].rect;
-        let radius = theme.radius(crate::theme::Round::Large);
+        let round = if self.is_popover(i) {
+            crate::theme::Round::Medium
+        } else {
+            crate::theme::Round::Large
+        };
+        let radius = theme.radius(round);
         r.fill_rect(rect, radius, theme.colors.surface_raised)?;
         r.stroke_rect(rect, radius, theme.border_width, theme.colors.border_strong)
     }

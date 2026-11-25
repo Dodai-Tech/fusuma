@@ -256,6 +256,9 @@ pub(crate) enum Kind {
         open: bool,
         /// What had the focus when it opened, to give it back on close.
         prev: Option<NodeId>,
+        /// A menu: a popover that sits next to this widget, has no dimming layer and closes itself when something
+        /// in it is pressed or the user presses outside. `None` for an ordinary dialog.
+        popover: Option<Popover>,
     },
     /// A column that shows a window onto content taller than itself: `offset` pixels scrolled, of
     /// `content` pixels of children.
@@ -268,6 +271,13 @@ pub(crate) enum Kind {
         /// [`BAR_HIDDEN`] once it has faded (and before the first move).
         bar: u16,
     },
+}
+
+/// How a menu is placed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Popover {
+    /// The widget the menu hangs from; `None` until it is opened.
+    pub anchor: Option<NodeId>,
 }
 
 /// [`Kind::Scroll`]'s `bar` when the scrollbar is not shown.

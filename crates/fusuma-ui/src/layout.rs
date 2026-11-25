@@ -149,17 +149,19 @@ impl<const N: usize> Tree<N> {
         self.set_rect(root, bounds);
         let mut cur = Some(root);
         while let Some(i) = cur {
-            if let Kind::Dialog { open, .. } = self.nodes[i].kind {
+            if let Kind::Dialog { open, popover, .. } = self.nodes[i].kind {
                 // A dialog sits in the middle of the screen at its own size, kept `margin` from the edges; a closed
-                // one takes no room at all.
-                let rect = if open {
+                // one takes no room at all. A menu hangs from its widget instead.
+                let rect = if !open {
+                    Rect::new(bounds.x, bounds.y, 0, 0)
+                } else if let Some(p) = popover {
+                    self.popover_rect(i, p, bounds, margin.min(4))
+                } else {
                     let s = self.nodes[i].size;
                     let w = s.w.min(bounds.w.saturating_sub(margin.saturating_mul(2)));
                     let h = s.h.min(bounds.h.saturating_sub(margin.saturating_mul(2)));
                     let at = crate::paint::centred(bounds, fusuma_render::Size::new(w, h));
                     Rect::new(at.x, at.y, w, h)
-                } else {
-                    Rect::new(bounds.x, bounds.y, 0, 0)
                 };
                 self.set_rect(i, rect);
             }

@@ -10,6 +10,7 @@ mod event;
 mod focus;
 mod iconed;
 mod layout;
+mod menu;
 mod paint;
 mod pieces;
 #[cfg(test)]
