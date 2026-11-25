@@ -44,17 +44,23 @@ pub fn map_key(key: &WKey, shift: bool) -> Option<Key> {
 }
 
 /// The edit command a key means in a text field, if any. Shift extends the selection; Ctrl (or Cmd on a Mac)
-/// with `a` selects all.
+/// with `a` selects all, `z` undoes (with Shift redoes), `y` redoes, and the arrows move by word.
 #[must_use]
 pub fn map_edit(key: &WKey, shift: bool, command: bool) -> Option<Edit> {
     match key {
         WKey::Named(NamedKey::Backspace) => Some(Edit::Backspace),
         WKey::Named(NamedKey::Delete) => Some(Edit::Delete),
+        WKey::Named(NamedKey::ArrowLeft) if command => Some(Edit::WordLeft(shift)),
+        WKey::Named(NamedKey::ArrowRight) if command => Some(Edit::WordRight(shift)),
         WKey::Named(NamedKey::ArrowLeft) => Some(Edit::Left(shift)),
         WKey::Named(NamedKey::ArrowRight) => Some(Edit::Right(shift)),
         WKey::Named(NamedKey::Home) => Some(Edit::Home(shift)),
         WKey::Named(NamedKey::End) => Some(Edit::End(shift)),
         WKey::Character(c) if command && c.eq_ignore_ascii_case("a") => Some(Edit::SelectAll),
+        WKey::Character(c) if command && c.eq_ignore_ascii_case("z") => {
+            Some(if shift { Edit::Redo } else { Edit::Undo })
+        }
+        WKey::Character(c) if command && c.eq_ignore_ascii_case("y") => Some(Edit::Redo),
         _ => None,
     }
 }
@@ -265,6 +271,24 @@ mod tests {
             "a plain a is text"
         );
         assert_eq!(map_edit(&named(NamedKey::Tab), false, false), None);
+    }
+
+    #[test]
+    fn the_command_key_adds_undo_redo_and_word_moves() {
+        let named = WKey::Named;
+        let ch = |s: &str| WKey::Character(s.into());
+        assert_eq!(map_edit(&ch("z"), false, true), Some(Edit::Undo));
+        assert_eq!(map_edit(&ch("Z"), true, true), Some(Edit::Redo));
+        assert_eq!(map_edit(&ch("y"), false, true), Some(Edit::Redo));
+        assert_eq!(map_edit(&ch("z"), false, false), None);
+        assert_eq!(
+            map_edit(&named(NamedKey::ArrowLeft), true, true),
+            Some(Edit::WordLeft(true))
+        );
+        assert_eq!(
+            map_edit(&named(NamedKey::ArrowRight), false, true),
+            Some(Edit::WordRight(false))
+        );
     }
 
     #[test]
