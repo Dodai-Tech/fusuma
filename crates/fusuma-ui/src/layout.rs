@@ -433,7 +433,7 @@ impl<const N: usize> Tree<N> {
                 ),
             };
             let (sx, sy) = self.nodes[ci].shift;
-            self.set_rect(ci, rect.translate(sx, sy));
+            self.set_rect(ci, rect.translate(i32::from(sx), i32::from(sy)));
             pos += i64::from(main_px) + i64::from(st.gap);
             c = next;
         }

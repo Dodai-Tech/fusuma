@@ -69,7 +69,10 @@ impl<const N: usize> Tree<N> {
         };
         // From where it is now, if it is already moving: a turn-round does not jump.
         let from = if self.moves.iter().flatten().any(|m| m.node == id) {
-            self.nodes[i].shift
+            {
+                let (x, y) = self.nodes[i].shift;
+                (i32::from(x), i32::from(y))
+            }
         } else {
             from
         };
@@ -103,6 +106,9 @@ impl<const N: usize> Tree<N> {
 
     /// Moves node `i` to `to` from where its parent puts it, and places it again.
     fn set_shift(&mut self, i: usize, to: (i32, i32)) {
+        // A slide is a few hundred pixels at most: two bytes an axis are plenty, and a longer one is cut.
+        let to16 = |v: i32| i16::try_from(v).unwrap_or(if v < 0 { i16::MIN } else { i16::MAX });
+        let to = (to16(to.0), to16(to.1));
         if self.nodes[i].shift != to {
             self.nodes[i].shift = to;
             if let Some(p) = self.nodes[i].parent {
@@ -153,7 +159,8 @@ impl<const N: usize> Tree<N> {
     /// How far node `id` is moved from its place by a slide, in pixels.
     #[must_use]
     pub fn slide_offset(&self, id: NodeId) -> Option<(i32, i32)> {
-        Some(self.nodes[self.slot(id)?].shift)
+        let (x, y) = self.nodes[self.slot(id)?].shift;
+        Some((i32::from(x), i32::from(y)))
     }
 }
 

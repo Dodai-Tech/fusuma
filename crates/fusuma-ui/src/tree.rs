@@ -453,13 +453,13 @@ pub(crate) struct Node {
     /// Which gestures the node listens for (see `gesture`).
     pub(crate) gestures: u8,
     /// How far the node is moved from where its parent puts it, in pixels (a slide in progress, see `transition`).
-    pub(crate) shift: (i32, i32),
+    pub(crate) shift: (i16, i16),
     /// Alive but not on the screen: no room in its parent, no drawing, no focus, no presses (see `Tree::set_hidden`).
     pub(crate) hidden: bool,
     /// What a keyed list calls this row, so a rebuilt list finds it again (see `Tree::set_key`).
     pub(crate) key: u32,
     /// What a memoised subtree was last made from (see `Tree::set_memo`).
-    pub(crate) memo: u32,
+    pub(crate) memo: u16,
 }
 
 impl Node {

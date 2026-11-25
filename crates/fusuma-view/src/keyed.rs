@@ -94,17 +94,17 @@ impl<M: Clone, T, V: View<M>, F: Fn(&T) -> V> Part<M> for Each<'_, T, F> {
     }
 }
 
-/// A view that is made again only when `value` (something the app computes from what the view shows) is not what it
-/// was: while it is the same the whole subtree is skipped, and its messages are kept as they were.
+/// A view that is made again only when `value` (a 16-bit version or hash the app computes from what the view shows; two
+/// different values that collide are not told apart) is not what it was: while it is the same the whole subtree is skipped, and its messages are kept as they were.
 #[derive(Clone, Copy, Debug)]
 pub struct Memo<V> {
-    value: u32,
+    value: u16,
     view: V,
 }
 
 /// `view`, skipped while `value` stays the same.
 #[must_use]
-pub const fn memo<V>(value: u32, view: V) -> Memo<V> {
+pub const fn memo<V>(value: u16, view: V) -> Memo<V> {
     Memo { value, view }
 }
 

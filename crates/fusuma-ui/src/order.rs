@@ -18,8 +18,8 @@ impl<const N: usize> Tree<N> {
         self.slot(id).map_or(0, |i| self.nodes[i].key)
     }
 
-    /// Remembers what node `id` (the root of a memoised view) was last made from.
-    pub fn set_memo(&mut self, id: NodeId, value: u32) {
+    /// Remembers what node `id` (the root of a memoised view) was last made from: 16 bits, a version of the data it shows.
+    pub fn set_memo(&mut self, id: NodeId, value: u16) {
         if let Some(i) = self.slot(id) {
             self.nodes[i].memo = value;
         }
@@ -27,7 +27,7 @@ impl<const N: usize> Tree<N> {
 
     /// What node `id` was last made from (0 when never set).
     #[must_use]
-    pub fn memo_of(&self, id: NodeId) -> u32 {
+    pub fn memo_of(&self, id: NodeId) -> u16 {
         self.slot(id).map_or(0, |i| self.nodes[i].memo)
     }
 
