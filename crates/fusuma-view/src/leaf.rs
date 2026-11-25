@@ -36,6 +36,13 @@ impl Text<'_> {
         self.role = TextRole::Caption;
         self
     }
+
+    /// Fixed-width, for code.
+    #[must_use]
+    pub const fn code(mut self) -> Self {
+        self.role = TextRole::Code;
+        self
+    }
 }
 
 impl<M: Clone> View<M> for Text<'_> {
@@ -185,6 +192,7 @@ impl<M: Clone> View<M> for Button<'_, M> {
 pub struct Checkbox<'a, M> {
     text: &'a str,
     checked: bool,
+    enabled: bool,
     on_toggle: Option<fn(bool) -> M>,
 }
 
@@ -194,11 +202,19 @@ pub const fn checkbox<M>(text: &str, checked: bool) -> Checkbox<'_, M> {
     Checkbox {
         text,
         checked,
+        enabled: true,
         on_toggle: None,
     }
 }
 
 impl<M> Checkbox<'_, M> {
+    /// Whether it can be used (it can by default).
+    #[must_use]
+    pub const fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
     /// Sends a message made from the new state (`fn(bool) -> M`, such as a variant of the message enum) when it is
     /// toggled.
     #[must_use]
@@ -212,6 +228,7 @@ impl<M: Clone> Checkbox<'_, M> {
     fn sync<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
         cx.tree.set_text(node, self.text);
         cx.tree.set_checked(node, self.checked);
+        cx.tree.set_enabled(node, self.enabled);
         if let Some(f) = self.on_toggle {
             cx.msgs.on(node, Handler::Toggle(f));
         }

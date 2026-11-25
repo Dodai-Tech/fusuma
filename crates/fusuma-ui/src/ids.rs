@@ -5,7 +5,7 @@
 use crate::tree::{NodeId, Tree};
 
 /// How many named nodes one tree keeps track of.
-pub const MAX_IDS: usize = 24;
+pub const MAX_IDS: usize = 64;
 
 /// A name for a node, chosen by the app: usually the variant of an enum cast to a number
 /// (`Id::new(Field::Search as u16)`).
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn the_table_is_full_only_of_nodes_that_are_still_there() {
-        let mut t = Tree::<64>::new();
+        let mut t = Tree::<100>::new();
         let root = t.column(None, Style::new()).unwrap();
         let nodes: Vec<NodeId> = (0..MAX_IDS)
             .map(|_| t.button(Some(root), "x", ButtonVariant::Primary).unwrap())

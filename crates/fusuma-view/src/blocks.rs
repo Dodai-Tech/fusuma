@@ -1,6 +1,6 @@
 //! Views for the building blocks of `fusuma-ui`: a divider, a section heading, a badge, an avatar and a stepper.
 
-use fusuma_ui::{BuildError, NodeId};
+use fusuma_ui::{BuildError, NodeId, SmallText};
 
 use crate::{Cx, Handler, View, ViewMarker};
 
@@ -115,23 +115,23 @@ impl<M: Clone> View<M> for Avatar<'_> {
 
 /// `[-] value [+]`.
 #[derive(Clone, Copy, Debug)]
-pub struct Stepper<'a, M> {
-    value: &'a str,
+pub struct Stepper<M> {
+    value: SmallText,
     on_dec: Option<M>,
     on_inc: Option<M>,
 }
 
 /// A stepper showing `value`.
 #[must_use]
-pub const fn stepper<M>(value: &str) -> Stepper<'_, M> {
+pub fn stepper<M>(value: &str) -> Stepper<M> {
     Stepper {
-        value,
+        value: SmallText::new(value),
         on_dec: None,
         on_inc: None,
     }
 }
 
-impl<M> Stepper<'_, M> {
+impl<M> Stepper<M> {
     /// Sends `message` when the minus button is pressed.
     #[must_use]
     pub fn on_dec(mut self, message: M) -> Self {
@@ -147,13 +147,13 @@ impl<M> Stepper<'_, M> {
     }
 }
 
-impl<M: Clone> Stepper<'_, M> {
+impl<M: Clone> Stepper<M> {
     fn sync<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, row: NodeId) {
         let minus = cx.tree.first_child(row);
         let value = minus.and_then(|n| cx.tree.next_sibling(n));
         let plus = value.and_then(|n| cx.tree.next_sibling(n));
         if let Some(v) = value {
-            cx.tree.set_text(v, self.value);
+            cx.tree.set_text(v, self.value.as_str());
         }
         if let (Some(n), Some(m)) = (minus, &self.on_dec) {
             cx.msgs.on(n, Handler::Press(m.clone()));
@@ -164,13 +164,13 @@ impl<M: Clone> Stepper<'_, M> {
     }
 }
 
-impl<M: Clone> View<M> for Stepper<'_, M> {
+impl<M: Clone> View<M> for Stepper<M> {
     fn build<const N: usize, const K: usize>(
         &self,
         cx: &mut Cx<'_, M, N, K>,
         parent: Option<NodeId>,
     ) -> Result<NodeId, BuildError> {
-        let s = cx.tree.stepper(parent, self.value)?;
+        let s = cx.tree.stepper(parent, self.value.as_str())?;
         let row = cx.tree.parent_of(s.minus).ok_or(BuildError::Full)?;
         self.sync(cx, row);
         Ok(row)
@@ -185,4 +185,4 @@ impl ViewMarker for Divider {}
 impl ViewMarker for Section<'_> {}
 impl ViewMarker for Badge<'_> {}
 impl ViewMarker for Avatar<'_> {}
-impl<M> ViewMarker for Stepper<'_, M> {}
+impl<M> ViewMarker for Stepper<M> {}

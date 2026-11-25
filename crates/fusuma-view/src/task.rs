@@ -80,7 +80,7 @@ impl<M: Copy> Task<M> {
         Self::of(Effect::Toast(id, text, hold_ms))
     }
 
-    /// This task, then `other`. Effects past [`TASK_CAP`] are dropped (and [`Task::overflowed`] says so).
+    /// This task, then `other`. Effects past [`TASK_CAP`] are dropped ([`Task::is_full`] says when it is at the cap).
     #[must_use]
     pub fn and(mut self, other: Self) -> Self {
         for e in other.effects().copied() {

@@ -5,7 +5,7 @@
 //! have what changed drawn on any [`Renderer`]. `no_std`, no allocator.
 #![no_std]
 
-mod overview;
+mod pages;
 
 use core::fmt::{self, Write};
 
@@ -203,45 +203,26 @@ impl Write for Buf {
 /// The widgets of the page on show that the app talks to.
 #[derive(Clone, Copy, Debug, Default)]
 struct Live {
-    counter: Option<NodeId>,
     click_me: Option<NodeId>,
     checks: [Option<NodeId>; 3],
     radios: [Option<NodeId>; 3],
-    radio_label: Option<NodeId>,
     items: [Option<NodeId>; 12],
-    list_label: Option<NodeId>,
     list: Option<NodeId>,
     bar: Option<NodeId>,
-    bar_label: Option<NodeId>,
     start: Option<NodeId>,
     reset: Option<NodeId>,
     switch: Option<NodeId>,
     slider: Option<NodeId>,
-    slider_label: Option<NodeId>,
     field: Option<NodeId>,
-    echo: Option<NodeId>,
     delete: Option<NodeId>,
     tabs: [Option<NodeId>; 3],
-    tab_label: Option<NodeId>,
     menu_button: Option<NodeId>,
     menu: Option<NodeId>,
     menu_items: [Option<NodeId>; 3],
     toast: Option<NodeId>,
     card: Option<NodeId>,
-    card_label: Option<NodeId>,
     reading: [Option<NodeId>; 2],
 }
-
-const TAB_NAMES: [&str; 3] = ["Home", "Search", "Settings"];
-const MENU_NAMES: [&str; 3] = ["Share", "Edit", "Delete"];
-/// What the Reading page shows: long enough to wrap onto many lines and scroll.
-const READING: &str = "Fusuma draws the same widgets on a watch, a phone and a desktop. Text wraps to the room it has: on a watch it takes many short lines, on a desktop a few long ones, and a text view scrolls when there are more lines than fit. A word that is too long for a line is broken where it no longer fits, and a newline always starts a new line.\nDrag this text, turn the wheel, or move the focus.\nThe lines are worked out with the renderer's own measuring, so the same words break at the same places on the integer renderer and on Vello. Nothing here is a web page: it is a retained tree of widgets, drawn by a renderer that fits in a few kilobytes.";
-
-const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
-const ITEM_NAMES: [&str; 12] = [
-    "Aurora", "Birch", "Cedar", "Dune", "Ember", "Fjord", "Glacier", "Harbor", "Island", "Juniper",
-    "Kelp", "Lagoon",
-];
 
 /// The showcase app.
 #[derive(Debug)]
@@ -294,7 +275,15 @@ pub struct Showcase {
     /// The Overview page's stepper value.
     quantity: u32,
     /// The Overview page's view, kept in step with its part of the tree.
-    overview: fusuma::view::Host<overview::OverviewMsg, 12>,
+    pages: fusuma::view::Host<pages::PageMsg, 24>,
+    /// The state the pages show, besides the ones above.
+    notify: bool,
+    location: bool,
+    size: u8,
+    chosen: u8,
+    wifi: bool,
+    menu_open: bool,
+    swiped: Option<fusuma::SwipeDir>,
     /// Whether a page that is chosen slides in (off in the tests that take pictures).
     slide: bool,
     /// A text UI: every length is in character cells (see [`Showcase::new_cells`]).
@@ -339,7 +328,14 @@ impl Showcase {
             tab: 0,
             swipes: 0,
             quantity: 2,
-            overview: fusuma::view::Host::new(),
+            pages: fusuma::view::Host::new(),
+            notify: true,
+            location: false,
+            size: 1,
+            chosen: 0,
+            wifi: true,
+            menu_open: false,
+            swiped: None,
             slide: true,
             cells: false,
         };
@@ -767,14 +763,6 @@ impl Showcase {
         let permille = self.permille();
         let scale = self.scale;
         let cells = self.cells;
-        let wide = |px: u32| {
-            if cells {
-                px / CELL_PX
-            } else {
-                scaled(px, scale)
-            }
-        };
-        let tall = |px: u32| if cells { px / 20 } else { scaled(px, scale) };
         let class = self.class;
         let compact = class.is_compact();
         // A watch shows a few things at a time: the header names the page, and the extras are left out.
@@ -795,278 +783,244 @@ impl Showcase {
             t.column(body, style)?
         };
         self.content = Some(c);
-        let live = &mut self.live;
-        match self.page {
-            Page::Buttons => {
-                if !lite {
-                    t.label(Some(c), "Buttons", TextRole::Title)?;
-                }
-                let row = t.row(Some(c), Style::new().gap(sp.md))?;
-                live.click_me = Some(t.button(Some(row), "Click me", ButtonVariant::Primary)?);
-                live.delete = Some(t.button(Some(row), "Delete...", ButtonVariant::Secondary)?);
-                if !lite {
-                    let off = t.button(Some(row), "Disabled", ButtonVariant::Primary)?;
-                    t.set_enabled(off, false);
-                }
-                let mut b = Buf::new();
-                let _ = write!(b, "Clicked {} times", self.clicks);
-                live.counter = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                if !lite {
-                    t.label(
-                        Some(c),
-                        "Hover or press to see the fade. Tab and Enter work too.",
-                        TextRole::Caption,
-                    )?;
-                }
-            }
-            Page::Selection => {
-                if !lite {
-                    t.label(Some(c), "Selection", TextRole::Title)?;
-                }
-                let cols = if compact {
-                    t.column(Some(c), Style::new().gap(sp.md))?
-                } else {
-                    t.row(Some(c), Style::new().gap(sp.lg))?
-                };
-                let checks = t.column(Some(cols), Style::new().gap(sp.xs))?;
-                for (slot, (name, on)) in
-                    live.checks.iter_mut().take(if lite { 2 } else { 3 }).zip([
-                        ("Notifications", true),
-                        ("Location", false),
-                        ("Analytics", false),
-                    ])
-                {
-                    *slot = Some(t.checkbox(Some(checks), name, on)?);
-                }
-                if let Some(last) = live.checks[2] {
-                    t.set_enabled(last, false);
-                }
-                let radios = t.column(Some(cols), Style::new().gap(sp.xs))?;
-                for (i, slot) in live.radios.iter_mut().enumerate() {
-                    *slot = Some(t.radio(Some(radios), RADIO_NAMES[i], i == 1)?);
-                }
-                live.radio_label = Some(t.label(Some(c), "Size: Medium", TextRole::Body)?);
-            }
-            Page::List => {
-                if !lite {
-                    t.label(Some(c), "List", TextRole::Title)?;
-                }
-                // A window onto twelve rows: drag it, turn the wheel, or move the focus with the keys.
-                let list = t.scroll(
-                    Some(c),
-                    Style::new()
-                        .width(if compact {
-                            Length::Fill(1)
-                        } else {
-                            Length::Fixed(wide(360))
-                        })
-                        .height(Length::Fixed(tall(if lite { 150 } else { 260 })))
-                        .gap(sp.xs)
-                        .align(CrossAlign::Stretch),
-                )?;
-                live.list = Some(list);
-                for (i, slot) in live.items.iter_mut().enumerate() {
-                    *slot = Some(t.list_item(Some(list), ITEM_NAMES[i], i == 0)?);
-                }
-                live.list_label = Some(t.label(Some(c), "Chosen: Aurora", TextRole::Body)?);
-            }
-            Page::Controls => {
-                if !lite {
-                    t.label(Some(c), "Controls", TextRole::Title)?;
-                }
-                live.switch = Some(t.switch(Some(c), "Wi-Fi", true)?);
-                let mut b = Buf::new();
-                let _ = write!(b, "Volume: {}%", self.volume / 10);
-                live.slider_label = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                let slider = t.slider(Some(c), self.volume)?;
-                live.slider = Some(slider);
-                if !lite {
-                    t.label(
-                        Some(c),
-                        "Drag the slider, or focus it and use Left and Right.",
-                        TextRole::Caption,
-                    )?;
-                }
-            }
-            Page::Typography => {
-                if !lite {
-                    t.label(Some(c), "Typography", TextRole::Title)?;
-                }
-                // Icons, drawn like text: Material Symbols by name.
-                #[cfg(feature = "fonts")]
-                {
-                    let set = fusuma::fonts::FontSet::default_set();
-                    let row = t.row(Some(c), Style::new().gap(self.theme.spacing.sm))?;
-                    for name in ICONS {
-                        if let Some(ch) = set.icon(name) {
-                            t.icon(Some(row), ch)?;
-                        }
-                    }
-                }
-                if !lite {
-                    t.label(
-                        Some(c),
-                        "Inter Bold, for titles and emphasis",
-                        TextRole::Title,
-                    )?;
-                }
-                t.label(
-                    Some(c),
-                    "Inter Regular: the quick brown fox jumps over the lazy dog.",
-                    TextRole::Body,
-                )?;
-                t.label(
-                    Some(c),
-                    "Romanian: ăâîșț ĂÂÎȘȚ, and more: éüñß €",
-                    TextRole::Body,
-                )?;
-                t.label(
-                    Some(c),
-                    "let x = 42; // JetBrains Mono, fixed width",
-                    TextRole::Code,
-                )?;
-                if !lite {
-                    t.label(
-                        Some(c),
-                        "With no font bundled, text is the bitmap font.",
-                        TextRole::Caption,
-                    )?;
-                }
-            }
-            // The Overview page is a view: it is made after this match (see `sync_overview`).
-            Page::Overview => {}
-            Page::Navigation => {
-                if !lite {
-                    t.label(Some(c), "Navigation", TextRole::Title)?;
-                }
-                #[cfg(feature = "fonts")]
-                let set = fusuma::fonts::FontSet::default_set();
-                #[cfg(feature = "fonts")]
-                let icon = |name: &str| set.icon(name);
-                #[cfg(not(feature = "fonts"))]
-                let icon = |_: &str| None::<char>;
-                let bar = t.tab_bar(Some(c), Style::new())?;
-                for (i, slot) in live.tabs.iter_mut().enumerate() {
-                    let name = ["home", "search", "settings"][i];
-                    *slot = Some(t.tab(Some(bar), icon(name), TAB_NAMES[i], i == self.tab)?);
-                }
-                let mut b = Buf::new();
-                let _ = write!(b, "{} tab", TAB_NAMES[self.tab.min(2)]);
-                live.tab_label = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                let row = t.row(Some(c), Style::new().gap(sp.md))?;
-                let menu_button = match icon("more_vert") {
-                    Some(ch) => {
-                        t.button_with_icon(Some(row), ch, "Menu", ButtonVariant::Secondary)?
-                    }
-                    None => t.button(Some(row), "Menu", ButtonVariant::Secondary)?,
-                };
-                live.menu_button = Some(menu_button);
-                let menu = t.menu(Some(c), Style::new().padding(sp.xs).gap(sp.xs))?;
-                for (i, slot) in live.menu_items.iter_mut().enumerate() {
-                    let name = ["share", "edit", "delete"][i];
-                    *slot = Some(match icon(name) {
-                        Some(ch) => t.list_item_with_icon(Some(menu), ch, MENU_NAMES[i], false)?,
-                        None => t.list_item(Some(menu), MENU_NAMES[i], false)?,
-                    });
-                }
-                live.menu = Some(menu);
-                let mut b = Buf::new();
-                let _ = write!(b, "Swipe or hold this card ({})", self.swipes);
-                let card = t.row(
-                    Some(c),
-                    Style::new()
-                        .padding(sp.md)
-                        .background(Surface::Raised)
-                        .round(Round::Medium),
-                )?;
-                live.card_label = Some(t.label(Some(card), b.text(), TextRole::Body)?);
-                t.set_swipe(card, fusuma::Swipe::Horizontal);
-                t.set_long_press(card, true);
-                live.card = Some(card);
-                live.toast = Some(t.toast(Some(c))?);
-            }
-            Page::Reading => {
-                if !lite {
-                    t.label(Some(c), "Reading", TextRole::Title)?;
-                }
-                let (view, para) = t.text_view(
-                    Some(c),
-                    READING,
-                    Style::new().height(Length::Fixed(tall(if lite { 150 } else { 120 }))),
-                )?;
-                live.reading = [Some(view), Some(para)];
-            }
-            Page::Text => {
-                if !lite {
-                    t.label(Some(c), "Text", TextRole::Title)?;
-                }
-                let field = t.text_input(Some(c), self.typed.as_str())?;
-                live.field = Some(field);
-                let mut b = Buf::new();
-                let _ = write!(b, "You typed: {}", self.typed.as_str());
-                live.echo = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                if !lite {
-                    t.label(Some(c), "Type, select with Shift+arrows, copy and paste, or use an input method. Enter submits.", TextRole::Caption)?;
-                }
-            }
-            Page::Progress => {
-                if !lite {
-                    t.label(Some(c), "Progress", TextRole::Title)?;
-                }
-                live.bar = Some(t.progress_bar(Some(c), permille)?);
-                let mut b = Buf::new();
-                let _ = write!(b, "{}%", permille / 10);
-                live.bar_label = Some(t.label(Some(c), b.text(), TextRole::Body)?);
-                let row = t.row(Some(c), Style::new().gap(sp.md))?;
-                live.start = Some(t.button(
-                    Some(row),
-                    if self.running { "Pause" } else { "Start" },
-                    ButtonVariant::Primary,
-                )?);
-                live.reset = Some(t.button(Some(row), "Reset", ButtonVariant::Secondary)?);
-            }
-        }
-        if self.page == Page::Overview {
-            // The page container is new, so the view is built again, not rebuilt.
-            self.overview.forget();
-            self.sync_overview();
-        }
+        // Every page is a view of the app's state, built into the container above (see `sync_pages`).
+        let _ = (t, sp, body, permille, scale, cells, class, compact, lite);
+        self.live = Live::default();
+        self.pages.forget();
+        self.sync_pages();
         Ok(())
     }
 
-    /// How the Overview page is laid out on this screen.
-    fn overview_look(&self) -> overview::Look {
+    /// How a page is laid out on this screen.
+    fn page_look(&self) -> pages::Look {
         let sp = self.theme.spacing;
-        overview::Look {
-            compact: self.class.is_compact(),
-            lite: self.class == Class::Watch,
-            md: sp.md,
-            sm: sp.sm,
-            avatar: if self.cells {
-                3
+        let cells = self.cells;
+        let scale = self.scale;
+        let wide = |px: u32| {
+            if cells {
+                px / CELL_PX
             } else {
-                scaled(44, self.scale)
-            },
+                scaled(px, scale)
+            }
+        };
+        let tall = |px: u32| if cells { px / 20 } else { scaled(px, scale) };
+        let lite = self.class == Class::Watch;
+        pages::Look {
+            compact: self.class.is_compact(),
+            lite,
+            xs: sp.xs,
+            sm: sp.sm,
+            md: sp.md,
+            lg: sp.lg,
+            list_w: wide(360),
+            list_h: tall(if lite { 150 } else { 260 }),
+            avatar: if cells { 3 } else { scaled(44, scale) },
+            reading_h: tall(if lite { 150 } else { 120 }),
         }
     }
 
-    /// Makes the Overview page match the state: built the first time, then only what differs is touched.
-    fn sync_overview(&mut self) {
-        let Some(c) = self.content.filter(|_| self.page == Page::Overview) else {
-            return;
+    /// The icons the pages use, by name, when the build has the font.
+    fn page_icons(&self) -> pages::Icons {
+        #[cfg(feature = "fonts")]
+        {
+            let set = fusuma::fonts::FontSet::default_set();
+            let mut row = [None; 9];
+            for (slot, name) in row.iter_mut().zip(ICONS) {
+                *slot = set.icon(name);
+            }
+            pages::Icons {
+                home: set.icon("home"),
+                search: set.icon("search"),
+                settings: set.icon("settings"),
+                more: set.icon("more_vert"),
+                share: set.icon("share"),
+                edit: set.icon("edit"),
+                delete: set.icon("delete"),
+                row,
+            }
+        }
+        #[cfg(not(feature = "fonts"))]
+        {
+            pages::Icons::default()
+        }
+    }
+
+    /// Makes the page on show match the state: built the first time, then only what differs is touched.
+    fn sync_pages(&mut self) {
+        let Some(c) = self.content else { return };
+        let look = self.page_look();
+        let icons = self.page_icons();
+        let typed = self.typed;
+        let state = pages::State {
+            clicks: self.clicks,
+            notify: self.notify,
+            location: self.location,
+            size: self.size,
+            chosen: self.chosen,
+            wifi: self.wifi,
+            volume: self.volume,
+            permille: self.permille(),
+            running: self.running,
+            typed: typed.as_str(),
+            tab: u8::try_from(self.tab).unwrap_or(0),
+            menu_open: self.menu_open,
+            swipes: self.swipes,
+            swiped: self.swiped,
+            quantity: self.quantity,
+            icons,
         };
-        let mut seats = Buf::new();
-        let _ = write!(seats, "{}", self.quantity);
-        let look = self.overview_look();
         // The tree has room for the page (the whole app is checked to fit), so a failure leaves a smaller page.
-        let _ = self
-            .overview
-            .sync_children(&mut self.tree, c, &overview::page(look, seats.text()));
+        let (tree, host) = (&mut self.tree, &mut self.pages);
+        let _ = match self.page {
+            Page::Overview => host.sync_children(tree, c, &pages::overview(look, state)),
+            Page::Buttons => host.sync_children(tree, c, &pages::buttons(look, state)),
+            Page::Selection => host.sync_children(tree, c, &pages::selection(look, state)),
+            Page::List => host.sync_children(tree, c, &pages::list(look, state)),
+            Page::Progress => host.sync_children(tree, c, &pages::progress_page(look, state)),
+            Page::Controls => host.sync_children(tree, c, &pages::controls(look, state)),
+            Page::Text => host.sync_children(tree, c, &pages::text_page(look, state)),
+            Page::Typography => host.sync_children(tree, c, &pages::typography(look, state)),
+            Page::Navigation => host.sync_children(tree, c, &pages::navigation(look, state)),
+            Page::Reading => host.sync_children(tree, c, &pages::reading(look, state)),
+        };
+        self.refresh_live();
+    }
+
+    /// Finds the widgets of the page by the names the app gave them.
+    fn refresh_live(&mut self) {
+        use pages::wid;
+        let t = &self.tree;
+        let id = |name: fusuma::Id| t.find(name);
+        let at = |base: fusuma::Id, i: usize| t.find(fusuma::Id::new(base.0 + i as u16));
+        self.live = Live {
+            click_me: id(wid::CLICK_ME),
+            checks: [id(wid::CHECK0), id(wid::CHECK1), id(wid::CHECK2)],
+            radios: [at(wid::RADIO0, 0), at(wid::RADIO0, 1), at(wid::RADIO0, 2)],
+            items: core::array::from_fn(|i| at(wid::ITEM0, i)),
+            list: id(wid::LIST),
+            bar: id(wid::BAR),
+            start: id(wid::START),
+            reset: id(wid::RESET),
+            switch: id(wid::SWITCH),
+            slider: id(wid::SLIDER),
+            field: id(wid::FIELD),
+            delete: id(wid::DELETE),
+            tabs: [at(wid::TAB0, 0), at(wid::TAB0, 1), at(wid::TAB0, 2)],
+            menu_button: id(wid::MENU_BUTTON),
+            menu: id(wid::MENU),
+            menu_items: [
+                at(wid::MENU_ITEM0, 0),
+                at(wid::MENU_ITEM0, 1),
+                at(wid::MENU_ITEM0, 2),
+            ],
+            toast: id(wid::TOAST),
+            card: id(wid::CARD),
+            reading: [id(wid::READING), id(wid::READING_TEXT)],
+        };
+    }
+
+    /// What a message from a page does: the one place the pages' state changes. `say` is what the status line says.
+    fn page_message(&mut self, m: pages::PageMsg, say: &mut Buf) {
+        use pages::PageMsg as P;
+        let on_off = |on: bool| if on { "on" } else { "off" };
+        match m {
+            P::Click => {
+                self.clicks += 1;
+                let _ = write!(say, "Clicked {} times", self.clicks);
+            }
+            P::AskDelete => {
+                if let Some(d) = self.dialog[0] {
+                    self.tree.open_dialog(d);
+                }
+            }
+            P::Notify(on) => {
+                self.notify = on;
+                let _ = write!(say, "Notifications {}", on_off(on));
+            }
+            P::Location(on) => {
+                self.location = on;
+                let _ = write!(say, "Location {}", on_off(on));
+            }
+            P::Size(i) => {
+                self.size = i;
+                let _ = write!(say, "Size: {}", pages::RADIO_NAMES[usize::from(i).min(2)]);
+            }
+            P::Pick(i) => {
+                self.chosen = i;
+                let _ = write!(say, "Chosen: {}", pages::ITEM_NAMES[usize::from(i).min(11)]);
+            }
+            P::Wifi(on) => {
+                self.wifi = on;
+                let _ = write!(say, "Wi-Fi {}", on_off(on));
+            }
+            P::Volume(v) => {
+                self.volume = v;
+                let _ = write!(say, "Volume: {}%", v / 10);
+            }
+            P::StartStop => {
+                self.running = !self.running;
+                if self.running && self.fill_ms >= FILL_MS {
+                    self.fill_ms = 0;
+                }
+            }
+            P::Reset => {
+                self.running = false;
+                self.fill_ms = 0;
+            }
+            P::Typed => {
+                if let Some(f) = self.tree.find(pages::wid::FIELD) {
+                    self.typed = fusuma::InputText::new(self.tree.text(f).unwrap_or(""));
+                }
+            }
+            P::Submit => {
+                let _ = write!(say, "Submitted: {}", self.typed.as_str());
+            }
+            P::Tab(i) => {
+                self.tab = usize::from(i).min(2);
+                let _ = write!(say, "{} tab", pages::TAB_NAMES[self.tab]);
+            }
+            P::MenuOpen => self.menu_open = true,
+            P::MenuChoice(i) => {
+                self.menu_open = false;
+                let name = pages::MENU_NAMES[usize::from(i).min(2)];
+                let _ = write!(say, "{name}");
+                let mut m = Buf::new();
+                let _ = write!(m, "{name} chosen");
+                self.show_toast(m.text());
+            }
+            P::MenuDismiss => self.menu_open = false,
+            P::Swiped(dir) => {
+                self.swipes += 1;
+                self.swiped = Some(dir);
+                let _ = write!(say, "Swiped {dir:?}");
+            }
+            P::Held => {
+                let _ = write!(say, "Long press");
+                self.show_toast("Held for half a second");
+            }
+            P::Fewer => {
+                self.quantity = self.quantity.saturating_sub(1);
+                let _ = write!(say, "Seats: {}", self.quantity);
+            }
+            P::More => {
+                self.quantity = (self.quantity + 1).min(99);
+                let _ = write!(say, "Seats: {}", self.quantity);
+            }
+        }
+        self.sync_pages();
+    }
+
+    /// Shows `text` in the Navigation page's toast.
+    fn show_toast(&mut self, text: &str) {
+        if let Some(t) = self.live.toast {
+            self.tree.show_toast(t, text, 1500);
+        }
     }
 
     /// Builds the whole tree again, for a change of screen: the pages' state lives in the app, not in the tree.
     fn rebuild(&mut self) {
         self.tree.clear();
+        self.pages.forget();
         self.sidebar = [None; 10];
         self.nav = [None; 3];
         self.tiles = [None; 10];
@@ -1222,52 +1176,25 @@ impl Showcase {
         while let Some(a) = self.tree.pop_action() {
             let id = Some(a.source);
             let mut b = Buf::new();
+            // A message from a page's view (see `pages`): the state changes in `page_message` and the view follows.
+            if let Some(m) = self.pages.message(&self.tree, a) {
+                self.page_message(m, &mut b);
+                if !b.text().is_empty() {
+                    self.say(b.text());
+                }
+                continue;
+            }
             match a.kind {
                 ActionKind::Dismissed => {
-                    // A menu closes itself when it is dismissed; only the dialog's dismissal is ours to answer.
+                    // A menu closes itself when it is dismissed (the page's view hears about it); only the dialog's
+                    // dismissal is ours to answer.
                     if let Some(d) = self.dialog[0].filter(|&d| Some(d) == id) {
                         self.tree.close_dialog(d);
                         let _ = write!(b, "Cancelled");
                     }
                 }
-                ActionKind::LongPressed => {
-                    let _ = write!(b, "Long press");
-                    if let Some(t) = self.live.toast {
-                        self.tree.show_toast(t, "Held for half a second", 1500);
-                    }
-                }
-                ActionKind::Swiped(dir) => {
-                    self.swipes += 1;
-                    let _ = write!(b, "Swiped {dir:?}");
-                    if let Some(l) = self.live.card_label {
-                        let mut t = Buf::new();
-                        let _ = write!(t, "Swiped {dir:?} ({})", self.swipes);
-                        self.tree.set_text(l, t.text());
-                    }
-                }
-                ActionKind::Exited => {}
                 ActionKind::Clicked => {
-                    if id.is_some() && id == self.live.delete {
-                        if let Some(d) = self.dialog[0] {
-                            self.tree.open_dialog(d);
-                        }
-                    } else if id.is_some() && id == self.live.menu_button {
-                        if let Some(m) = self.live.menu {
-                            self.tree.open_menu(m, a.source);
-                        }
-                    } else if let Some(i) = self
-                        .live
-                        .menu_items
-                        .iter()
-                        .position(|&m| m.is_some() && m == id)
-                    {
-                        let _ = write!(b, "{}", MENU_NAMES[i]);
-                        if let Some(t) = self.live.toast {
-                            let mut m = Buf::new();
-                            let _ = write!(m, "{} chosen", MENU_NAMES[i]);
-                            self.tree.show_toast(t, m.text(), 1500);
-                        }
-                    } else if id.is_some() && (id == self.dialog[1] || id == self.dialog[2]) {
+                    if id.is_some() && (id == self.dialog[1] || id == self.dialog[2]) {
                         if let Some(d) = self.dialog[0] {
                             self.tree.close_dialog(d);
                         }
@@ -1298,17 +1225,6 @@ impl Showcase {
                         };
                         self.set_page(Page::ALL[to]);
                         let _ = write!(b, "Page: {}", Page::ALL[to].name());
-                    } else if id == self.live.field {
-                        let _ = write!(b, "Submitted: {}", self.typed.as_str());
-                    } else if let Some(m) = self.overview.message(&self.tree, a) {
-                        // The Elm part: a message from the page's view, the one place the state changes, and the
-                        // view made again from it.
-                        self.quantity = match m {
-                            overview::OverviewMsg::More => (self.quantity + 1).min(99),
-                            overview::OverviewMsg::Fewer => self.quantity.saturating_sub(1),
-                        };
-                        self.sync_overview();
-                        let _ = write!(b, "Seats: {}", self.quantity);
                     } else if id.is_some() && id == self.theme_button {
                         if let (Some(m), Some(a)) = (self.theme_menu, self.theme_button) {
                             self.tree.open_menu(m, a);
@@ -1329,104 +1245,20 @@ impl Showcase {
                         // The watch's tile steps through the palettes.
                         self.set_palette(*self.palette.next());
                         let _ = write!(b, "Colours: {}", self.palette.name);
-                    } else if id == self.live.click_me {
-                        self.clicks += 1;
-                        let _ = write!(b, "Clicked {} times", self.clicks);
-                        if let Some(l) = self.live.counter {
-                            self.tree.set_text(l, b.text());
-                        }
-                    } else if id == self.live.start {
-                        self.running = !self.running;
-                        if self.running && self.fill_ms >= FILL_MS {
-                            self.fill_ms = 0;
-                        }
-                        if let Some(s) = self.live.start {
-                            self.tree
-                                .set_text(s, if self.running { "Pause" } else { "Start" });
-                        }
-                    } else if id == self.live.reset {
-                        self.running = false;
-                        self.fill_ms = 0;
-                        self.show_progress();
-                        if let Some(s) = self.live.start {
-                            self.tree.set_text(s, "Start");
-                        }
-                    }
-                }
-                ActionKind::TextChanged => {
-                    if let (true, Some(f)) = (id == self.live.field, self.live.field) {
-                        self.typed = fusuma::InputText::new(self.tree.text(f).unwrap_or(""));
-                        let _ = write!(b, "You typed: {}", self.typed.as_str());
-                        if let Some(l) = self.live.echo {
-                            self.tree.set_text(l, b.text());
-                        }
-                        b = Buf::new();
-                    }
-                }
-                ActionKind::Changed(v) => {
-                    if id == self.live.slider {
-                        self.volume = v;
-                        let _ = write!(b, "Volume: {}%", v / 10);
-                        if let Some(l) = self.live.slider_label {
-                            self.tree.set_text(l, b.text());
-                        }
-                    }
-                }
-                ActionKind::Toggled(on) => {
-                    let name = if id == self.live.switch {
-                        Some("Wi-Fi")
-                    } else {
-                        self.live
-                            .checks
-                            .iter()
-                            .position(|&c| c == id)
-                            .and_then(|i| {
-                                ["Notifications", "Location", "Analytics"].get(i).copied()
-                            })
-                    };
-                    if let Some(name) = name {
-                        let _ = write!(b, "{name} {}", if on { "on" } else { "off" });
                     }
                 }
                 ActionKind::Selected => {
-                    if let Some(i) = self.live.tabs.iter().position(|&t| t.is_some() && t == id) {
-                        self.tab = i;
-                        let _ = write!(b, "{} tab", TAB_NAMES[i]);
-                        if let Some(l) = self.live.tab_label {
-                            self.tree.set_text(l, b.text());
-                        }
-                    } else if let Some(i) = self.sidebar.iter().position(|&s| s == id) {
+                    if let Some(i) = self.sidebar.iter().position(|&s| s == id) {
                         self.set_page(Page::ALL[i]);
                         let _ = write!(b, "Page: {}", Page::ALL[i].name());
-                    } else if let Some(i) = self.live.radios.iter().position(|&r| r == id) {
-                        let _ = write!(b, "Size: {}", RADIO_NAMES[i]);
-                        if let Some(l) = self.live.radio_label {
-                            self.tree.set_text(l, b.text());
-                        }
-                    } else if let Some(i) = self.live.items.iter().position(|&r| r == id) {
-                        let _ = write!(b, "Chosen: {}", ITEM_NAMES[i]);
-                        if let Some(l) = self.live.list_label {
-                            self.tree.set_text(l, b.text());
-                        }
                     }
                 }
+                _ => {}
             }
             if !b.text().is_empty() {
                 let line = b;
                 self.say(line.text());
             }
-        }
-    }
-
-    fn show_progress(&mut self) {
-        let permille = self.permille();
-        if let Some(bar) = self.live.bar {
-            self.tree.set_progress(bar, permille);
-        }
-        if let Some(l) = self.live.bar_label {
-            let mut b = Buf::new();
-            let _ = write!(b, "{}%", permille / 10);
-            self.tree.set_text(l, b.text());
         }
     }
 
@@ -1462,11 +1294,11 @@ impl Showcase {
             if self.fill_ms >= FILL_MS {
                 self.fill_ms = FILL_MS;
                 self.running = false;
-                if let Some(s) = self.live.start {
-                    self.tree.set_text(s, "Start");
-                }
             }
-            self.show_progress();
+            // The bar, its label and the button's text follow the state (only the progress page has them).
+            if self.page == Page::Progress {
+                self.sync_pages();
+            }
         }
         let moving = self.tree.advance(&self.theme, dt_ms);
         // What time itself caused (a long press that came due, a slide that finished) is answered now, not at the next
@@ -1578,6 +1410,7 @@ impl App for Showcase {
             self.theme = self.make_theme();
             self.bounds = bounds;
             self.tree.clear();
+            self.pages.forget();
             self.sidebar = [None; 10];
             self.nav = [None; 3];
             self.tiles = [None; 10];
@@ -1729,7 +1562,7 @@ mod tests {
         let w = s.widgets();
         tap(&mut s, w.radios[2].unwrap());
         assert_eq!(
-            s.tree().text(s.live.radio_label.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::RADIO_LABEL).unwrap()),
             Some("Size: Large")
         );
         assert!(
@@ -1746,7 +1579,7 @@ mod tests {
         let w = s.widgets();
         tap(&mut s, w.items[3].unwrap());
         assert_eq!(
-            s.tree().text(s.live.list_label.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::LIST_LABEL).unwrap()),
             Some("Chosen: Dune")
         );
     }
@@ -1761,7 +1594,10 @@ mod tests {
         assert!(s.is_running());
         s.tick(4000);
         assert_eq!(s.tree().progress_value(w.bar.unwrap()), Some(500));
-        assert_eq!(s.tree().text(s.live.bar_label.unwrap()), Some("50%"));
+        assert_eq!(
+            s.tree().text(s.tree.find(pages::wid::BAR_LABEL).unwrap()),
+            Some("50%")
+        );
         tap(&mut s, w.start.unwrap());
         s.tick(1000);
         assert_eq!(s.tree().progress_value(w.bar.unwrap()), Some(500), "paused");
@@ -1951,7 +1787,8 @@ mod tests {
         s.pointer(Pointer::Up(Point::new(rect.x + rect.w as i32 - 2, y)));
         assert_eq!(s.tree().slider_value(sl), Some(1000));
         assert_eq!(
-            s.tree().text(s.live.slider_label.unwrap()),
+            s.tree()
+                .text(s.tree.find(pages::wid::SLIDER_LABEL).unwrap()),
             Some("Volume: 100%")
         );
         go(&mut s, Page::Buttons);
@@ -1989,7 +1826,7 @@ mod tests {
         let row = w.items[6].unwrap();
         tap(&mut s, row);
         assert_eq!(
-            s.tree().text(s.live.list_label.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::LIST_LABEL).unwrap()),
             Some("Chosen: Glacier")
         );
         // Dragging scrolls back without choosing anything.
@@ -2000,7 +1837,7 @@ mod tests {
         s.pointer(Pointer::Leave);
         assert_eq!(s.tree().scroll_offset(list), Some(0));
         assert_eq!(
-            s.tree().text(s.live.list_label.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::LIST_LABEL).unwrap()),
             Some("Chosen: Glacier")
         );
     }
@@ -2078,7 +1915,7 @@ mod tests {
         assert!(App::wants_text(&s), "the field has the focus");
         App::text(&mut s, ", world");
         assert_eq!(
-            s.tree().text(s.live.echo.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::ECHO).unwrap()),
             Some("You typed: Hello, world")
         );
         App::edit(&mut s, fusuma::Edit::Backspace);
@@ -2354,7 +2191,7 @@ mod tests {
         assert_eq!(s.clicks(), 2);
         assert!(
             s.tree()
-                .text(s.live.counter.unwrap())
+                .text(s.tree.find(pages::wid::COUNTER).unwrap())
                 .unwrap()
                 .contains('2')
         );
@@ -2696,7 +2533,7 @@ mod tests {
         tap(&mut s, tabs[2]);
         assert!(s.tree().is_checked(tabs[2]) && !s.tree().is_checked(tabs[0]));
         assert_eq!(
-            s.tree().text(s.live.tab_label.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::TAB_LABEL).unwrap()),
             Some("Settings tab")
         );
         // The choice is kept when the page is left and come back to.
@@ -2751,7 +2588,7 @@ mod tests {
         s.pointer(Pointer::Up(Point::new(p.x + 60, p.y)));
         s.pointer(Pointer::Leave);
         assert_eq!(
-            s.tree().text(s.live.card_label.unwrap()),
+            s.tree().text(s.tree.find(pages::wid::CARD_LABEL).unwrap()),
             Some("Swiped Right (1)")
         );
         s.pointer(Pointer::Down(p));

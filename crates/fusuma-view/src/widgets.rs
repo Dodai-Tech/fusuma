@@ -180,6 +180,7 @@ pub struct TextField<'a, M> {
     value: &'a str,
     placeholder: &'static str,
     on_input: Option<fn(&str) -> M>,
+    on_submit: Option<M>,
 }
 
 /// A text field holding `value`.
@@ -189,6 +190,7 @@ pub const fn text_field<M>(value: &str) -> TextField<'_, M> {
         value,
         placeholder: "",
         on_input: None,
+        on_submit: None,
     }
 }
 
@@ -197,6 +199,13 @@ impl<M> TextField<'_, M> {
     #[must_use]
     pub const fn placeholder(mut self, text: &'static str) -> Self {
         self.placeholder = text;
+        self
+    }
+
+    /// Sends `message` when Enter is pressed in the field.
+    #[must_use]
+    pub fn on_submit(mut self, message: M) -> Self {
+        self.on_submit = Some(message);
         self
     }
 
@@ -217,6 +226,9 @@ impl<M: Clone> TextField<'_, M> {
         cx.tree.set_placeholder(node, self.placeholder);
         if let Some(f) = self.on_input {
             cx.msgs.on(node, Handler::Text(f));
+        }
+        if let Some(m) = &self.on_submit {
+            cx.msgs.on(node, Handler::Press(m.clone()));
         }
     }
 }

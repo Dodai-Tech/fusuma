@@ -98,6 +98,13 @@ impl<C> Container<C> {
         self
     }
 
+    /// How round the corners of the background are.
+    #[must_use]
+    pub fn round(mut self, round: fusuma_ui::Round) -> Self {
+        self.style = self.style.round(round);
+        self
+    }
+
     /// The style a card has: its own, with the card's surface and corners.
     fn style(&self) -> Style {
         match self.shape {

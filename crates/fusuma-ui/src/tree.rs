@@ -665,7 +665,16 @@ impl<const N: usize> Tree<N> {
 
     /// Removes every node.
     pub fn clear(&mut self) {
+        // Every handle to a node of the old tree goes stale for good: a new node in the same slot has a new generation, so
+        // an old handle (in a message table, say) can never name it by accident.
+        let mut generations = [0u8; N];
+        for (g, n) in generations.iter_mut().zip(&self.nodes) {
+            *g = n.generation.wrapping_add(1);
+        }
         *self = Self::new();
+        for (g, n) in generations.iter().zip(&mut self.nodes) {
+            n.generation = *g;
+        }
     }
 
     /// The index of `id` if it still names a node.
@@ -1647,6 +1656,33 @@ mod tests {
 
 /// What a node costs, which is what a chip pays for every widget of every page. It must not grow; it should shrink
 /// (the aim is 128 bytes, with the text out of the node).
+#[cfg(test)]
+mod clear_tests {
+    use super::*;
+    use crate::theme::ButtonVariant;
+
+    /// A handle from before `clear` never names a node made after it, even in the same slot.
+    #[test]
+    fn a_handle_from_before_clear_goes_stale_for_good() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let old = t.button(Some(root), "a", ButtonVariant::Primary).unwrap();
+        t.clear();
+        let root2 = t.column(None, Style::new()).unwrap();
+        let new = t.button(Some(root2), "b", ButtonVariant::Primary).unwrap();
+        assert_ne!(old, new, "the same slot, another generation");
+        assert!(!t.contains(old) && t.contains(new));
+        assert_eq!(t.text(old), None);
+        assert_eq!(t.text(new), Some("b"));
+        // And after many clears.
+        for _ in 0..300 {
+            t.clear();
+            t.column(None, Style::new()).unwrap();
+        }
+        assert!(!t.contains(old));
+    }
+}
+
 #[cfg(test)]
 mod size_budget {
     use super::{Kind, Node, SmallText, Style};
