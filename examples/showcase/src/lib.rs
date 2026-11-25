@@ -1274,6 +1274,27 @@ impl Showcase {
         self.handle_actions();
     }
 
+    /// One pass of the page's view over its nodes, with nothing changed: what a benchmark times. Not part of the app.
+    #[doc(hidden)]
+    pub fn view_pass(&mut self) {
+        self.sync_pages();
+    }
+
+    /// One pass after a value the page shows changed (a count, a quantity). Not part of the app.
+    #[doc(hidden)]
+    pub fn view_pass_changed(&mut self) {
+        self.clicks = self.clicks.wrapping_add(1);
+        self.quantity = (self.quantity + 1) % 100;
+        self.sync_pages();
+    }
+
+    /// How many nodes the tree holds now. Not part of the app.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn node_count(&self) -> usize {
+        self.tree.len()
+    }
+
     /// Whether the Navigation page's toast is on the screen.
     #[must_use]
     pub fn toast_shown(&self) -> bool {

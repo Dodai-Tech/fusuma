@@ -1128,6 +1128,7 @@ dependencies = [
  "esp-idf-svc",
  "fusuma-platform-esp",
  "fusuma-showcase",
+ "log",
 ]
 
 [[package]]

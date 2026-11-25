@@ -996,6 +996,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-palette"
+version = "0.2.0"
+dependencies = [
+ "fusuma-render",
+ "fusuma-ui",
+]
+
+[[package]]
 name = "fusuma-platform"
 version = "0.2.0"
 dependencies = [

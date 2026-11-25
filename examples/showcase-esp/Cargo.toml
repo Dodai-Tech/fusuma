@@ -27,6 +27,7 @@ opt-level = "s"
 fusuma-showcase = { path = "../showcase", default-features = false }
 fusuma-platform-esp = { path = "../../crates/fusuma-platform-esp" }
 anyhow = "1"
+log = "0.4"
 # Direct, so the build script sees esp-idf-sys and passes the linker arguments on.
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 

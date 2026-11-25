@@ -1,0 +1,20 @@
+[package]
+name = "fusuma-palette"
+description = "Palettes made from one seed colour in OKLCH, with every text colour checked to be readable on what it sits on (std)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-palette"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["color", "oklch", "palette", "theme", "accessibility"]
+categories = ["gui", "graphics"]
+
+[dependencies]
+fusuma-ui.workspace = true
+fusuma-render.workspace = true
+
+[lints]
+workspace = true

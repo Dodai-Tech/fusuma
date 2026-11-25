@@ -19,6 +19,32 @@ const fn requested() -> Option<Backend> {
     }
 }
 
+/// How long a pass of the pages' views takes on this chip, logged once at start (the `demo` build only).
+#[cfg(feature = "demo")]
+fn bench_view(app: &mut Showcase) {
+    use std::time::Instant;
+    for page in ["Overview", "Buttons", "List", "Navigation"] {
+        app.set_start(Some(page), None, None, true, false);
+        let n = 300u32;
+        let t = Instant::now();
+        for _ in 0..n {
+            app.view_pass();
+        }
+        let same = t.elapsed() / n;
+        let t = Instant::now();
+        for _ in 0..n {
+            app.view_pass_changed();
+        }
+        let changed = t.elapsed() / n;
+        log::info!(
+            "view pass {page}: {} nodes, nothing changed {} us, a value changed {} us",
+            app.node_count(),
+            same.as_micros(),
+            changed.as_micros()
+        );
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     esp_idf_svc::sys::link_patches();
     let build = RenderLayer {
@@ -29,7 +55,12 @@ fn main() -> anyhow::Result<()> {
         ..RenderLayer::EMPTY
     };
     run(
-        Showcase::new,
+        |w, h| {
+            let mut app = Showcase::new(w, h);
+            #[cfg(feature = "demo")]
+            bench_view(&mut app);
+            app
+        },
         Options {
             settings: Some(include_str!("../fusuma.toml")),
             build,

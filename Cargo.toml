@@ -17,6 +17,7 @@ members = [
     "crates/fusuma-cells-panel",
     "crates/fusuma-view",
     "crates/fusuma-test",
+    "crates/fusuma-palette",
     "crates/fusuma-render-vello-common",
     "crates/fusuma-render-vello-cpu",
     "crates/fusuma-render-vello",
