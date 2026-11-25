@@ -17,7 +17,7 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 |---|---|---|---|
 | Vello CPU with Inter | 558 ms | 47 ms | 311 ms |
 | Integer renderer, bitmap text (before the work below) | 97 ms | 7 ms | 88 ms |
-| Integer renderer, smooth text, shapes and paths, pixel-shift scrolling (now) | 92 ms | 11 ms (small updates, average of 351 in a scripted run, worst 12) | 35 ms (a scroll step, average of 107, worst 40) |
+| Integer renderer, smooth text, shapes and paths, pixel-shift scrolling, the toolkit of this round (now) | 92 ms | 12 ms (small updates, average of 91 in a scripted run, worst 13) | 36 ms (a scroll step, average of 92, worst 42; 32 ms of it drawing: moving 232 KB of PSRAM, then the strip) |
 
 ## Decisions
 

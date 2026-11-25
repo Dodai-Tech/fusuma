@@ -339,7 +339,6 @@ mod atlas {
         pub ranges: Option<Vec<(u32, u32)>>,
     }
 
-
     /// The kerning of a font among the printable ASCII characters, from its GPOS `kern` feature (what a shaper applies):
     /// `(units per em, pairs)`, each pair `(first << 16 | second, adjustment in font units)`, sorted, no zeros.
     fn kerning(data: &[u8]) -> (u16, Vec<(u32, i16)>) {
@@ -400,7 +399,10 @@ mod atlas {
                     }
                 }
                 if total != 0 {
-                    pairs.push(((a as u32) << 16 | b as u32, total.clamp(-32768, 32767) as i16));
+                    pairs.push((
+                        (a as u32) << 16 | b as u32,
+                        total.clamp(-32768, 32767) as i16,
+                    ));
                 }
             }
         }
@@ -447,10 +449,7 @@ mod atlas {
                 } else {
                     kerning(&data)
                 };
-                let list: String = pairs
-                    .iter()
-                    .map(|(k, v)| format!("({k}, {v}), "))
-                    .collect();
+                let list: String = pairs.iter().map(|(k, v)| format!("({k}, {v}), ")).collect();
                 let _ = writeln!(
                     src,
                     "/// The kerning of {id} {weight}: {} pairs.\npub const {kern_name}: Kerning = Kerning {{ upm: {upm}, pairs: &[{list}] }};",
