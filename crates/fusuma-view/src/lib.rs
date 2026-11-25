@@ -4,16 +4,19 @@
 mod blocks;
 mod container;
 mod host;
+mod keyed;
 mod leaf;
 mod msgs;
 mod program;
 mod task;
+mod widgets;
 
 pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
 };
 pub use container::{Column, Container, Named, Row, Show, card, column, named, row, show};
 pub use host::Host;
+pub use keyed::{Custom, Each, Imperative, Memo, each, imperative, memo};
 pub use leaf::{
     Button, Checkbox, Progress, Spacer, Text, Toast, button, checkbox, progress, spacer, text,
     text_fmt, toast,
@@ -21,6 +24,11 @@ pub use leaf::{
 pub use msgs::{Handler, Msgs};
 pub use program::{Program, QUEUE, Runner, TIMERS};
 pub use task::{Effect, Recipe, SUB_CAP, Sub, TASK_CAP, Task};
+pub use widgets::{
+    Gestures, Icon, Item, Paragraph, Radio, Slider, Special, Switch, Tab, TextField, dialog,
+    gestures, icon, item, menu, paragraph, radio, scroll, slider, switch, tab, tab_bar, text_field,
+    variant,
+};
 
 use fusuma_ui::{BuildError, NodeId, Tree};
 
@@ -76,6 +84,7 @@ pub trait Part<M: Clone> {
     fn rebuild_part<const N: usize, const K: usize>(
         &self,
         cx: &mut Cx<'_, M, N, K>,
+        parent: NodeId,
         cursor: &mut Option<NodeId>,
     );
 }
@@ -92,6 +101,7 @@ impl<M: Clone, V: View<M>> Part<M> for V {
     fn rebuild_part<const N: usize, const K: usize>(
         &self,
         cx: &mut Cx<'_, M, N, K>,
+        _parent: NodeId,
         cursor: &mut Option<NodeId>,
     ) {
         if let Some(node) = *cursor {
@@ -116,10 +126,11 @@ impl<M: Clone, V: View<M>> Part<M> for Option<V> {
     fn rebuild_part<const N: usize, const K: usize>(
         &self,
         cx: &mut Cx<'_, M, N, K>,
+        parent: NodeId,
         cursor: &mut Option<NodeId>,
     ) {
         if let Some(v) = self {
-            v.rebuild_part(cx, cursor);
+            v.rebuild_part(cx, parent, cursor);
         }
     }
 }
@@ -170,7 +181,7 @@ macro_rules! tuple_children {
                 parent: NodeId,
             ) {
                 let mut at = cx.tree.first_child(parent);
-                $( self.$i.rebuild_part(cx, &mut at); )+
+                $( self.$i.rebuild_part(cx, parent, &mut at); )+
                 let _ = at;
             }
         }

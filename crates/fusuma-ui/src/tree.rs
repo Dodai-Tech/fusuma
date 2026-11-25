@@ -456,6 +456,10 @@ pub(crate) struct Node {
     pub(crate) shift: (i32, i32),
     /// Alive but not on the screen: no room in its parent, no drawing, no focus, no presses (see `Tree::set_hidden`).
     pub(crate) hidden: bool,
+    /// What a keyed list calls this row, so a rebuilt list finds it again (see `Tree::set_key`).
+    pub(crate) key: u32,
+    /// What a memoised subtree was last made from (see `Tree::set_memo`).
+    pub(crate) memo: u32,
 }
 
 impl Node {
@@ -485,6 +489,8 @@ impl Node {
         gestures: 0,
         shift: (0, 0),
         hidden: false,
+        key: 0,
+        memo: 0,
     };
 
     /// Whether the parent leaves this node out of its flow: a dialog or toast (placed on their own) or a hidden node.
@@ -1184,6 +1190,13 @@ impl<const N: usize> Tree<N> {
     #[must_use]
     pub fn contains(&self, id: NodeId) -> bool {
         self.slot(id).is_some()
+    }
+
+    /// The sibling before `id`, if there is one.
+    #[must_use]
+    pub fn nodes_prev(&self, id: NodeId) -> Option<NodeId> {
+        let i = self.slot(id)?;
+        self.nodes[i].prev.map(|c| self.id_of(usize::from(c)))
     }
 
     /// The parent of `id`, if it has one.

@@ -16,6 +16,7 @@ mod iconed;
 mod ids;
 mod layout;
 mod menu;
+mod order;
 mod paint;
 mod paragraph;
 mod pieces;
