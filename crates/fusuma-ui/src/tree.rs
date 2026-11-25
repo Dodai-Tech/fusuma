@@ -547,6 +547,8 @@ pub struct Tree<const N: usize> {
     pub(crate) focus_visible: bool,
     pub(crate) bounds: Option<Rect>,
     pub(crate) disabled_dirty: bool,
+    /// Measure every node again at the next layout, not only the ones that changed (a theme or font change).
+    pub(crate) measure_all: bool,
     /// The area that needs painting again: everything that changed, as one bounding rectangle.
     pub(crate) damage: Option<Rect>,
     /// The same damage as a few separate rectangles (see `pieces`), so a frame can skip what lies between them.
@@ -599,6 +601,7 @@ impl<const N: usize> Tree<N> {
             focus_visible: false,
             bounds: None,
             disabled_dirty: false,
+            measure_all: false,
             damage: None,
             pieces: crate::pieces::Pieces::new(),
             drawn: crate::pieces::Pieces::new(),
@@ -1133,6 +1136,12 @@ impl<const N: usize> Tree<N> {
         }
     }
 
+    /// The root node, if there is one.
+    #[must_use]
+    pub fn root_id(&self) -> Option<NodeId> {
+        self.root.map(|r| self.id_of(usize::from(r)))
+    }
+
     /// The children of `id`, first to last.
     pub fn children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         let mut next = self.slot(id).and_then(|i| self.nodes[i].first);
@@ -1305,7 +1314,9 @@ impl<const N: usize> Tree<N> {
             return;
         };
         self.add_damage(self.nodes[root].rect);
-        self.request(root, Flags::PAINT);
+        // A new theme or font can change every size, so everything is measured again.
+        self.measure_all = true;
+        self.request(root, Flags::PAINT | Flags::LAYOUT);
     }
 
     /// Whether anything needs a new frame: a redraw, a layout or a running animation.

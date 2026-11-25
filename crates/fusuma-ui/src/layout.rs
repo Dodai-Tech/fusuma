@@ -108,13 +108,18 @@ impl<const N: usize> Tree<N> {
         if !full && !self.nodes[root].sub.has(Flags::PLACE) {
             return;
         }
+        let moved = self.bounds != Some(bounds);
         self.bounds = Some(bounds);
         let margin = theme.spacing.lg;
         if full {
-            // Measure: every node after its children.
+            // Measure: every node after its children, the ones whose subtree changed (a node that did not keeps its
+            // size). A new size of the screen, a theme or a font changes them all.
+            let all = core::mem::take(&mut self.measure_all) || moved;
             let mut cur = Some(self.leftmost_leaf(root));
             while let Some(i) = cur {
-                self.nodes[i].size = self.measure(i, renderer, theme);
+                if all || self.nodes[i].sub.has(Flags::LAYOUT) {
+                    self.nodes[i].size = self.measure(i, renderer, theme);
+                }
                 cur = if i == root { None } else { self.post_next(i) };
             }
             // Place: every node before its children.
@@ -784,5 +789,221 @@ mod tests {
             100,
             "it draws a background, so the width is seen"
         );
+    }
+
+    /// A renderer that counts how often it was asked to measure text, so a test can see how much was laid out.
+    struct Counting {
+        inner: VelloCpu,
+        measured: core::cell::Cell<u32>,
+    }
+
+    impl Counting {
+        fn new() -> Self {
+            Self {
+                inner: fusuma_render_vello_cpu::new(8, 8).unwrap(),
+                measured: core::cell::Cell::new(0),
+            }
+        }
+
+        /// How many measurements since the last call.
+        fn take(&self) -> u32 {
+            self.measured.replace(0)
+        }
+    }
+
+    impl Renderer for Counting {
+        type Error = <VelloCpu as Renderer>::Error;
+        fn size(&self) -> Size {
+            self.inner.size()
+        }
+        fn capabilities(&self) -> fusuma_render::Capabilities {
+            self.inner.capabilities()
+        }
+        fn save(&mut self) -> Result<(), Self::Error> {
+            self.inner.save()
+        }
+        fn restore(&mut self) -> Result<(), Self::Error> {
+            self.inner.restore()
+        }
+        fn clip(&mut self, r: Rect) -> Result<(), Self::Error> {
+            self.inner.clip(r)
+        }
+        fn translate(&mut self, dx: i32, dy: i32) -> Result<(), Self::Error> {
+            self.inner.translate(dx, dy)
+        }
+        fn clear(&mut self, c: fusuma_render::Color) -> Result<(), Self::Error> {
+            self.inner.clear(c)
+        }
+        fn fill_rect(
+            &mut self,
+            r: Rect,
+            rad: u32,
+            c: fusuma_render::Color,
+        ) -> Result<(), Self::Error> {
+            self.inner.fill_rect(r, rad, c)
+        }
+        fn stroke_rect(
+            &mut self,
+            r: Rect,
+            rad: u32,
+            w: u32,
+            c: fusuma_render::Color,
+        ) -> Result<(), Self::Error> {
+            self.inner.stroke_rect(r, rad, w, c)
+        }
+        fn fill_circle(
+            &mut self,
+            p: fusuma_render::Point,
+            r: u32,
+            c: fusuma_render::Color,
+        ) -> Result<(), Self::Error> {
+            self.inner.fill_circle(p, r, c)
+        }
+        fn fill_path(
+            &mut self,
+            p: &[fusuma_render::PathCmd],
+            c: fusuma_render::Color,
+        ) -> Result<(), Self::Error> {
+            self.inner.fill_path(p, c)
+        }
+        fn stroke_path(
+            &mut self,
+            p: &[fusuma_render::PathCmd],
+            w: u32,
+            c: fusuma_render::Color,
+        ) -> Result<(), Self::Error> {
+            self.inner.stroke_path(p, w, c)
+        }
+        fn draw_text(
+            &mut self,
+            t: &str,
+            p: fusuma_render::Point,
+            s: &fusuma_render::TextStyle,
+        ) -> Result<(), Self::Error> {
+            self.inner.draw_text(t, p, s)
+        }
+        fn measure_text(&self, t: &str, s: &fusuma_render::TextStyle) -> Size {
+            self.measured.set(self.measured.get() + 1);
+            self.inner.measure_text(t, s)
+        }
+        fn draw_image(
+            &mut self,
+            i: &fusuma_render::Image<'_>,
+            p: fusuma_render::Point,
+        ) -> Result<(), Self::Error> {
+            self.inner.draw_image(i, p)
+        }
+    }
+
+    fn page(r: &Counting) -> (Tree<64>, Vec<crate::tree::NodeId>, crate::tree::NodeId) {
+        let mut t = Tree::<64>::new();
+        let root = t.column(None, Style::new().gap(4)).unwrap();
+        let mut labels = Vec::new();
+        for g in 0..4 {
+            let group = t.column(Some(root), Style::new().gap(2)).unwrap();
+            for k in 0..4 {
+                labels.push(
+                    t.label(Some(group), &format!("label {g} {k}"), TextRole::Body)
+                        .unwrap(),
+                );
+            }
+        }
+        let list = t
+            .scroll(Some(root), Style::new().height(Length::Fixed(60)))
+            .unwrap();
+        for k in 0..10 {
+            t.list_item(Some(list), &format!("row {k}"), false).unwrap();
+        }
+        t.update(r, &THEME, Rect::new(0, 0, 300, 400));
+        (t, labels, list)
+    }
+
+    #[test]
+    fn a_change_measures_only_what_it_touches_and_a_scroll_measures_nothing() {
+        let r = Counting::new();
+        let (mut t, labels, list) = page(&r);
+        assert!(r.take() >= 26, "the first layout measures everything");
+        t.update(&r, &THEME, Rect::new(0, 0, 300, 400));
+        assert_eq!(r.take(), 0, "nothing changed, nothing measured");
+        // One label's text: that label, not the other fifteen and the ten rows.
+        t.set_text(labels[5], "a changed label");
+        t.update(&r, &THEME, Rect::new(0, 0, 300, 400));
+        assert_eq!(r.take(), 1, "one label");
+        // A scroll: the rows move, no size is asked for.
+        t.scroll_to(list, 20);
+        t.update(&r, &THEME, Rect::new(0, 0, 300, 400));
+        assert_eq!(r.take(), 0, "a scroll only places");
+        {
+            let at = t.rect(list).unwrap();
+            t.pointer(crate::event::Pointer::Wheel(
+                fusuma_render::Point::new(at.x + 5, at.y + 5),
+                9,
+            ));
+        }
+        t.update(&r, &THEME, Rect::new(0, 0, 300, 400));
+        assert_eq!(t.scroll_offset(list), Some(29));
+        // A new size of the screen, or invalidate, measures all.
+        t.update(&r, &THEME, Rect::new(0, 0, 280, 400));
+        assert!(r.take() >= 26);
+        t.invalidate();
+        t.update(&r, &THEME, Rect::new(0, 0, 280, 400));
+        assert!(r.take() >= 26, "a theme change measures all");
+    }
+
+    /// Mixed changes, each followed by a layout of only what changed, give the same places as a layout from scratch.
+    #[test]
+    fn laying_out_only_what_changed_gives_the_places_a_full_layout_gives() {
+        let r = Counting::new();
+        let (mut t, labels, list) = page(&r);
+        let mut seed = 5u64;
+        let mut next = |n: u32| {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((seed >> 33) as u32) % n
+        };
+        let rows: Vec<_> = t.children(list).collect();
+        for step in 0..80 {
+            match next(6) {
+                0 => t.set_text(
+                    labels[next(16) as usize],
+                    ["a", "much longer text than before", "mid length"][next(3) as usize],
+                ),
+                1 => t.set_text(
+                    rows[next(10) as usize],
+                    ["row", "a row with a longer name"][next(2) as usize],
+                ),
+                2 => t.scroll_to(list, next(200) as i32),
+                3 => {
+                    let g = t
+                        .children(t.root_id().unwrap())
+                        .nth(next(4) as usize)
+                        .unwrap();
+                    t.set_style(g, Style::new().gap(next(9)).padding(next(6)));
+                }
+                4 => {
+                    let g = t
+                        .children(t.root_id().unwrap())
+                        .nth(next(4) as usize)
+                        .unwrap();
+                    let _ = t.label(Some(g), "added", TextRole::Caption);
+                }
+                _ => t.set_style(list, Style::new().height(Length::Fixed(30 + next(120)))),
+            }
+            t.update(&r, &THEME, Rect::new(0, 0, 300, 400));
+            let mut fresh = t.clone();
+            fresh.invalidate();
+            fresh.update(&r, &THEME, Rect::new(0, 0, 300, 400));
+            for i in 0..64 {
+                assert_eq!(
+                    t.nodes[i].rect, fresh.nodes[i].rect,
+                    "step {step}, node {i}"
+                );
+                assert_eq!(
+                    t.nodes[i].size, fresh.nodes[i].size,
+                    "step {step}, node {i} size"
+                );
+            }
+        }
     }
 }
