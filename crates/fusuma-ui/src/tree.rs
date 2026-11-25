@@ -1560,3 +1560,28 @@ mod tests {
         assert_eq!(&post[..n], &want);
     }
 }
+
+/// What a node costs, which is what a chip pays for every widget of every page. It must not grow; it should shrink
+/// (the aim is 128 bytes, with the text out of the node).
+#[cfg(test)]
+mod size_budget {
+    use super::{Kind, Node, SmallText, Style};
+
+    /// The size now, in bytes, and the size a node must reach.
+    const NODE_NOW: usize = 184;
+    const NODE_AIM: usize = 128;
+
+    #[test]
+    fn a_node_does_not_grow() {
+        let (node, kind) = (size_of::<Node>(), size_of::<Kind>());
+        std::eprintln!(
+            "Node {node} (aim {NODE_AIM}), Kind {kind}, Style {}, SmallText {}",
+            size_of::<Style>(),
+            size_of::<SmallText>()
+        );
+        assert!(
+            node <= NODE_NOW,
+            "a node is {node} bytes, over its budget of {NODE_NOW}: a chip pays this for every widget"
+        );
+    }
+}

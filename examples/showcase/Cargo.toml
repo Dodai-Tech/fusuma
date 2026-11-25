@@ -19,7 +19,8 @@ fonts = ["fusuma/fonts-fusuma", "fusuma/icons"]
 fusuma.workspace = true
 
 [dev-dependencies]
-fusuma = { workspace = true, features = ["std", "png"] }
+allocation-counter = "0.8.1"
+fusuma = { workspace = true, features = ["std", "png", "renderer-integer"] }
 
 [lints]
 workspace = true
