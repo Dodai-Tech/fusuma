@@ -10,6 +10,8 @@ Waveshare ESP32-S3-Touch-AMOLED-2.06 (410x502), the P4 the Waveshare ESP32-P4 7"
 2. **UI components and logic** (done, see [Toolkit](#toolkit)).
 3. **TUI** (done, see [Text UI](#text-ui)): the showcase runs in a terminal, over a serial console and on a panel.
 4. **Web** (done, see [Boards and platforms](#boards-and-platforms)).
+5. **The Elm-style view layer** (in progress, see [View layer](#view-layer)): one program shape from an ESP32-C3 to the
+   web, declarative, with no allocation on the chip.
 
 Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 
@@ -49,6 +51,15 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   each widget's cell look is a second paint pass in `fusuma-ui` into a `CellSink` (decided: option A).
 * **Effects and shaders are optional capabilities**: a backend reports what it can do, and widgets fall back to a
   plain fill.
+* **The app is Elm; the engine underneath is retained.** An app is a `State`, a `Msg` enum, `update` (the one place state
+  changes), `view(&State)` and `subscription`. Events are values, not closures. Underneath, views are cheap typed
+  values that make the retained `Tree<N>` match them and touch only what differs, so layout, damage and pixel-shift
+  scrolling stay incremental. Taken from Iced: the program shape, `Task`/`Sub`, `Wake`, message log and replay,
+  presets, the simulator with selectors. Taken from Xilem: the typed `build`/`rebuild`/`teardown` lifecycle, tuples
+  as children, `memoize`, effects tied to a view, stashed (hidden) nodes. Left out: Iced's rebuild, relayout and
+  redraw of everything per message and its `Box<dyn Widget>`; Xilem's state-mutating closures, id-path routing,
+  `Environment` and `alloc`. One engine everywhere: only the capacities (`Tree<N>`), the renderer and the effect
+  adapters differ per target.
 * **Native only, MIT.** The web is a canvas drawn by Vello from WebAssembly, not a webview or DOM widgets. Fusuma is not published yet:
   no versions, no deprecations; breaking changes are fine.
 
@@ -57,10 +68,11 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 | Crate | What | `no_std` |
 |---|---|---|
 | `fusuma` | the facade an app adds: re-exports the toolkit and, by feature, `render`, `anim`, `platform`, `text`, `fonts` and the backends | with `default-features = false` |
-| `fusuma-ui` | the toolkit: widget tree, layout, theme and palettes, events, focus, scrolling, dialogs, text input, animation, paint, `Shell`, `App` | yes, no allocator |
+| `fusuma-ui` | the toolkit: widget tree, layout (measures only what changed), theme, palettes and style hooks, events, focus, scrolling, dialogs, menus, toasts, tabs, text and wrapped text, gestures, slides, virtual lists, hidden nodes, app ids, the semantic tree, the cell paint pass, `Shell`, `App`, `Wake` | yes, no allocator |
+| `fusuma-view` | the Elm-style view layer: typed views, tuples, `show`, `named`, `Host`, the message table | yes, no allocator |
 | `fusuma-anim` | fixed-point easing, tweens, keyframes, springs, fling decay, clips, an animator, drag helpers | yes |
 | `fusuma-render` | the `Renderer` trait, geometry, colours, paths, text styles, the conformance suite | yes |
-| `fusuma-render-embedded` | the integer renderer: RGB565, smooth text from glyph atlases, smooth shapes in integer maths | yes |
+| `fusuma-render-embedded` | the integer renderer: RGB565, kerned smooth text from glyph atlases, smooth shapes, strokes, paths and images with alpha in integer maths, pixel-shift scrolling | yes |
 | `fusuma-render-vello-common`, `-vello-cpu`, `-vello` | the `Renderer` on Vello, on the CPU and on the GPU (`wgpu`) | CPU with `libm` |
 | `fusuma-text` | Parley layout over the linked font families, cached | with alloc |
 | `fusuma-fonts` | the font catalog (families, presets, icons), `FontSet`, glyph atlases made at build time | yes |
@@ -71,7 +83,8 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 | `fusuma-cells` | the text UI's cells: grid, diff, ANSI encoder, key and mouse decoder, wide characters | yes |
 | `fusuma-platform-tui`, `fusuma-platform-console` | the text UI in a terminal (`crossterm`) and over a serial console (any `fmt::Write`) | no / yes |
 | `fusuma-cells-panel` | the text UI on a pixel panel through any renderer, one region a frame | yes |
-| planned: `fusuma-shaders`, `fusuma-platform-mobile`, `fusuma-platform-web` | shader engine; Android and iOS; the web on Vello (WebGPU, else CPU in wasm) | no |
+| planned: `fusuma-shaders`, `fusuma-platform-mobile` | shader engine; Android and iOS | no |
+| `examples/showcase`, `-desktop`, `-tui`, `-web`, `-esp` | the one app and its hosts: window, terminal, browser (wasm), boards | `showcase` yes |
 
 ## Renderers
 
@@ -158,7 +171,8 @@ animation, paint), invalidation flags that travel to the root, pointer capture a
 the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
 
 - [x] `Tree<N>` with generation-checked handles; layout (`Content`, `Fixed`, `Fill(weight)`, padding, gap, cross
-  alignment); events, update, animation and paint passes; a 32-widget tree is about 4 KB; fuzzed
+  alignment); events, update, animation and paint passes; a node is 184 bytes (a budget test keeps it from growing; the aim
+  is 128), so a 32-widget tree is about 6 KB; fuzzed
 - [x] Widgets: label, icon, button, checkbox, radio, switch, slider, progress bar, list item, text field (one line,
   IME and clipboard on the desktop), row, column, spacer, scroll container, dialog
 - [x] Focus and keyboard (Tab, arrows, Enter, Escape)
@@ -199,6 +213,27 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   the basic widgets, no new node kinds; new `Surface::Border`, `Surface::Primary` (text on it is drawn in `on_primary`)
   and `Round::Full` (pill or circle). The showcase opens on a new **Overview** page made of them, and the palette tile
   on the watch gets a row of its own now that there are ten pages
+- [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
+  of the default; a test draws with all five
+- [ ] Accessibility with `AccessKit` (the semantic tree exists; nothing is bridged to a platform yet)
+
+Components still missing, by what they need:
+
+- [ ] **Compositions of what exists** (cheap): spinner and skeleton (indeterminate states), banner, snackbar with an action,
+  segmented control, chips (selectable, removable), breadcrumbs, pagination, stat card, empty state
+- [ ] **Needs engine work:** accordion (hidden nodes now allow it), bottom sheet, image, multi-line editable text, combobox
+  and select, wrap and grid layouts, split view with a draggable divider, a table, a tree view, a carousel with page dots
+- [ ] **Data display for cars and watches:** gauge, line and bar chart, calendar, date and time pickers
+- [ ] **System:** right-to-left layout, text scaling, drag and drop
+- [ ] A `Widget` trait for custom widgets behind an `alloc` feature
+- [ ] Port the Hibari OS launcher to Fusuma widgets
+
+## View layer
+
+The Elm architecture on the retained tree (design in Decisions). Gates for every step: zero allocations in a running
+session, a node at most 184 bytes (aim 128), a diff pass under 1 ms on the S3, a small update still 12 ms on the watch,
+the same pixels as the hand-built page, a message log that replays to the same state.
+
 - [x] **Elm-style view layer** (`fusuma-view`, first slice): `update` is the only place state changes, `view(&State)` describes
   the screen, and the layer makes the tree match it. Views are values made on the stack and thrown away (the tree is the
   previous state: setters compare first, so only what differs asks for layout or drawing); tuples are children, `Option`
@@ -216,11 +251,18 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
 - [x] **App ids** (`set_id`, `find`, `focus_id`; `Semantic::app_id`)
 - [x] **Baselines for the view work:** a running showcase makes 0 allocations on every page (a test with a counting
   allocator), a node is 184 bytes (budget test; the aim is 128, which needs the text out of the node)
-- [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
-  of the default; a test draws with all five
-- [ ] Accessibility with `AccessKit`
-- [ ] A `Widget` trait for custom widgets behind an `alloc` feature; a view layer diffed into the tree
-- [ ] Port the Hibari OS launcher to Fusuma widgets
+- [ ] `Program` driver: `update(&mut State, Msg) -> Task<Msg>`, `view(&State, &Screen)`, `subscription(&State)`, as an
+  `App` so it runs on every platform unchanged; the ESP loop sleeps by `Wake` (it still sleeps a fixed 8 ms)
+- [ ] `Task` as a closed enum (after, focus, scroll, toast, save, clipboard) and `Sub` as at most eight recipes diffed by
+  identity (frames, every, resize, key); effects scoped to a view (`auto_dismiss`, `every`) that stop on teardown
+- [ ] `.animate(spring)` on a view (the node owns the spring: no `view` per frame) and springs in state for gestures
+- [ ] Keyed `each::<N>` lists and `memo(data, view)`; `imperative(..)` as the escape hatch so pages migrate one by one
+- [ ] `fusuma-test`: a simulator (`find`, `click`, `type_text`, `messages()`) driven through the semantic tree, a message
+  log with virtual time and replay, presets that generate the screenshot and test matrix, recorded scripts
+- [ ] Move Navigation, then the other pages; measure the diff on the watch; `.class(..)` into `Hooks`; palettes
+  generated from a seed in OKLCH
+- [ ] Node at 128 bytes (text out of the node); a flash-per-added-page report; a build-size report for `riscv32imc` (no
+  C3 board yet: Tier 0 is proven by the allocation test and the size report until there is one)
 
 ## Animation
 
