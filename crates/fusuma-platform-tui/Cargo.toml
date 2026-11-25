@@ -15,7 +15,7 @@ categories = ["command-line-interface", "gui"]
 publish = false
 
 [dependencies]
-fusuma.workspace = true
+fusuma = { workspace = true, features = ["toml"] }
 fusuma-cells.workspace = true
 crossterm = "0.29"
 

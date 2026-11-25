@@ -229,7 +229,9 @@ extern crate std;
 #[cfg(feature = "toml")]
 mod settings;
 #[cfg(feature = "toml")]
-pub use settings::{FontChoice, RawRender, SETTINGS_SCHEMA, Settings, SettingsError, ThemeChoice};
+pub use settings::{
+    CellsChoice, FontChoice, RawRender, SETTINGS_SCHEMA, Settings, SettingsError, ThemeChoice,
+};
 #[cfg(feature = "toml")]
 pub mod board;
 

@@ -23,7 +23,7 @@ fn main() -> io::Result<()> {
     let mut term = Terminal::open()?;
     let (cols, rows) = term.size();
     let mut app = Showcase::new_cells(u32::from(cols), u32::from(rows));
-    let look = look(ascii, has("--mono") || term.depth() == Depth::Mono);
+    let look = configured_look(&args, ascii, has("--mono") || term.depth() == Depth::Mono)?;
     let start = Instant::now();
     let mut last = 0u64;
     loop {
@@ -74,6 +74,23 @@ fn look(ascii: bool, mono: bool) -> CellTheme {
         (false, true) => CellTheme::MONO,
         (false, false) => CellTheme::UNICODE,
     }
+}
+
+/// The look: the flags, then `[cells]` of a `fusuma.toml` (`--settings FILE`, or the one in the current directory).
+fn configured_look(args: &[String], ascii: bool, mono: bool) -> io::Result<CellTheme> {
+    let base = look(ascii, mono);
+    let path = args
+        .iter()
+        .position(|a| a == "--settings")
+        .and_then(|i| args.get(i + 1))
+        .map_or_else(|| "fusuma.toml".into(), Clone::clone);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(base);
+    };
+    let settings = fusuma::platform::Settings::from_toml(&text)
+        .map_err(|e| io::Error::other(format!("{path}: {e}")))?;
+    fusuma_platform_tui::cell_theme(&settings.cells, base)
+        .map_err(|e| io::Error::other(format!("{path}: {e}")))
 }
 
 /// Whether the locale says UTF-8 (so box drawing is safe).

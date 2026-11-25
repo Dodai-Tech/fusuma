@@ -88,6 +88,30 @@
           "description": "Another palette's main-action colour, put on the palette."
         }
       }
+    },
+    "cells": {
+      "type": "object",
+      "description": "How a text UI looks (a terminal, a serial console, a character panel). Every key is optional.",
+      "additionalProperties": false,
+      "properties": {
+        "preset": {
+          "enum": ["unicode", "ascii", "mono"],
+          "description": "unicode (the default): box drawing and blocks; ascii: ASCII only; mono: unicode glyphs, no colour."
+        },
+        "glyphs": {
+          "type": "object",
+          "description": "Glyphs by name, over the preset's: check_on, check_off, radio_on, radio_off, switch_on, switch_off, bar_full, bar_empty, slider_fill, slider_track, slider_thumb, scroll_thumb, scroll_track, horizontal, vertical, marker, icon, and button, button_focus, corners as two or four characters.",
+          "additionalProperties": { "type": "string" }
+        },
+        "emphasis": {
+          "type": "object",
+          "description": "The attributes a state adds, by state (hover, pressed, focus, selected, disabled, title, caption): a list of bold, dim, italic, underline, reverse.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "enum": ["bold", "dim", "italic", "underline", "reverse"] }
+          }
+        }
+      }
     }
   }
 }

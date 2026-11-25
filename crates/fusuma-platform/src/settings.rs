@@ -16,6 +16,11 @@
 //! [theme]
 //! palette = "forest"    # fusuma (default), forest, ocean, petrol or violet; the app can switch at run time
 //! accent = "violet"     # another palette's main-action colour on it
+//!
+//! [cells]               # a text UI's look (a terminal, a serial console, a character panel)
+//! preset = "ascii"      # unicode (the default), ascii or mono (unicode, no colour)
+//! glyphs = { check_on = "[X]", bar_full = "=" }       # any glyph by name, over the preset's
+//! emphasis = { hover = ["underline"], focus = ["bold", "reverse"] }   # attributes a state adds
 //! ```
 //!
 //! Every key is optional, and a key left out says nothing, so the layer below it decides. An unknown key
@@ -110,6 +115,20 @@ pub struct ThemeChoice {
     pub accent: Option<std::string::String>,
 }
 
+/// The `[cells]` table: how a text UI looks. Names are checked by the platform against `fusuma::CellTheme`
+/// (`CellTheme::choose`, `set_glyph`, `set_emphasis`); this crate knows no glyphs.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CellsChoice {
+    /// A preset's name (`ascii`).
+    pub preset: Option<std::string::String>,
+    /// Glyphs by name, over the preset's: a text for a box or a switch, a single character for the rest.
+    pub glyphs: Option<std::collections::BTreeMap<std::string::String, std::string::String>>,
+    /// The attributes a state adds, by state: `bold`, `dim`, `italic`, `underline`, `reverse`.
+    pub emphasis:
+        Option<std::collections::BTreeMap<std::string::String, std::vec::Vec<std::string::String>>>,
+}
+
 /// A settings file (`fusuma.toml`), read and checked.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
@@ -119,6 +138,8 @@ pub struct Settings {
     pub fonts: FontChoice,
     /// The `[theme]` table (all `None` when the file has none).
     pub theme: ThemeChoice,
+    /// The `[cells]` table (all `None` when the file has none).
+    pub cells: CellsChoice,
 }
 
 #[derive(Deserialize)]
@@ -127,6 +148,7 @@ struct File {
     render: Option<RawRender>,
     fonts: Option<FontChoice>,
     theme: Option<ThemeChoice>,
+    cells: Option<CellsChoice>,
 }
 
 impl Settings {
@@ -155,6 +177,7 @@ impl Settings {
                 .map_or(Ok(RenderLayer::EMPTY), RawRender::into_layer)?,
             fonts,
             theme: file.theme.unwrap_or_default(),
+            cells: file.cells.unwrap_or_default(),
         })
     }
 }
@@ -259,6 +282,28 @@ mod tests {
             .to_string();
         assert!(e.contains("colour"), "{e}");
         for key in ["\"theme\"", "\"palette\"", "\"accent\""] {
+            assert!(SETTINGS_SCHEMA.contains(key), "the schema has {key}");
+        }
+    }
+
+    #[test]
+    fn the_cells_table_is_read() {
+        let s = Settings::from_toml(
+            "[cells]\npreset = \"ascii\"\nglyphs = { check_on = \"[X]\" }\nemphasis = { hover = [\"underline\"] }\n",
+        )
+        .unwrap();
+        assert_eq!(s.cells.preset.as_deref(), Some("ascii"));
+        assert_eq!(s.cells.glyphs.as_ref().unwrap()["check_on"], "[X]");
+        assert_eq!(s.cells.emphasis.as_ref().unwrap()["hover"], ["underline"]);
+        assert_eq!(
+            Settings::from_toml("").unwrap().cells,
+            CellsChoice::default()
+        );
+        let e = Settings::from_toml("[cells]\nglyph = {}\n")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("glyph"), "{e}");
+        for key in ["\"cells\"", "\"preset\"", "\"glyphs\"", "\"emphasis\""] {
             assert!(SETTINGS_SCHEMA.contains(key), "the schema has {key}");
         }
     }

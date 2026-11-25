@@ -204,6 +204,134 @@ impl CellTheme {
     };
 }
 
+/// Why a name or a value in a cell theme's settings was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CellThemeError {
+    /// No preset has that name.
+    UnknownPreset,
+    /// No glyph has that name.
+    UnknownGlyph,
+    /// No state has that name.
+    UnknownState,
+    /// No attribute has that name.
+    UnknownAttr,
+    /// The glyph is not this many columns wide (the layout counts on it), or not this many characters.
+    WrongSize(usize),
+}
+
+impl CellTheme {
+    /// The preset called `name`: `unicode`, `ascii` or `mono`.
+    #[must_use]
+    pub fn choose(name: &str) -> Option<Self> {
+        match name {
+            "unicode" => Some(Self::UNICODE),
+            "ascii" => Some(Self::ASCII),
+            "mono" => Some(Self::MONO),
+            _ => None,
+        }
+    }
+
+    /// Sets the glyph called `name` (see the `[cells]` table of the settings for the names). A box or a switch
+    /// takes a text of the width the layout counts on (3 columns, a switch 6, a marker 2); the others one
+    /// character; `button` and `button_focus` two, `corners` four.
+    ///
+    /// # Errors
+    /// [`CellThemeError`] for a name that is not a glyph, or a value of the wrong width.
+    pub fn set_glyph(&mut self, name: &str, value: &'static str) -> Result<(), CellThemeError> {
+        let width = fusuma_cells::str_width(value);
+        let chars = value.chars().count();
+        let g = &mut self.glyphs;
+        let text = |slot: &mut &'static str, want: usize| {
+            if width == want {
+                *slot = value;
+                Ok(())
+            } else {
+                Err(CellThemeError::WrongSize(want))
+            }
+        };
+        let one = |slot: &mut char| {
+            let mut it = value.chars();
+            match (it.next(), it.next()) {
+                (Some(c), None) => {
+                    *slot = c;
+                    Ok(())
+                }
+                _ => Err(CellThemeError::WrongSize(1)),
+            }
+        };
+        let many = |slots: &mut [char]| {
+            if chars == slots.len() {
+                for (s, c) in slots.iter_mut().zip(value.chars()) {
+                    *s = c;
+                }
+                Ok(())
+            } else {
+                Err(CellThemeError::WrongSize(slots.len()))
+            }
+        };
+        match name {
+            "check_on" => text(&mut g.check_on, 3),
+            "check_off" => text(&mut g.check_off, 3),
+            "radio_on" => text(&mut g.radio_on, 3),
+            "radio_off" => text(&mut g.radio_off, 3),
+            "switch_on" => text(&mut g.switch_on, 6),
+            "switch_off" => text(&mut g.switch_off, 6),
+            "marker" => text(&mut g.marker, 2),
+            "bar_full" => one(&mut g.bar_full),
+            "bar_empty" => one(&mut g.bar_empty),
+            "slider_fill" => one(&mut g.slider_fill),
+            "slider_track" => one(&mut g.slider_track),
+            "slider_thumb" => one(&mut g.slider_thumb),
+            "scroll_thumb" => one(&mut g.scroll_thumb),
+            "scroll_track" => one(&mut g.scroll_track),
+            "horizontal" => one(&mut g.horizontal),
+            "vertical" => one(&mut g.vertical),
+            "icon" => one(&mut g.icon),
+            "button" => many(&mut g.button),
+            "button_focus" => many(&mut g.button_focus),
+            "corners" => many(&mut g.corners),
+            _ => Err(CellThemeError::UnknownGlyph),
+        }
+    }
+
+    /// Sets what the state called `state` adds to a widget (`hover`, `pressed`, `focus`, `selected`, `disabled`,
+    /// `title`, `caption`) to the attributes named in `attrs` (`bold`, `dim`, `italic`, `underline`, `reverse`; none
+    /// at all clears it).
+    ///
+    /// # Errors
+    /// [`CellThemeError`] for a state or an attribute that has no such name.
+    pub fn set_emphasis<'a>(
+        &mut self,
+        state: &str,
+        attrs: impl IntoIterator<Item = &'a str>,
+    ) -> Result<(), CellThemeError> {
+        let mut set = Attrs::NONE;
+        for a in attrs {
+            set = set.with(match a {
+                "bold" => Attrs::BOLD,
+                "dim" => Attrs::DIM,
+                "italic" => Attrs::ITALIC,
+                "underline" => Attrs::UNDERLINE,
+                "reverse" => Attrs::REVERSE,
+                _ => return Err(CellThemeError::UnknownAttr),
+            });
+        }
+        let e = &mut self.emphasis;
+        let slot = match state {
+            "hover" => &mut e.hover,
+            "pressed" => &mut e.pressed,
+            "focus" => &mut e.focus,
+            "selected" => &mut e.selected,
+            "disabled" => &mut e.disabled,
+            "title" => &mut e.title,
+            "caption" => &mut e.caption,
+            _ => return Err(CellThemeError::UnknownState),
+        };
+        *slot = set;
+        Ok(())
+    }
+}
+
 impl Default for CellTheme {
     fn default() -> Self {
         Self::UNICODE
@@ -1032,5 +1160,70 @@ mod tests {
     fn menus_dialogs_and_toasts_are_boxes_over_a_dimmed_page() {
         golden("overlays-unicode", &overlays_snapshot(&CellTheme::UNICODE));
         golden("overlays-ascii", &overlays_snapshot(&CellTheme::ASCII));
+    }
+
+    #[test]
+    fn a_cell_theme_is_chosen_and_changed_by_name() {
+        assert_eq!(CellTheme::choose("ascii"), Some(CellTheme::ASCII));
+        assert_eq!(CellTheme::choose("mono"), Some(CellTheme::MONO));
+        assert_eq!(CellTheme::choose("unicode"), Some(CellTheme::UNICODE));
+        assert_eq!(CellTheme::choose("fancy"), None);
+        let mut t = CellTheme::UNICODE;
+        t.set_glyph("check_on", "[X]").unwrap();
+        t.set_glyph("bar_full", "=").unwrap();
+        t.set_glyph("corners", "+++=").unwrap();
+        t.set_glyph("button", "<>").unwrap();
+        t.set_glyph("marker", "->").unwrap();
+        assert_eq!(
+            (t.glyphs.check_on, t.glyphs.bar_full, t.glyphs.corners[3]),
+            ("[X]", '=', '=')
+        );
+        assert_eq!((t.glyphs.button, t.glyphs.marker), (['<', '>'], "->"));
+        // What the layout counts on is checked: a wide box would not fit its place.
+        assert_eq!(
+            t.set_glyph("check_on", "[xx]"),
+            Err(CellThemeError::WrongSize(3))
+        );
+        assert_eq!(
+            t.set_glyph("switch_on", "ON"),
+            Err(CellThemeError::WrongSize(6))
+        );
+        assert_eq!(
+            t.set_glyph("bar_full", "=="),
+            Err(CellThemeError::WrongSize(1))
+        );
+        assert_eq!(
+            t.set_glyph("bar_full", ""),
+            Err(CellThemeError::WrongSize(1))
+        );
+        assert_eq!(
+            t.set_glyph("corners", "+++"),
+            Err(CellThemeError::WrongSize(4))
+        );
+        assert_eq!(t.set_glyph("blob", "x"), Err(CellThemeError::UnknownGlyph));
+        assert_eq!(t.glyphs.check_on, "[X]", "a refused value changes nothing");
+        // Wide characters count by columns.
+        t.set_glyph("radio_on", "日 ").unwrap();
+        // Emphasis.
+        t.set_emphasis("hover", ["underline", "bold"]).unwrap();
+        assert!(t.emphasis.hover.has(Attrs::UNDERLINE) && t.emphasis.hover.has(Attrs::BOLD));
+        t.set_emphasis("hover", []).unwrap();
+        assert_eq!(t.emphasis.hover, Attrs::NONE);
+        assert_eq!(
+            t.set_emphasis("hover", ["blink"]),
+            Err(CellThemeError::UnknownAttr)
+        );
+        assert_eq!(
+            t.set_emphasis("angry", ["bold"]),
+            Err(CellThemeError::UnknownState)
+        );
+        // And the change shows.
+        let mut tree = Tree::<4>::new();
+        let root = tree.column(None, LayoutStyle::new()).unwrap();
+        tree.checkbox(Some(root), "A", true).unwrap();
+        tree.update(&CellMeasure, &Theme::CELLS, Rect::new(0, 0, 10, 2));
+        let mut g = grid(10, 2);
+        tree.paint_cells(&mut g, &Theme::CELLS, &t);
+        assert_eq!(g.get(1, 0).unwrap().ch, 'X');
     }
 }
