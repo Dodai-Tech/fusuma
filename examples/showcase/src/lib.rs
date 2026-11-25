@@ -113,11 +113,15 @@ pub enum Page {
     Text,
     /// The bundled fonts.
     Typography,
+    /// Tabs, a menu, a toast and gestures.
+    Navigation,
+    /// Wrapped text in a scrolling view.
+    Reading,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::Buttons,
         Self::Selection,
         Self::List,
@@ -125,6 +129,8 @@ impl Page {
         Self::Controls,
         Self::Text,
         Self::Typography,
+        Self::Navigation,
+        Self::Reading,
     ];
 
     /// The name in the sidebar.
@@ -138,6 +144,8 @@ impl Page {
             Self::Controls => "Controls",
             Self::Text => "Text",
             Self::Typography => "Typography",
+            Self::Navigation => "Navigation",
+            Self::Reading => "Reading",
         }
     }
 }
@@ -194,7 +202,21 @@ struct Live {
     field: Option<NodeId>,
     echo: Option<NodeId>,
     delete: Option<NodeId>,
+    tabs: [Option<NodeId>; 3],
+    tab_label: Option<NodeId>,
+    menu_button: Option<NodeId>,
+    menu: Option<NodeId>,
+    menu_items: [Option<NodeId>; 3],
+    toast: Option<NodeId>,
+    card: Option<NodeId>,
+    card_label: Option<NodeId>,
+    reading: [Option<NodeId>; 2],
 }
+
+const TAB_NAMES: [&str; 3] = ["Home", "Search", "Settings"];
+const MENU_NAMES: [&str; 3] = ["Share", "Edit", "Delete"];
+/// What the Reading page shows: long enough to wrap onto many lines and scroll.
+const READING: &str = "Fusuma draws the same widgets on a watch, a phone and a desktop. Text wraps to the room it has: on a watch it takes many short lines, on a desktop a few long ones, and a text view scrolls when there are more lines than fit. A word that is too long for a line is broken where it no longer fits, and a newline always starts a new line.\nDrag this text, turn the wheel, or move the focus.\nThe lines are worked out with the renderer's own measuring, so the same words break at the same places on the integer renderer and on Vello. Nothing here is a web page: it is a retained tree of widgets, drawn by a renderer that fits in a few kilobytes.";
 
 const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
 const ITEM_NAMES: [&str; 12] = [
@@ -214,7 +236,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 7],
+    sidebar: [Option<NodeId>; 9],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
@@ -228,7 +250,7 @@ pub struct Showcase {
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
-    tiles: [Option<NodeId>; 7],
+    tiles: [Option<NodeId>; 9],
     back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
@@ -242,6 +264,9 @@ pub struct Showcase {
     volume: u16,
     /// What the text field holds, kept when the page is left.
     typed: fusuma::InputText,
+    /// The tab that is chosen, and how many swipes the card has seen.
+    tab: usize,
+    swipes: u32,
 }
 
 impl Showcase {
@@ -256,14 +281,14 @@ impl Showcase {
             palette: Palette::FUSUMA,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Buttons,
-            sidebar: [None; 7],
+            sidebar: [None; 9],
             nav: [None; 3],
             class: Class::of(width),
             dialog: [None; 3],
             insets: fusuma::Insets::all(0),
             shape: fusuma::Shape::Rect,
             open: false,
-            tiles: [None; 7],
+            tiles: [None; 9],
             back: None,
             body: None,
             content: None,
@@ -276,6 +301,8 @@ impl Showcase {
             fill_ms: 0,
             volume: 500,
             typed: fusuma::InputText::new("Hello"),
+            tab: 0,
+            swipes: 0,
         };
         // The tree has room for all of it; a build failure would leave a smaller screen, not a crash.
         let _ = s.build();
@@ -397,6 +424,13 @@ impl Showcase {
             switch: self.live.switch,
             slider: self.live.slider,
             field: self.live.field,
+            tabs: self.live.tabs,
+            menu_button: self.live.menu_button,
+            menu: self.live.menu,
+            menu_items: self.live.menu_items,
+            toast: self.live.toast,
+            card: self.live.card,
+            reading: self.live.reading,
         }
     }
 
@@ -773,6 +807,67 @@ impl Showcase {
                     )?;
                 }
             }
+            Page::Navigation => {
+                if !lite {
+                    t.label(Some(c), "Navigation", TextRole::Title)?;
+                }
+                #[cfg(feature = "fonts")]
+                let set = fusuma::fonts::FontSet::default_set();
+                #[cfg(feature = "fonts")]
+                let icon = |name: &str| set.icon(name);
+                #[cfg(not(feature = "fonts"))]
+                let icon = |_: &str| None::<char>;
+                let bar = t.tab_bar(Some(c), Style::new())?;
+                for (i, slot) in live.tabs.iter_mut().enumerate() {
+                    let name = ["home", "search", "settings"][i];
+                    *slot = Some(t.tab(Some(bar), icon(name), TAB_NAMES[i], i == self.tab)?);
+                }
+                let mut b = Buf::new();
+                let _ = write!(b, "{} tab", TAB_NAMES[self.tab.min(2)]);
+                live.tab_label = Some(t.label(Some(c), b.text(), TextRole::Body)?);
+                let row = t.row(Some(c), Style::new().gap(sp.md))?;
+                let menu_button = match icon("more_vert") {
+                    Some(ch) => {
+                        t.button_with_icon(Some(row), ch, "Menu", ButtonVariant::Secondary)?
+                    }
+                    None => t.button(Some(row), "Menu", ButtonVariant::Secondary)?,
+                };
+                live.menu_button = Some(menu_button);
+                let menu = t.menu(Some(c), Style::new().padding(sp.xs).gap(sp.xs))?;
+                for (i, slot) in live.menu_items.iter_mut().enumerate() {
+                    let name = ["share", "edit", "delete"][i];
+                    *slot = Some(match icon(name) {
+                        Some(ch) => t.list_item_with_icon(Some(menu), ch, MENU_NAMES[i], false)?,
+                        None => t.list_item(Some(menu), MENU_NAMES[i], false)?,
+                    });
+                }
+                live.menu = Some(menu);
+                let mut b = Buf::new();
+                let _ = write!(b, "Swipe or hold this card ({})", self.swipes);
+                let card = t.row(
+                    Some(c),
+                    Style::new()
+                        .padding(sp.md)
+                        .background(Surface::Raised)
+                        .round(Round::Medium),
+                )?;
+                live.card_label = Some(t.label(Some(card), b.text(), TextRole::Body)?);
+                t.set_swipe(card, fusuma::Swipe::Horizontal);
+                t.set_long_press(card, true);
+                live.card = Some(card);
+                live.toast = Some(t.toast(Some(c))?);
+            }
+            Page::Reading => {
+                if !lite {
+                    t.label(Some(c), "Reading", TextRole::Title)?;
+                }
+                let (view, para) = t.text_view(
+                    Some(c),
+                    READING,
+                    Style::new().height(Length::Fixed(scaled(if lite { 150 } else { 120 }, scale))),
+                )?;
+                live.reading = [Some(view), Some(para)];
+            }
             Page::Text => {
                 if !lite {
                     t.label(Some(c), "Text", TextRole::Title)?;
@@ -809,12 +904,18 @@ impl Showcase {
     /// Builds the whole tree again, for a change of screen: the pages' state lives in the app, not in the tree.
     fn rebuild(&mut self) {
         self.tree.clear();
-        self.sidebar = [None; 7];
+        self.sidebar = [None; 9];
         self.nav = [None; 3];
-        self.tiles = [None; 7];
+        self.tiles = [None; 9];
         self.back = None;
         self.content = None;
         let _ = self.build();
+    }
+
+    /// A point on the page that is not on the menu or its button, for a test that dismisses by pressing outside.
+    #[cfg(test)]
+    fn tab_outside_point(&self) -> fusuma::render::Point {
+        fusuma::render::Point::new(self.bounds.w as i32 - 3, self.bounds.h as i32 - 3)
     }
 
     fn permille(&self) -> u16 {
@@ -834,12 +935,29 @@ impl Showcase {
                 self.tree.set_text(l, page.name());
             }
             let _ = self.build_page();
+            // The new page comes in from the right.
+            if let Some(c) = self.content {
+                let distance = scaled(48, self.scale);
+                self.tree.slide_in(c, fusuma::Edge::Right, distance);
+            }
         }
+    }
+
+    /// The theme for the current colours, scale and class: a watch redraws slowly, so it gets half the motion.
+    fn make_theme(&self) -> Theme {
+        let budget = if self.class == Class::Watch {
+            fusuma::MotionBudget::Reduced
+        } else {
+            fusuma::MotionBudget::Full
+        };
+        theme(self.dark, &self.palette)
+            .scaled(self.scale)
+            .with_motion(budget)
     }
 
     fn set_palette(&mut self, palette: Palette) {
         self.palette = palette;
-        self.theme = theme(self.dark, &palette).scaled(self.scale);
+        self.theme = self.make_theme();
         if let Some(b) = self.palette_button {
             self.tree.set_text(b, palette_button_text(&palette));
         }
@@ -848,7 +966,7 @@ impl Showcase {
 
     fn set_dark(&mut self, dark: bool) {
         self.dark = dark;
-        self.theme = theme(dark, &self.palette).scaled(self.scale);
+        self.theme = self.make_theme();
         if let Some(b) = self.theme_button {
             self.tree
                 .set_text(b, theme_button_text(dark, self.class.is_compact()));
@@ -863,15 +981,48 @@ impl Showcase {
             let mut b = Buf::new();
             match a.kind {
                 ActionKind::Dismissed => {
-                    if let Some(d) = self.dialog[0] {
+                    // A menu closes itself when it is dismissed; only the dialog's dismissal is ours to answer.
+                    if let Some(d) = self.dialog[0].filter(|&d| Some(d) == id) {
                         self.tree.close_dialog(d);
                         let _ = write!(b, "Cancelled");
                     }
                 }
+                ActionKind::LongPressed => {
+                    let _ = write!(b, "Long press");
+                    if let Some(t) = self.live.toast {
+                        self.tree.show_toast(t, "Held for half a second", 1500);
+                    }
+                }
+                ActionKind::Swiped(dir) => {
+                    self.swipes += 1;
+                    let _ = write!(b, "Swiped {dir:?}");
+                    if let Some(l) = self.live.card_label {
+                        let mut t = Buf::new();
+                        let _ = write!(t, "Swiped {dir:?} ({})", self.swipes);
+                        self.tree.set_text(l, t.text());
+                    }
+                }
+                ActionKind::Exited => {}
                 ActionKind::Clicked => {
                     if id.is_some() && id == self.live.delete {
                         if let Some(d) = self.dialog[0] {
                             self.tree.open_dialog(d);
+                        }
+                    } else if id.is_some() && id == self.live.menu_button {
+                        if let Some(m) = self.live.menu {
+                            self.tree.open_menu(m, a.source);
+                        }
+                    } else if let Some(i) = self
+                        .live
+                        .menu_items
+                        .iter()
+                        .position(|&m| m.is_some() && m == id)
+                    {
+                        let _ = write!(b, "{}", MENU_NAMES[i]);
+                        if let Some(t) = self.live.toast {
+                            let mut m = Buf::new();
+                            let _ = write!(m, "{} chosen", MENU_NAMES[i]);
+                            self.tree.show_toast(t, m.text(), 1500);
                         }
                     } else if id.is_some() && (id == self.dialog[1] || id == self.dialog[2]) {
                         if let Some(d) = self.dialog[0] {
@@ -971,7 +1122,13 @@ impl Showcase {
                     }
                 }
                 ActionKind::Selected => {
-                    if let Some(i) = self.sidebar.iter().position(|&s| s == id) {
+                    if let Some(i) = self.live.tabs.iter().position(|&t| t.is_some() && t == id) {
+                        self.tab = i;
+                        let _ = write!(b, "{} tab", TAB_NAMES[i]);
+                        if let Some(l) = self.live.tab_label {
+                            self.tree.set_text(l, b.text());
+                        }
+                    } else if let Some(i) = self.sidebar.iter().position(|&s| s == id) {
                         self.set_page(Page::ALL[i]);
                         let _ = write!(b, "Page: {}", Page::ALL[i].name());
                     } else if let Some(i) = self.live.radios.iter().position(|&r| r == id) {
@@ -1117,19 +1274,23 @@ impl App for Showcase {
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
         let bounds = Rect::new(0, 0, width, height);
         let scale = scale_percent.clamp(50, 800);
-        let class = fusuma::Screen::new(width, self.bounds.h).with_scale(scale).class();
+        let class = fusuma::Screen::new(width, self.bounds.h)
+            .with_scale(scale)
+            .class();
         if scale != self.scale || class != self.class {
             // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
             self.scale = scale;
             self.class = class;
             self.open = false;
-            self.insets = fusuma::Screen::new(width, height).with_shape(self.shape).insets();
-            self.theme = theme(self.dark, &self.palette).scaled(scale);
+            self.insets = fusuma::Screen::new(width, height)
+                .with_shape(self.shape)
+                .insets();
+            self.theme = self.make_theme();
             self.bounds = bounds;
             self.tree.clear();
-            self.sidebar = [None; 7];
+            self.sidebar = [None; 9];
             self.nav = [None; 3];
-            self.tiles = [None; 7];
+            self.tiles = [None; 9];
             self.back = None;
             self.content = None;
             let _ = self.build();
@@ -1169,6 +1330,20 @@ pub struct Widgets {
     pub switch: Option<NodeId>,
     /// The Controls page's slider.
     pub slider: Option<NodeId>,
+    /// The Navigation page's tabs.
+    pub tabs: [Option<NodeId>; 3],
+    /// The Navigation page's button that opens the menu.
+    pub menu_button: Option<NodeId>,
+    /// The Navigation page's menu and its rows.
+    pub menu: Option<NodeId>,
+    /// The rows of the menu.
+    pub menu_items: [Option<NodeId>; 3],
+    /// The Navigation page's toast.
+    pub toast: Option<NodeId>,
+    /// The Navigation page's card that listens for a swipe and a long press.
+    pub card: Option<NodeId>,
+    /// The Reading page's text view and its paragraph.
+    pub reading: [Option<NodeId>; 2],
     /// The Text page's text field.
     pub field: Option<NodeId>,
 }
@@ -1366,9 +1541,13 @@ mod tests {
 
     #[test]
     fn on_a_watch_the_palette_switcher_is_a_tile_of_the_home_screen() {
-        let (mut s, _) = watch();
+        let (mut s, mut r) = watch();
+        // Nine tiles are more than the grid shows at once: scroll to the last row.
+        let grid = s.content.unwrap();
+        s.tree.scroll_to(grid, 10_000);
+        s.frame(&mut r).unwrap();
         let tile = s.palette_button().unwrap();
-        let last = s.tile(Page::ALL[6]).unwrap();
+        let last = s.tile(*Page::ALL.last().unwrap()).unwrap();
         let (a, b) = (s.rect_of(tile).unwrap(), s.rect_of(last).unwrap());
         assert_eq!(
             (a.y, a.h, a.w),
@@ -1643,7 +1822,8 @@ mod tests {
             *Page::ALL.last().unwrap(),
             "and before the first the last"
         );
-        assert_eq!(s.tree().text(s.status.unwrap()), Some("Page: Typography"));
+        let want = std::format!("Page: {}", Page::ALL.last().unwrap().name());
+        assert_eq!(s.tree().text(s.status.unwrap()), Some(want.as_str()));
     }
 
     #[test]
@@ -1656,6 +1836,8 @@ mod tests {
             }
             let (_, next) = s.nav_buttons().unwrap();
             for _ in Page::ALL {
+                // The page has slid in by now.
+                App::tick(&mut s, 1000);
                 s.frame(&mut r).unwrap();
                 let tree = s.tree();
                 let root = tree.rect(tree.root().unwrap()).unwrap();
@@ -2124,5 +2306,126 @@ mod tests {
             )
             .unwrap();
         }
+    }
+
+    /// Lets the page that slid in settle, and lays it out.
+    fn settle(s: &mut Showcase) {
+        App::tick(s, 2000);
+        let measure = fusuma::renderers::vello_cpu::new(8, 8).unwrap();
+        s.layout(&measure);
+    }
+
+    #[test]
+    fn the_new_page_slides_in_from_the_right_and_settles_in_its_place() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Navigation);
+        s.frame(&mut r).unwrap();
+        let c = s.content.unwrap();
+        let (dx, _) = s.tree().slide_offset(c).unwrap();
+        assert!(dx > 0, "it starts to the right: {dx}");
+        let mut last = dx;
+        while App::tick(&mut s, 16) {
+            s.frame(&mut r).unwrap();
+            let now = s.tree().slide_offset(c).unwrap().0;
+            assert!(now <= last, "it only comes closer");
+            last = now;
+        }
+        assert_eq!(s.tree().slide_offset(c), Some((0, 0)));
+    }
+
+    #[test]
+    fn the_tabs_choose_one_page_of_the_navigation_page_and_say_so() {
+        let (mut s, _) = app();
+        go(&mut s, Page::Navigation);
+        settle(&mut s);
+        let tabs = s.widgets().tabs.map(Option::unwrap);
+        assert!(s.tree().is_checked(tabs[0]));
+        tap(&mut s, tabs[2]);
+        assert!(s.tree().is_checked(tabs[2]) && !s.tree().is_checked(tabs[0]));
+        assert_eq!(
+            s.tree().text(s.live.tab_label.unwrap()),
+            Some("Settings tab")
+        );
+        // The choice is kept when the page is left and come back to.
+        go(&mut s, Page::Buttons);
+        go(&mut s, Page::Navigation);
+        settle(&mut s);
+        assert!(s.tree().is_checked(s.widgets().tabs[2].unwrap()));
+    }
+
+    #[test]
+    fn the_menu_opens_below_its_button_a_row_shows_a_toast_and_the_dialog_is_not_dismissed() {
+        let (mut s, _) = app();
+        go(&mut s, Page::Navigation);
+        settle(&mut s);
+        let w = s.widgets();
+        let (button, menu, toast) = (w.menu_button.unwrap(), w.menu.unwrap(), w.toast.unwrap());
+        assert!(!s.tree().is_menu_open(menu));
+        tap(&mut s, button);
+        assert!(s.tree().is_menu_open(menu));
+        settle(&mut s);
+        let (m, b) = (s.rect_of(menu).unwrap(), s.rect_of(button).unwrap());
+        assert!(m.y >= b.bottom(), "below the button: {m:?} {b:?}");
+        let row = s.widgets().menu_items[1].unwrap();
+        tap(&mut s, row);
+        assert!(!s.tree().is_menu_open(menu), "choosing closes it");
+        assert!(
+            s.tree().is_toast_shown(toast),
+            "and a toast says what was chosen"
+        );
+        assert_eq!(s.tree().text(s.status.unwrap()), Some("Edit"));
+        // Dismissing the menu is not a dismissal of the confirmation dialog.
+        tap(&mut s, button);
+        let outside = s.tab_outside_point();
+        for e in [Pointer::Down(outside), Pointer::Up(outside), Pointer::Leave] {
+            s.pointer(e);
+        }
+        assert!(!s.tree().is_menu_open(menu));
+        assert_ne!(s.tree().text(s.status.unwrap()), Some("Cancelled"));
+        assert!(!s.tree().is_dialog_open(s.dialog[0].unwrap()));
+    }
+
+    #[test]
+    fn a_swipe_and_a_long_press_on_the_card_are_counted_and_shown() {
+        let (mut s, _) = app();
+        go(&mut s, Page::Navigation);
+        settle(&mut s);
+        let card = s.widgets().card.unwrap();
+        let r = s.rect_of(card).unwrap();
+        let p = Point::new(r.x + 20, r.y + (r.h / 2) as i32);
+        s.pointer(Pointer::Down(p));
+        s.pointer(Pointer::Move(Point::new(p.x + 60, p.y)));
+        s.pointer(Pointer::Up(Point::new(p.x + 60, p.y)));
+        s.pointer(Pointer::Leave);
+        assert_eq!(
+            s.tree().text(s.live.card_label.unwrap()),
+            Some("Swiped Right (1)")
+        );
+        s.pointer(Pointer::Down(p));
+        App::tick(&mut s, 600);
+        s.pointer(Pointer::Up(p));
+        s.pointer(Pointer::Leave);
+        assert!(s.tree().is_toast_shown(s.widgets().toast.unwrap()));
+    }
+
+    #[test]
+    fn the_reading_page_wraps_its_text_and_scrolls_it() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Reading);
+        settle(&mut s);
+        s.frame(&mut r).unwrap();
+        let [view, para] = s.widgets().reading.map(Option::unwrap);
+        let (v, p) = (s.rect_of(view).unwrap(), s.rect_of(para).unwrap());
+        assert!(p.h > v.h, "more lines than fit: {p:?} in {v:?}");
+        assert!(s.tree().scroll_max(view).unwrap() > 0);
+        // On a phone the same text is narrower, so it is taller.
+        let (mut ph, mut pr) = phone();
+        let (_, next) = ph.nav_buttons().unwrap();
+        for _ in 0..Page::ALL.iter().position(|&p| p == Page::Reading).unwrap() {
+            tap(&mut ph, next);
+        }
+        settle(&mut ph);
+        ph.frame(&mut pr).unwrap();
+        assert_eq!(ph.page(), Page::Reading);
     }
 }
