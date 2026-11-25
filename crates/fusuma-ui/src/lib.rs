@@ -8,6 +8,7 @@ mod damage;
 mod dialog;
 mod event;
 mod focus;
+mod iconed;
 mod layout;
 mod paint;
 mod pieces;

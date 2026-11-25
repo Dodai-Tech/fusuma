@@ -1,7 +1,7 @@
 //! The paint pass: the tree and the theme draw through a [`Renderer`].
 
 use fusuma_anim::{Easing, Fx};
-use fusuma_render::{Color, Point, Rect, Renderer, Size, TextStyle};
+use fusuma_render::{Color, Point, Rect, Renderer, Size};
 
 use crate::theme::{ButtonState, ButtonStyle, Theme};
 use crate::tree::{Flags, Kind, Tree};
@@ -265,7 +265,8 @@ impl<const N: usize> Tree<N> {
                 let at = Point::new(rect.inset(n.style.padding).x, centred(rect, size).y);
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))
             }
-            Kind::Button { text, .. } => {
+            Kind::Tab { .. } => self.paint_tab(i, r, theme),
+            Kind::Button { text, icon, .. } => {
                 let Some(look) = self.button_look(i, theme) else {
                     return Ok(());
                 };
@@ -273,9 +274,9 @@ impl<const N: usize> Tree<N> {
                 if let Some(border) = look.border {
                     r.stroke_rect(rect, look.radius, theme.border_width, border)?;
                 }
-                let style = TextStyle::new(theme.text.body, look.text).font(theme.fonts.body);
-                let at = centred(rect, r.measure_text(text.as_str(), &style));
-                Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
+                let m = Self::measure_icon_text(r, theme, icon, text.as_str());
+                let x = centred(rect, m.size()).x;
+                Self::paint_icon_text(r, theme, rect, x, m, text.as_str(), look.text)?;
                 self.ring(i, r, theme, look.radius)
             }
         }

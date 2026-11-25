@@ -1,6 +1,6 @@
 //! The rewrite passes: disabled state flowing down, then layout, then hover against the new layout.
 
-use fusuma_render::{Color, Rect, Renderer, Size, TextStyle};
+use fusuma_render::{Rect, Renderer, Size};
 
 use crate::theme::Theme;
 use crate::tree::{Axis, CrossAlign, Flags, Kind, Length, Style, Tree};
@@ -176,11 +176,8 @@ impl<const N: usize> Tree<N> {
             Kind::Label { text, role } => {
                 renderer.measure_text(text.as_str(), &theme.text_style(role))
             }
-            Kind::Button { text, .. } => {
-                let t = renderer.measure_text(
-                    text.as_str(),
-                    &TextStyle::new(theme.text.body, Color::BLACK).font(theme.fonts.body),
-                );
+            Kind::Button { text, icon, .. } => {
+                let t = Self::measure_icon_text(renderer, theme, icon, text.as_str()).size();
                 Size::new(
                     t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
                     t.h.saturating_add(theme.spacing.sm.saturating_mul(2))
@@ -191,6 +188,7 @@ impl<const N: usize> Tree<N> {
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
             | Kind::ListItem { .. }
+            | Kind::Tab { .. }
             | Kind::Progress { .. }
             | Kind::Switch { .. }
             | Kind::Slider { .. }

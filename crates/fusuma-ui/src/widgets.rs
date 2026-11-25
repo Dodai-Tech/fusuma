@@ -46,7 +46,7 @@ impl<const N: usize> Tree<N> {
                 self.choose(i);
                 Some(ActionKind::Selected)
             }
-            Kind::ListItem { selected, .. } if !selected => {
+            Kind::ListItem { selected, .. } | Kind::Tab { selected, .. } if !selected => {
                 self.choose(i);
                 Some(ActionKind::Selected)
             }
@@ -89,7 +89,7 @@ impl<const N: usize> Tree<N> {
         self.slot(id).is_some_and(|i| match self.nodes[i].kind {
             Kind::Checkbox { checked, .. } | Kind::Radio { checked, .. } => checked,
             Kind::Switch { on, .. } => on,
-            Kind::ListItem { selected, .. } => selected,
+            Kind::ListItem { selected, .. } | Kind::Tab { selected, .. } => selected,
             _ => false,
         })
     }
@@ -101,7 +101,7 @@ impl<const N: usize> Tree<N> {
         let Some(i) = self.slot(id) else { return };
         if matches!(
             self.nodes[i].kind,
-            Kind::Radio { .. } | Kind::ListItem { .. }
+            Kind::Radio { .. } | Kind::ListItem { .. } | Kind::Tab { .. }
         ) && on
         {
             self.choose(i);
@@ -332,8 +332,15 @@ impl<const N: usize> Tree<N> {
                 let w = box_w.saturating_add(theme.spacing.md).saturating_add(t.w);
                 Size::new(w, t.h.max(theme.indicator).max(theme.control_height))
             }
-            Kind::ListItem { text: t, .. } => {
-                let t = text(t.as_str());
+            Kind::Tab { text: t, icon, .. } => {
+                let t = Self::measure_icon_text(r, theme, icon, t.as_str()).size();
+                Size::new(
+                    t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
+                    t.h.max(theme.control_height),
+                )
+            }
+            Kind::ListItem { text: t, icon, .. } => {
+                let t = Self::measure_icon_text(r, theme, icon, t.as_str()).size();
                 Size::new(
                     t.w.saturating_add(theme.spacing.md.saturating_mul(2)),
                     t.h.max(theme.control_height),
@@ -448,7 +455,11 @@ impl<const N: usize> Tree<N> {
                 Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
                 self.ring(i, r, theme, theme.radii.sm)
             }
-            Kind::ListItem { text, selected } => {
+            Kind::ListItem {
+                text,
+                selected,
+                icon,
+            } => {
                 let (fill, label) = if n.disabled_eff {
                     (selected.then_some(c.border), c.text_disabled)
                 } else if selected {
@@ -463,10 +474,9 @@ impl<const N: usize> Tree<N> {
                 if let Some(fill) = fill {
                     r.fill_rect(rect, theme.radii.sm, fill)?;
                 }
-                let style = TextStyle::new(theme.text.body, label).font(theme.fonts.body);
-                let size = r.measure_text(text.as_str(), &style);
-                let at = Point::new(px(rect.x, theme.spacing.md), centred(rect, size).y);
-                Self::in_clip(r, rect, |r| r.draw_text(text.as_str(), at, &style))?;
+                let m = Self::measure_icon_text(r, theme, icon, text.as_str());
+                let x = px(rect.x, theme.spacing.md);
+                Self::paint_icon_text(r, theme, rect, x, m, text.as_str(), label)?;
                 self.ring(i, r, theme, theme.radii.sm)
             }
             Kind::Switch { text, on } => {

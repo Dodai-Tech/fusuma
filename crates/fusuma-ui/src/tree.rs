@@ -206,6 +206,8 @@ pub(crate) enum Kind {
         variant: ButtonVariant,
         /// 0 at rest, 1 fully hovered or pressed; moves over time in the animation pass.
         blend: Fx,
+        /// An icon (a character of the icon font) before the text.
+        icon: Option<char>,
     },
     Spacer,
     Checkbox {
@@ -219,6 +221,15 @@ pub(crate) enum Kind {
     ListItem {
         text: SmallText,
         selected: bool,
+        /// An icon before the text.
+        icon: Option<char>,
+    },
+    /// One tab of a tab bar: the tabs that share a parent are one group with at most one selected, like list items.
+    Tab {
+        text: SmallText,
+        selected: bool,
+        /// An icon before the text.
+        icon: Option<char>,
     },
     /// Progress in thousandths, 0 to 1000.
     Progress {
@@ -285,6 +296,7 @@ impl Kind {
                 | Self::Checkbox { .. }
                 | Self::Radio { .. }
                 | Self::ListItem { .. }
+                | Self::Tab { .. }
                 | Self::Switch { .. }
                 | Self::Slider { .. }
                 | Self::TextInput { .. }
@@ -298,6 +310,7 @@ impl Kind {
             | Self::Checkbox { text, .. }
             | Self::Radio { text, .. }
             | Self::Switch { text, .. }
+            | Self::Tab { text, .. }
             | Self::ListItem { text, .. } => Some(text),
             _ => None,
         }
@@ -310,6 +323,7 @@ impl Kind {
             | Self::Checkbox { text, .. }
             | Self::Radio { text, .. }
             | Self::Switch { text, .. }
+            | Self::Tab { text, .. }
             | Self::ListItem { text, .. } => Some(text),
             _ => None,
         }
@@ -320,7 +334,7 @@ impl Kind {
         match self {
             Self::Checkbox { checked, .. } | Self::Radio { checked, .. } => Some(checked),
             Self::Switch { on, .. } => Some(on),
-            Self::ListItem { selected, .. } => Some(selected),
+            Self::ListItem { selected, .. } | Self::Tab { selected, .. } => Some(selected),
             _ => None,
         }
     }
@@ -784,6 +798,7 @@ impl<const N: usize> Tree<N> {
                 text: SmallText::new(text),
                 variant,
                 blend: Fx::ZERO,
+                icon: None,
             },
             Style::DEFAULT,
         )
@@ -851,6 +866,7 @@ impl<const N: usize> Tree<N> {
             Kind::ListItem {
                 text: SmallText::new(text),
                 selected: false,
+                icon: None,
             },
             Style::DEFAULT,
         )?;
