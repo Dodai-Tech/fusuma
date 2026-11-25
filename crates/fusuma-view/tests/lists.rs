@@ -256,7 +256,7 @@ fn a_memoised_view_is_skipped_while_its_value_is_the_same_and_keeps_its_messages
     let view = |label: &'static str, value: u32| {
         seen.0.set(seen.0.get() + 1);
         (memo(
-            value,
+            value as u16,
             card((text(label), button("go").on_press(Msg::Plain))),
         ),)
     };
