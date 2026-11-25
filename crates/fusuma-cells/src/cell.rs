@@ -77,6 +77,16 @@ impl Color {
         }
     }
 
+    /// The red, green and blue of this colour, or `None` for [`Color::Default`] (the output's own).
+    #[must_use]
+    pub fn rgb(self) -> Option<(u8, u8, u8)> {
+        match self {
+            Self::Default => None,
+            Self::Indexed(i) => Some(Self::rgb_of_index(i)),
+            Self::Rgb(r, g, b) => Some((r, g, b)),
+        }
+    }
+
     /// This colour as an output of `depth` shows it: the nearest one it has, or [`Color::Default`] on a monochrome
     /// output. A colour the output already has is kept as it is.
     #[must_use]

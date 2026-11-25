@@ -1,0 +1,25 @@
+[package]
+name = "fusuma-cells-panel"
+description = "Fusuma's text UI on a pixel panel: a grid of cells drawn through any Fusuma renderer (the integer one on a microcontroller) and shown as one region a frame (no_std, no allocator)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-cells-panel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["tui", "embedded", "no-std", "display", "terminal"]
+categories = ["embedded", "no-std", "graphics"]
+publish = false
+
+[dependencies]
+fusuma-render.workspace = true
+fusuma-cells.workspace = true
+
+[dev-dependencies]
+fusuma-render-embedded.workspace = true
+fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

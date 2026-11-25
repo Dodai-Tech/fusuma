@@ -22,6 +22,8 @@ export const MATRIX = [
     { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-platform-console" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-platform-console" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-ui" }
+    { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-cells-panel" }
+    { target: "thumbv6m-none-eabi", features: "", package: "fusuma-cells-panel" }
 ]
 
 # The cargo arguments that build one entry.

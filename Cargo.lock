@@ -959,6 +959,16 @@ name = "fusuma-cells"
 version = "0.2.0"
 
 [[package]]
+name = "fusuma-cells-panel"
+version = "0.2.0"
+dependencies = [
+ "fusuma-cells",
+ "fusuma-render",
+ "fusuma-render-embedded",
+ "fusuma-render-vello-cpu",
+]
+
+[[package]]
 name = "fusuma-fonts"
 version = "0.2.0"
 dependencies = [
