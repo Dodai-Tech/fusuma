@@ -1,0 +1,47 @@
+# The Waveshare ESP32-C6-Touch-AMOLED-1.8 (368x448, an SH8601 with an FT3168 touch). NOT RUN ON A BOARD: read from Waveshare's Arduino
+# examples (waveshareteam/ESP32-C6-Touch-AMOLED-1.8). The display has no reset pin in the examples (the chip's own software reset is used);
+# a TCA9554 expander (0x20) has its pins 4 and 5 set as outputs and high before anything else, which this file repeats (they are probably
+# the touch's reset and a power enable: the examples do not say). Schema: crates/fusuma-platform/board.schema.json.
+# MEMORY: a C6 has 512 KB and no PSRAM; the colour surface of this screen (330 KB at 16 bits a pixel) may not fit beside the
+# firmware; if it does not, the build or the first start says so (the choice of renderer is made from the free memory).
+name = "c6-amoled-18"
+title = "Waveshare ESP32-C6-Touch-AMOLED-1.8"
+about = "Waveshare ESP32-C6 1.8-inch AMOLED touch board (368x448, SH8601)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 368
+height = 448
+grid = 2
+controller = "sh8601"
+bus = "qspi"
+pins = { sck = 0, d = [1, 2, 3, 4], cs = 5 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "panel"
+width_mm = 29
+height_mm = 35
+kind = "emissive"
+inputs = ["touch"]
+
+# The expander's pins 4 and 5 as outputs, high, as the examples do before they start the touch chip.
+[power.i2c]
+sda = 8
+scl = 7
+writes = [[0x20, 3, 0xCF], [0x20, 1, 0x30, 255, 50]]
+
+[touch]
+controller = "ft3168"
+bus = "i2c"
+pins = { sda = 8, scl = 7 }
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

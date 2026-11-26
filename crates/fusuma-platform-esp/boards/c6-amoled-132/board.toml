@@ -1,0 +1,42 @@
+# The Waveshare ESP32-C6-Touch-AMOLED-1.32 (466x466, a CO5300 with a CST816 touch). NOT RUN ON A BOARD: read from Waveshare's examples
+# (waveshareteam/ESP32-C6-Touch-AMOLED-1.32). The round shape is an assumption; the examples configure 2 and 8 MB of flash (8 here, the
+# one a project chose). Schema: crates/fusuma-platform/board.schema.json.
+# MEMORY: a C6 has 512 KB and no PSRAM; the colour surface of this screen (434 KB at 16 bits a pixel) may not fit beside the
+# firmware; if it does not, the build or the first start says so (the choice of renderer is made from the free memory).
+name = "c6-amoled-132"
+title = "Waveshare ESP32-C6-Touch-AMOLED-1.32"
+about = "Waveshare ESP32-C6 1.32-inch AMOLED touch board (466x466, CO5300)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 466
+height = 466
+shape = "circle"
+offset = [6, 0]
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 18, d = [19, 20, 10, 11], cs = 22, rst = 21 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "watch"
+width_mm = 34
+height_mm = 34
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "cst816"
+bus = "i2c"
+pins = { sda = 8, scl = 7 }
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 8
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

@@ -1,0 +1,41 @@
+# The Waveshare ESP32-C6-Touch-AMOLED-1.64 (280x456, a CO5300 with an FT3168 touch). NOT RUN ON A BOARD: read from Waveshare's examples
+# (waveshareteam/ESP32-C6-Touch-AMOLED-1.64: its LVGL example draws at x + 0x14, so the column offset is 20, as on the S3's 1.64). The
+# touch has no reset line here. Schema: crates/fusuma-platform/board.schema.json.
+# MEMORY: a C6 has 512 KB and no PSRAM; the colour surface of this screen (255 KB at 16 bits a pixel) may not fit beside the
+# firmware; if it does not, the build or the first start says so (the choice of renderer is made from the free memory).
+name = "c6-amoled-164"
+title = "Waveshare ESP32-C6-Touch-AMOLED-1.64"
+about = "Waveshare ESP32-C6 1.64-inch AMOLED touch board (280x456, CO5300)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 280
+height = 456
+offset = [20, 0]
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 11, d = [4, 5, 7, 19], cs = 10, rst = 21 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "panel"
+width_mm = 28
+height_mm = 46
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "ft3168"
+bus = "i2c"
+pins = { sda = 18, scl = 8 }
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

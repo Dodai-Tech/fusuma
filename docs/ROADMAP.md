@@ -413,6 +413,8 @@ the same pixels as the hand-built page, a message log that replays to the same s
 - [x] Plain-SPI LCD driver (ST7789, GC9A01), SH8601 and RM690B0 on the QSPI transport, FT5x06 / CST816 / CST92xx touch, the
   expander writes (`[power.i2c]`, with a mask and a delay) and an ID probe for the 1.43's two chips; boards for the AMOLED 1.8,
   2.41, 1.75C, 2.16 and 1.32, the C6 LCD 1.47, the C6 Touch LCD 1.28 and 1.83 and the S3 Touch LCD 1.28. All built, none run.
+- [x] Colour e-paper (`Palette`: the 1.54G, the 13.3E6 with two controllers, the PhotoPainter's 7.3"), a reflective LCD (ST7305), and
+  boards for the AMOLED 1.75, the C6 AMOLED 1.32, 1.43, 1.64, 1.8, 2.06 and 2.16, the PhotoPainter, the RLCD-4.2 and the 13.3E6. All built, none run.
 - [ ] A CH32V003 "EXIO" driver and CST3530 touch (the C6 Touch LCD 2.8), 1.64 V1/V2 `cs` list
 - [ ] The C6 (a board file; `esp-hal` as well as ESP-IDF), a Cortex-M board (RP2040, STM32, nRF), a Linux
   framebuffer or DRM board for kiosks

@@ -1,0 +1,43 @@
+# The Waveshare ESP32-C6-Touch-AMOLED-2.06 (410x502, a CO5300 with an FT3168 touch): the S3's 2.06 with the C6's pins. NOT RUN ON A BOARD:
+# read from Waveshare's Arduino examples (waveshareteam/ESP32-C6-Touch-AMOLED-2.06). The column offset 22 and the corner radius are the S3
+# watch's. Schema: crates/fusuma-platform/board.schema.json.
+# MEMORY: a C6 has 512 KB and no PSRAM; the colour surface of this screen (411 KB at 16 bits a pixel) may not fit beside the
+# firmware; if it does not, the build or the first start says so (the choice of renderer is made from the free memory).
+name = "c6-amoled-206"
+title = "Waveshare ESP32-C6-Touch-AMOLED-2.06"
+about = "Waveshare ESP32-C6 2.06-inch AMOLED touch watch (410x502, CO5300)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 410
+height = 502
+shape = "rounded"
+radius = 70
+offset = [22, 0]
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 0, d = [1, 2, 3, 4], cs = 5, rst = 11 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "watch"
+width_mm = 33
+height_mm = 41
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "ft3168"
+bus = "i2c"
+pins = { sda = 8, scl = 7, rst = 10 }
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

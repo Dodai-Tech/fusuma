@@ -105,13 +105,8 @@ mod cmd {
     pub const COMMAND_66: u8 = 0xF0;
 }
 
-/// The inks, in the order of their codes (black, white, yellow, red, blue, green; the panel skips 4), as RGB565: what they look like to the
-/// quantiser, not what the glass is exactly.
-pub const INKS: Palette = Palette {
-    colors: &[0x0000, 0xFFFF, 0xFFE0, 0xF800, 0x001F, 0x07E0],
-    codes: &[0, 1, 2, 3, 5, 6],
-    bits: 4,
-};
+/// The inks: the six of `SPECTRA6`.
+pub const INKS: Palette = super::SPECTRA6;
 
 /// The panel: 1200x1600, a controller to each 600 columns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

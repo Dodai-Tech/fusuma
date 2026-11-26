@@ -34,6 +34,7 @@ needs it`). Which boards exist, which are a file away and which need a driver: [
 | `sh8601`, `rm690b0` | display | QSPI | the same transport and bands with their own start-up (the 1.43/1.8 and the 2.41); the reset pin may be absent (an expander resets the panel) |
 | `st7789`, `gc9a01` | display | SPI | LCDs with a data/command line (`dc`), in bands too; `madctl` and `invert` options; the backlight is a separate `ledc` |
 | `ek79007` | display | MIPI DSI | ESP32-P4 only, 1024x600; a frame buffer the DMA scans out |
+| `epd7in3e`, `st7305` | display | SPI | the PhotoPainter's six-colour e-paper and the RLCD-4.2's reflective LCD |
 | `ft3168`, `ft5x06`, `cst816` | touch | I2C | FocalTech's register map; 0x38, 0x38 and 0x15; one read function |
 | `cst92xx` | touch | I2C | CST9217 / CST9220 at 0x5A, 16-bit registers |
 | `gt911` | touch | I2C | address found at 0x5D or 0x14 |

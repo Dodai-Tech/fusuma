@@ -124,7 +124,7 @@ def "test showcase: two boards with one chip are told apart by flash, else --boa
 
 def "test showcase: the boards come from their board files, with the chip target and toolchain" [] {
     let boards = load_boards
-    assert equal ($boards.name) ["c6-epaper-154" "c6-lcd-147" "c6-touch-lcd-128" "c6-touch-lcd-183" "p4-7in" "s3-amoled-132" "s3-amoled-143" "s3-amoled-164" "s3-amoled-175c" "s3-amoled-18" "s3-amoled-206" "s3-amoled-216" "s3-amoled-241" "s3-epaper-133e6" "s3-epaper-154" "s3-epaper-154g" "s3-epaper-397" "s3-lcd-128" "s3-sticky"]
+    assert equal ($boards.name) ["c6-amoled-132" "c6-amoled-143" "c6-amoled-164" "c6-amoled-18" "c6-amoled-206" "c6-amoled-216" "c6-epaper-154" "c6-lcd-147" "c6-touch-lcd-128" "c6-touch-lcd-183" "p4-7in" "s3-amoled-132" "s3-amoled-143" "s3-amoled-164" "s3-amoled-175" "s3-amoled-175c" "s3-amoled-18" "s3-amoled-206" "s3-amoled-216" "s3-amoled-241" "s3-epaper-133e6" "s3-epaper-154" "s3-epaper-154g" "s3-epaper-397" "s3-lcd-128" "s3-photopainter" "s3-rlcd-42" "s3-sticky"]
     for b in $boards {
         assert ($b.dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
         assert ($b.dir | path join partitions.csv | path exists) $"($b.name) has a partition table"

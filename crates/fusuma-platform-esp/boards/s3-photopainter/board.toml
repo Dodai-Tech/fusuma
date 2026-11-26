@@ -1,0 +1,50 @@
+# The Waveshare ESP32-S3-PhotoPainter: a 7.3 inch 800x480 six-colour (black, white, yellow, red, blue, green) e-paper on an ESP32-S3 (16 MB
+# flash, 8 MB octal PSRAM) with an AXP2101, audio and a TF slot. NOT RUN ON A BOARD: pins and the panel's sequences are read from Waveshare's
+# firmware (waveshareteam/ESP32-S3-PhotoPainter, 01_Example/xiaozhi-esp32-IDF6.1, components/port_bsp). The firmware sets the AXP2101's DCDC1 and
+# ALDO1..4 to 3.3 V and never says it switches them on; this file does, with a masked write (an assumption: the e-paper's rail is one of
+# them). A refresh takes tens of seconds and there is no partial one. Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-photopainter"
+title = "Waveshare ESP32-S3-PhotoPainter"
+about = "Waveshare ESP32-S3-PhotoPainter, 7.3 inch six-colour e-paper (800x480), AXP2101, audio, TF slot"
+capabilities = ["display", "button", "wifi", "ble", "battery", "storage", "audio", "eink"]
+
+[display]
+width = 800
+height = 480
+controller = "epd7in3e"
+bus = "spi"
+# The busy line is high when the panel is idle.
+pins = { sck = 10, mosi = 11, cs = 9, dc = 8, rst = 12, busy = 13 }
+options = { data_rate_mhz = 10 }
+
+[screen]
+form = "micro"
+width_mm = 160
+height_mm = 96
+kind = "eink"
+# Six inks; the app is told two bits a pixel.
+depth = 2
+refresh_ms = 30000
+inputs = ["keys"]
+
+# The AXP2101 (0x34): DCDC1 3.3 V (register 0x82 = 0x12), ALDO1..4 3.3 V (0x92..0x95 = 0x1C, i.e. (3300 - 500) / 100) as the firmware sets them,
+# and ALDO1..4 enabled (bits 0 to 3 of register 0x90, the mask): an assumption, see the header.
+[power.i2c]
+sda = 47
+scl = 48
+writes = [[0x34, 0x82, 0x12], [0x34, 0x92, 0x1C], [0x34, 0x93, 0x1C], [0x34, 0x94, 0x1C], [0x34, 0x95, 0x1C], [0x34, 0x90, 0x0F, 0x0F]]
+
+# BOOT. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 0 }
+active_low = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

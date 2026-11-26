@@ -23,6 +23,15 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file** from vendor firmware (GPIO6 low powers the panel); built, not run; 4 MB flash assumed |
 | `s3-epaper-154g` | Waveshare ESP32-S3-ePaper-1.54G | 200x200 four-colour e-paper | epd4g | **file** from vendor firmware; built, not run; 8 MB flash; whole refreshes only, seconds each |
 | `s3-epaper-133e6` | Waveshare ESP32-S3-ePaper-13.3E6 | 1200x1600 six-colour e-paper | epd13e6 | **file** from vendor firmware; built, not run; two panel controllers; 16 MB flash from the example's partition table, PSRAM assumed |
+| `s3-amoled-175` | Waveshare ESP32-S3-Touch-AMOLED-1.75 | 466x466 round | co5300, cst92xx | **file**; the -B and -G variants are the same board with a case and a GPS module |
+| `s3-photopainter` | Waveshare ESP32-S3-PhotoPainter | 800x480 six-colour e-paper (7.3") | epd7in3e | **file** from vendor firmware; the AXP2101 rail enables are an assumption (the firmware sets voltages and never says it enables them); whole refreshes, tens of seconds |
+| `s3-rlcd-42` | Waveshare ESP32-S3-RLCD-4.2 | 400x300 reflective LCD | st7305 | **file** from vendor firmware; quick, no flash, no backlight; the ST7305's block memory layout is in `st7305::place` |
+| `c6-amoled-132` | Waveshare ESP32-C6-Touch-AMOLED-1.32 | 466x466 (round assumed) | co5300, cst816 | **file**; flash 8 MB (the examples say 2 and 8); 512 KB RAM may not hold the colour surface |
+| `c6-amoled-143` | Waveshare ESP32-C6-Touch-AMOLED-1.43 | 466x466 round | co5300, ft3168 | **file**; one start-up in this board's firmware, so no ID probe |
+| `c6-amoled-164` | Waveshare ESP32-C6-Touch-AMOLED-1.64 | 280x456 | co5300, ft3168 | **file**; offset 20 as the S3's |
+| `c6-amoled-18` | Waveshare ESP32-C6-Touch-AMOLED-1.8 | 368x448 | sh8601, ft3168 | **file**; a TCA9554's pins 4 and 5 are set high first (their purpose is not named in the examples) |
+| `c6-amoled-206` | Waveshare ESP32-C6-Touch-AMOLED-2.06 | 410x502 | co5300, ft3168 | **file** |
+| `c6-amoled-216` | Waveshare ESP32-C6-Touch-AMOLED-2.16 | 480x480 | co5300, cst92xx | **file** |
 | `s3-amoled-143` | Waveshare ESP32-S3-Touch-AMOLED-1.43 | 466x466 round | co5300 or sh8601 (read from the chip), ft3168 | **file**; the chip's ID is read at start-up (`probe_id`), bit-banged, not run |
 | `s3-amoled-18` | Waveshare ESP32-S3-Touch-AMOLED-1.8 | 368x448 | sh8601, ft3168 | **file**; reset and display power through `[power.i2c]` on the TCA9554; the modified CO5300 + CST816 variant is not a file |
 | `s3-amoled-241` | Waveshare ESP32-S3-Touch-AMOLED-2.41 | 450x600 | rm690b0, ft5x06 | **file**; resets through `[power.i2c]`; the column offset 16 is the convention of the chip, not stated by Waveshare |
@@ -51,7 +60,6 @@ run either. The hardware-specific facts that stay open are listed in each board 
 | Board | Screen | Controller, bus | Why it is not a file |
 |---|---|---|---|
 | ESP32-C6-Touch-LCD-2.8 | 240x320 | ST7789, SPI (SCLK 0, MOSI 1, DC 10, CS 11) | the LCD reset, the backlight PWM and the touch reset all go through a **CH32V003 co-processor** ("EXIO") on I2C 6/7: a protocol Fusuma has not read. Touch is a CST3530 (another protocol), INT 18 |
-| ESP32-C6-Touch-AMOLED-1.64 | 280x456 | SH8601 (the CO5300 init), QSPI | not extracted: a C6 has fewer pins than the S3 |
 | ESP32-P4-WIFI6-Touch-LCD 3.5, 4.3, 5, X, XC | | not read | `7B` is `p4-7in` |
 
 Also exist as Waveshare repos and were not looked at: ESP32-C6-Touch-AMOLED-1.8, -2.06, -2.16, ESP32-C6-GEEK, ESP32-C6-Zero.

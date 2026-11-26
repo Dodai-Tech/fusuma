@@ -17,7 +17,7 @@ fn main() {
     for (key, values) in [
         (
             "fusuma_display",
-            "\"co5300\", \"sh8601\", \"rm690b0\", \"st7789\", \"gc9a01\", \"ek79007\", \"ssd1677\", \"ssd1680\", \"epd4g\", \"epd13e6\", \"uc8179\"",
+            "\"co5300\", \"sh8601\", \"rm690b0\", \"st7789\", \"gc9a01\", \"ek79007\", \"ssd1677\", \"ssd1680\", \"epd4g\", \"epd13e6\", \"epd7in3e\", \"st7305\", \"uc8179\"",
         ),
         (
             "fusuma_touch",
@@ -93,9 +93,14 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(fusuma_eink)");
     if matches!(
         controller.name,
-        "ssd1677" | "ssd1680" | "epd4g" | "epd13e6" | "uc8179"
+        "ssd1677" | "ssd1680" | "epd4g" | "epd13e6" | "epd7in3e" | "st7305" | "uc8179"
     ) {
         println!("cargo::rustc-cfg=fusuma_eink");
+    }
+    // A colour panel: drawn in colour, quantised to its inks, whole refreshes only.
+    println!("cargo::rustc-check-cfg=cfg(fusuma_color)");
+    if matches!(controller.name, "epd4g" | "epd13e6" | "epd7in3e") {
+        println!("cargo::rustc-cfg=fusuma_color");
     }
     if let Some(t) = board.touch.as_ref().and_then(|t| t.wiring.controller) {
         println!("cargo::rustc-cfg=fusuma_touch=\"{}\"", t.name);

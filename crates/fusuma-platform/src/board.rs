@@ -140,16 +140,8 @@ const fn opt(name: &'static str, default: i64, min: i64, max: i64) -> OptionSpec
     }
 }
 
-/// The pins of a QSPI AMOLED whose reset line is wired to the chip.
+/// The pins of a QSPI AMOLED. The reset may come from somewhere else (an I/O expander, the chip's own software reset).
 const QSPI_PINS: &[PinSpec] = &[
-    pin("sck", 1, true),
-    pin("d", 4, true),
-    pin("cs", 1, true),
-    pin("rst", 1, true),
-];
-
-/// The pins of a QSPI AMOLED whose reset may come from somewhere else (an I/O expander, the chip's own command).
-const QSPI_PINS_OPTIONAL_RST: &[PinSpec] = &[
     pin("sck", 1, true),
     pin("d", 4, true),
     pin("cs", 1, true),
@@ -174,7 +166,7 @@ const TOUCH_I2C_PINS: &[PinSpec] = &[
 ];
 
 /// The controllers Fusuma's ESP drivers know (`fusuma-platform-esp`). A board made of these is one file.
-pub const CONTROLLERS: [Controller; 17] = [
+pub const CONTROLLERS: [Controller; 19] = [
     Controller {
         name: "co5300",
         kind: PartKind::Display,
@@ -192,7 +184,7 @@ pub const CONTROLLERS: [Controller; 17] = [
         bus: "qspi",
         // The CO5300's older sibling, with the same transport and another start-up. The 1.8 inch board's reset is behind an
         // I/O expander, so the pin is optional.
-        pins: QSPI_PINS_OPTIONAL_RST,
+        pins: QSPI_PINS,
         options: &[opt("pclk_mhz", 40, 1, 80)],
         chips: &[],
         sizes: &[],
@@ -203,7 +195,7 @@ pub const CONTROLLERS: [Controller; 17] = [
         kind: PartKind::Display,
         bus: "qspi",
         // Raydium's AMOLED controller (a 482x600 memory); the same transport again. Its windows start and end on even pixels.
-        pins: QSPI_PINS_OPTIONAL_RST,
+        pins: QSPI_PINS,
         options: &[opt("pclk_mhz", 40, 1, 80)],
         chips: &[],
         sizes: &[],
@@ -341,6 +333,44 @@ pub const CONTROLLERS: [Controller; 17] = [
         options: &[opt("data_rate_mhz", 10, 1, 20)],
         chips: &[],
         sizes: &[(1200, 1600)],
+        offset: false,
+    },
+    Controller {
+        name: "epd7in3e",
+        kind: PartKind::Display,
+        bus: "spi",
+        // Waveshare's 7.3 inch six-colour e-paper (the ESP32-S3-PhotoPainter's), 800x480: the wiring of the SSD1680's, a busy line that is
+        // high when idle, whole refreshes only, tens of seconds each.
+        pins: &[
+            pin("sck", 1, true),
+            pin("mosi", 1, true),
+            pin("miso", 1, false),
+            pin("cs", 1, true),
+            pin("dc", 1, true),
+            pin("rst", 1, true),
+            pin("busy", 1, true),
+            pin("en", 1, false),
+        ],
+        options: &[opt("data_rate_mhz", 10, 1, 40)],
+        chips: &[],
+        sizes: &[(800, 480)],
+        offset: false,
+    },
+    Controller {
+        name: "st7305",
+        kind: PartKind::Display,
+        bus: "spi",
+        // Waveshare's 4.2 inch reflective LCD (the ESP32-S3-RLCD-4.2's), 400x300: no busy line, no backlight; it refreshes at once.
+        pins: &[
+            pin("sck", 1, true),
+            pin("mosi", 1, true),
+            pin("cs", 1, true),
+            pin("dc", 1, true),
+            pin("rst", 1, true),
+        ],
+        options: &[opt("data_rate_mhz", 10, 1, 40)],
+        chips: &[],
+        sizes: &[(400, 300)],
         offset: false,
     },
     Controller {
@@ -1840,6 +1870,46 @@ flash_mb = 32
             (
                 "s3-amoled-164",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-164/board.toml"),
+            ),
+            (
+                "c6-amoled-132",
+                include_str!("../../fusuma-platform-esp/boards/c6-amoled-132/board.toml"),
+            ),
+            (
+                "c6-amoled-143",
+                include_str!("../../fusuma-platform-esp/boards/c6-amoled-143/board.toml"),
+            ),
+            (
+                "c6-amoled-164",
+                include_str!("../../fusuma-platform-esp/boards/c6-amoled-164/board.toml"),
+            ),
+            (
+                "c6-amoled-18",
+                include_str!("../../fusuma-platform-esp/boards/c6-amoled-18/board.toml"),
+            ),
+            (
+                "c6-amoled-206",
+                include_str!("../../fusuma-platform-esp/boards/c6-amoled-206/board.toml"),
+            ),
+            (
+                "c6-amoled-216",
+                include_str!("../../fusuma-platform-esp/boards/c6-amoled-216/board.toml"),
+            ),
+            (
+                "s3-amoled-175",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-175/board.toml"),
+            ),
+            (
+                "s3-photopainter",
+                include_str!("../../fusuma-platform-esp/boards/s3-photopainter/board.toml"),
+            ),
+            (
+                "s3-rlcd-42",
+                include_str!("../../fusuma-platform-esp/boards/s3-rlcd-42/board.toml"),
+            ),
+            (
+                "s3-sticky",
+                include_str!("../../fusuma-platform-esp/boards/s3-sticky/board.toml"),
             ),
             (
                 "c6-lcd-147",

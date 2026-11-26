@@ -11,6 +11,12 @@
 #include "freertos/task.h"
 
 #define CHUNK 4096
+// The second general-purpose SPI host where there is one (the ESP32-S3); the C6 has only SPI2.
+#ifdef SPI3_HOST
+#define EPD_HOST SPI3_HOST
+#else
+#define EPD_HOST SPI2_HOST
+#endif
 
 static spi_device_handle_t s_dev;
 static int s_cs_m = -1, s_cs_s = -1, s_dc = -1, s_rst = -1, s_busy = -1, s_pwr = -1;
@@ -47,7 +53,7 @@ esp_err_t fusuma_epd2_init(const fusuma_epd2_config_t *cfg) {
         .quadhd_io_num = -1,
         .max_transfer_sz = CHUNK,
     };
-    err = spi_bus_initialize(SPI3_HOST, &bus, SPI_DMA_CH_AUTO);
+    err = spi_bus_initialize(EPD_HOST, &bus, SPI_DMA_CH_AUTO);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     const spi_device_interface_config_t dev = {
         .clock_speed_hz = (int)cfg->hz,
@@ -56,7 +62,7 @@ esp_err_t fusuma_epd2_init(const fusuma_epd2_config_t *cfg) {
         .spics_io_num = -1,
         .queue_size = 1,
     };
-    if ((err = spi_bus_add_device(SPI3_HOST, &dev, &s_dev)) != ESP_OK) return err;
+    if ((err = spi_bus_add_device(EPD_HOST, &dev, &s_dev)) != ESP_OK) return err;
     s_dma = heap_caps_malloc(CHUNK, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
     return s_dma ? ESP_OK : ESP_ERR_NO_MEM;
 }

@@ -10,6 +10,8 @@ use fusuma::{App, Input, Key, TouchTracker};
 use fusuma_platform_embedded::eink::bus::Bus;
 #[cfg_attr(not(fusuma_display = "epd4g"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::epd4g::{Config as Epd4gConfig, Epd4g};
+#[cfg_attr(not(fusuma_display = "epd7in3e"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::epd7in3e::{Config as Epd7in3eConfig, Epd7in3e};
 #[cfg_attr(not(fusuma_display = "epd13e6"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::epd13e6::{Chip, Config as Epd13e6Config, Epd13e6, Link};
 #[cfg_attr(
@@ -17,19 +19,25 @@ use fusuma_platform_embedded::eink::epd13e6::{Chip, Config as Epd13e6Config, Epd
         fusuma_display = "uc8179",
         fusuma_display = "ssd1680",
         fusuma_display = "epd4g",
-        fusuma_display = "epd13e6"
+        fusuma_display = "epd13e6",
+        fusuma_display = "epd7in3e",
+        fusuma_display = "st7305"
     ),
     allow(unused_imports)
 )]
 use fusuma_platform_embedded::eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
 #[cfg_attr(not(fusuma_display = "ssd1680"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::ssd1680::{Config as Ssd1680Config, Ssd1680};
+#[cfg_attr(not(fusuma_display = "st7305"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::st7305::{Config as St7305Config, St7305};
 #[cfg_attr(
     any(
         fusuma_display = "uc8179",
         fusuma_display = "ssd1680",
         fusuma_display = "epd4g",
-        fusuma_display = "epd13e6"
+        fusuma_display = "epd13e6",
+        fusuma_display = "epd7in3e",
+        fusuma_display = "st7305"
     ),
     allow(unused_imports)
 )]
@@ -202,7 +210,9 @@ enum Chosen {
             fusuma_display = "uc8179",
             fusuma_display = "ssd1680",
             fusuma_display = "epd4g",
-            fusuma_display = "epd13e6"
+            fusuma_display = "epd13e6",
+            fusuma_display = "epd7in3e",
+            fusuma_display = "st7305"
         ),
         allow(dead_code)
     )]
@@ -215,6 +225,10 @@ enum Chosen {
     Epd4g(Epd4g<EspBus>),
     #[cfg_attr(not(fusuma_display = "epd13e6"), allow(dead_code))]
     Epd13e6(Epd13e6<EspLink>),
+    #[cfg_attr(not(fusuma_display = "epd7in3e"), allow(dead_code))]
+    Epd7in3e(Epd7in3e<EspBus>),
+    #[cfg_attr(not(fusuma_display = "st7305"), allow(dead_code))]
+    St7305(St7305<EspBus>),
 }
 
 impl Panel for Chosen {
@@ -227,6 +241,8 @@ impl Panel for Chosen {
             Self::Ssd1680(p) => p.size(),
             Self::Epd4g(p) => p.size(),
             Self::Epd13e6(p) => p.size(),
+            Self::Epd7in3e(p) => p.size(),
+            Self::St7305(p) => p.size(),
         }
     }
 
@@ -237,6 +253,8 @@ impl Panel for Chosen {
             Self::Ssd1680(p) => p.full(frame),
             Self::Epd4g(p) => p.full(frame),
             Self::Epd13e6(p) => p.full(frame),
+            Self::Epd7in3e(p) => p.full(frame),
+            Self::St7305(p) => p.full(frame),
         }
     }
 
@@ -247,6 +265,8 @@ impl Panel for Chosen {
             Self::Ssd1680(p) => p.partial(region, data),
             Self::Epd4g(p) => p.partial(region, data),
             Self::Epd13e6(p) => p.partial(region, data),
+            Self::Epd7in3e(p) => p.partial(region, data),
+            Self::St7305(p) => p.partial(region, data),
         }
     }
 
@@ -257,6 +277,8 @@ impl Panel for Chosen {
             Self::Ssd1680(p) => p.sleep(),
             Self::Epd4g(p) => p.sleep(),
             Self::Epd13e6(p) => p.sleep(),
+            Self::Epd7in3e(p) => p.sleep(),
+            Self::St7305(p) => p.sleep(),
         }
     }
 
@@ -267,6 +289,8 @@ impl Panel for Chosen {
             Self::Ssd1680(p) => p.screen(),
             Self::Epd4g(p) => p.screen(),
             Self::Epd13e6(p) => p.screen(),
+            Self::Epd7in3e(p) => p.screen(),
+            Self::St7305(p) => p.screen(),
         }
     }
 
@@ -274,6 +298,7 @@ impl Panel for Chosen {
         match self {
             Self::Epd4g(p) => p.palette(),
             Self::Epd13e6(p) => p.palette(),
+            Self::Epd7in3e(p) => p.palette(),
             _ => None,
         }
     }
@@ -282,6 +307,7 @@ impl Panel for Chosen {
         match self {
             Self::Epd4g(p) => p.full_color(packed),
             Self::Epd13e6(p) => p.full_color(packed),
+            Self::Epd7in3e(p) => p.full_color(packed),
             _ => Ok(()),
         }
     }
@@ -410,6 +436,46 @@ pub(crate) fn run_here<A: App>(
             },
         )
     };
+    #[cfg(fusuma_display = "epd7in3e")]
+    let (panel, policy) = {
+        let _ = mirror;
+        // The 7.3 inch six-colour panel: tens of seconds to a refresh and no partial one.
+        (
+            Chosen::Epd7in3e(Epd7in3e::new(
+                bus,
+                Epd7in3eConfig {
+                    width: WIDTH,
+                    height: HEIGHT,
+                },
+            )),
+            RefreshPolicy {
+                min_interval_ms: 45_000,
+                settle_ms: 2_000,
+                full_every: 0,
+                ..RefreshPolicy::DEFAULT
+            },
+        )
+    };
+    #[cfg(fusuma_display = "st7305")]
+    let (panel, policy) = {
+        let _ = mirror;
+        // A reflective LCD: it refreshes at once and does not flash, so a change is shown after a short settle.
+        (
+            Chosen::St7305(St7305::new(
+                bus,
+                St7305Config {
+                    width: WIDTH,
+                    height: HEIGHT,
+                },
+            )),
+            RefreshPolicy {
+                min_interval_ms: 60,
+                settle_ms: 20,
+                full_every: 0,
+                ..RefreshPolicy::DEFAULT
+            },
+        )
+    };
     #[cfg(fusuma_display = "epd4g")]
     let (panel, policy) = {
         let _ = mirror;
@@ -435,7 +501,9 @@ pub(crate) fn run_here<A: App>(
         fusuma_display = "uc8179",
         fusuma_display = "ssd1680",
         fusuma_display = "epd4g",
-        fusuma_display = "epd13e6"
+        fusuma_display = "epd13e6",
+        fusuma_display = "epd7in3e",
+        fusuma_display = "st7305"
     )))]
     let (panel, policy) = {
         let s = if (WIDTH, HEIGHT) == (800, 480) {
@@ -482,14 +550,14 @@ pub(crate) fn run_here<A: App>(
     // The integer renderer draws straight into a one-bit frame (48 KB for 800x480, where RGB565 is 768 KB and nothing is left
     // to pack); Vello, if the settings ask for it, draws RGB565 that is quantised when it is shown.
     let app = make(w, h);
-    #[cfg(any(fusuma_display = "epd4g", fusuma_display = "epd13e6"))]
+    #[cfg(fusuma_color)]
     let mut driver = EinkDriver::new_color(app, panel, plan.uses, policy).ok_or_else(|| {
         anyhow::anyhow!(
             "cannot make a {} surface for the four-colour panel",
             plan.uses.name()
         )
     })?;
-    #[cfg(not(any(fusuma_display = "epd4g", fusuma_display = "epd13e6")))]
+    #[cfg(not(fusuma_color))]
     let mut driver = if plan.uses == fusuma::platform::Backend::Integer {
         EinkDriver::new_mono(app, panel, policy)
             .ok_or_else(|| anyhow::anyhow!("cannot make a {w}x{h} one-bit frame"))?

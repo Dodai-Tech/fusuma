@@ -1,0 +1,40 @@
+# The Waveshare ESP32-S3-RLCD-4.2: a 4.2 inch 400x300 reflective LCD (ST7305, no backlight) on an ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB PSRAM)
+# with an RTC, a temperature sensor, audio and a TF slot. NOT RUN ON A BOARD: pins and sequences are read from Waveshare's Arduino example
+# (waveshareteam/ESP32-S3-RLCD-4.2, 09_LVGL_V9_Test: `DisplayPort RlcdPort(12, 11, 5, 40, 41, 400, 300)`). A reflective LCD refreshes at once
+# and does not flash, so it is driven like the e-paper boards with a short settle. Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-rlcd-42"
+title = "Waveshare ESP32-S3-RLCD-4.2"
+about = "Waveshare ESP32-S3-RLCD-4.2, 4.2 inch reflective LCD (400x300), RTC, SHTC3, audio, TF slot"
+capabilities = ["display", "button", "wifi", "ble", "battery", "rtc", "storage", "audio"]
+
+[display]
+width = 400
+height = 300
+controller = "st7305"
+bus = "spi"
+pins = { sck = 11, mosi = 12, cs = 40, dc = 5, rst = 41 }
+options = { data_rate_mhz = 10 }
+
+[screen]
+form = "micro"
+width_mm = 85
+height_mm = 64
+kind = "reflective"
+depth = 1
+refresh_ms = 30
+inputs = ["keys"]
+
+# BOOT. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 0 }
+active_low = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

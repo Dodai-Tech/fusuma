@@ -15,9 +15,11 @@ use crate::{DriverError, Pixels, Surface};
 pub mod bus;
 pub mod epd13e6;
 pub mod epd4g;
+pub mod epd7in3e;
 pub mod ssd1677;
 pub mod ssd1680;
 pub mod ssd2677;
+pub mod st7305;
 pub mod sticky;
 pub mod uc8179;
 
@@ -153,6 +155,14 @@ impl Palette {
         b
     }
 }
+
+/// The inks of E Ink's six-colour "Spectra 6" panels as Waveshare codes them: black 0, white 1, yellow 2, red 3, blue 5, green 6 (code 4
+/// is not used), four bits a pixel.
+pub const SPECTRA6: Palette = Palette {
+    colors: &[0x0000, 0xFFFF, 0xFFE0, 0xF800, 0x001F, 0x07E0],
+    codes: &[0, 1, 2, 3, 5, 6],
+    bits: 4,
+};
 
 /// Packs `region` (the whole width, from [`byte_region`]) of the picture in `src` for a colour panel: `palette.bits` a pixel, the
 /// first in the top bits, each the code of the nearest ink ([`Palette::code`]). Rows follow one another. `out` is cleared first;

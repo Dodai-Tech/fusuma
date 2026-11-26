@@ -1,0 +1,40 @@
+# The Waveshare ESP32-C6-Touch-AMOLED-2.16 (480x480, a CO5300 with a CST9220 touch). NOT RUN ON A BOARD: read from Waveshare's examples
+# (waveshareteam/ESP32-C6-Touch-AMOLED-2.16). The display has no reset pin (the chip's own software reset is used). Schema:
+# crates/fusuma-platform/board.schema.json.
+# MEMORY: a C6 has 512 KB and no PSRAM; the colour surface of this screen (460 KB at 16 bits a pixel) may not fit beside the
+# firmware; if it does not, the build or the first start says so (the choice of renderer is made from the free memory).
+name = "c6-amoled-216"
+title = "Waveshare ESP32-C6-Touch-AMOLED-2.16"
+about = "Waveshare ESP32-C6 2.16-inch AMOLED touch board (480x480, CO5300)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 480
+height = 480
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 0, d = [1, 2, 3, 4], cs = 15 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "panel"
+width_mm = 39
+height_mm = 39
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "cst92xx"
+bus = "i2c"
+pins = { sda = 8, scl = 7, rst = 11, int = 5 }
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

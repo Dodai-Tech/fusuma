@@ -61,15 +61,18 @@ esp_err_t fusuma_epd_init(const fusuma_epd_config_t *cfg) {
     if (err != ESP_OK) return err;
     if ((err = fusuma_gpio_output(s_dc, 0)) != ESP_OK) return err;
     if ((err = fusuma_gpio_output(s_rst, 1)) != ESP_OK) return err;
-    // The busy line is driven by the panel; a pull-down keeps it low (idle) if the panel is not there.
-    const gpio_config_t busy = {
-        .pin_bit_mask = 1ULL << s_busy,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    if ((err = gpio_config(&busy)) != ESP_OK) return err;
+    // The busy line is driven by the panel; a pull-down keeps it low (idle) if the panel is not there. A panel with no busy line (a
+    // reflective LCD) has none.
+    if (s_busy >= 0) {
+        const gpio_config_t busy = {
+            .pin_bit_mask = 1ULL << s_busy,
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_ENABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        if ((err = gpio_config(&busy)) != ESP_OK) return err;
+    }
 
     const spi_bus_config_t bus = {
         .sclk_io_num = cfg->sck,
@@ -128,6 +131,7 @@ esp_err_t fusuma_epd_reset(void) {
 }
 
 esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms, int active_low) {
+    if (s_busy < 0) return ESP_OK;
     TickType_t start = xTaskGetTickCount();
     // A short wait first: the line takes a moment to change after a command that starts work.
     vTaskDelay(pdMS_TO_TICKS(2));
