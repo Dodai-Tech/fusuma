@@ -785,6 +785,27 @@ impl<const N: usize> Tree<N> {
                     }
                 }
             }
+            Kind::Gauge { permille, .. } => {
+                // A gauge in cells: the value as a short bar with its number after it, `[#### ] 40%`.
+                let inner = rect.w.saturating_sub(2) as i32;
+                let full = (i64::from(inner) * i64::from(permille) / 1000) as i32;
+                let on = look.style(
+                    if disabled { c.border } else { c.primary },
+                    None,
+                    Attrs::NONE,
+                );
+                let off = look.style(c.border, None, Attrs::NONE);
+                pen.put(rect.x, row, '[', off);
+                for k in 0..inner {
+                    let (ch, st) = if k < full {
+                        (g.bar_full, on)
+                    } else {
+                        (g.bar_empty, off)
+                    };
+                    pen.put(rect.x + 1 + k, row, ch, st);
+                }
+                pen.put(rect.x + 1 + inner, row, ']', off);
+            }
             Kind::Slider { permille } => {
                 let span = rect.w.saturating_sub(1);
                 let at = (u64::from(span) * u64::from(permille) / 1000) as i32;

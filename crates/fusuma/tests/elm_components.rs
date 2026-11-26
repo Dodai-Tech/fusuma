@@ -472,3 +472,42 @@ fn a_pass_with_nothing_changed_makes_no_allocation_and_changes_nothing_on_the_sc
     assert_eq!(a.tree.paint_frame(&mut r, &THEME, BOUNDS).unwrap(), None);
     let _ = text("x");
 }
+
+#[test]
+fn a_gauge_draws_on_the_integer_renderer_at_every_size_and_value_and_follows_its_view() {
+    // The integer renderer holds about twenty segments of a stroked path: the arc must fit (once it did not, and nothing
+    // was drawn).
+    for size in [24u32, 48, 72, 96, 150] {
+        for v in [0u16, 1, 100, 500, 999, 1000] {
+            let mut t = Tree::<4>::new();
+            let root = t.column(None, Style::new().padding(4)).unwrap();
+            let g = t.gauge(Some(root), v, "42").unwrap();
+            t.set_style(
+                g,
+                Style::new()
+                    .width(Length::Fixed(size))
+                    .height(Length::Fixed(size)),
+            );
+            let mut r = screen();
+            t.update(&r, &THEME, BOUNDS);
+            t.paint(&mut r, &THEME)
+                .unwrap_or_else(|e| panic!("size {size}, value {v}: {e:?}"));
+        }
+    }
+    // As a view: the value and the text follow the state, and a pass with nothing changed draws nothing.
+    let mut tree = Tree::<8>::new();
+    let mut host = Host::<Msg, 8>::new();
+    let root = tree.column(None, Style::new()).unwrap();
+    host.sync(&mut tree, Some(root), &fusuma::gauge(250, "25").size(64))
+        .unwrap();
+    let g = tree.first_child(root).unwrap();
+    assert_eq!((tree.gauge_value(g), tree.text(g)), (Some(250), Some("25")));
+    host.sync(&mut tree, Some(root), &fusuma::gauge(900, "90").size(64))
+        .unwrap();
+    assert_eq!((tree.gauge_value(g), tree.text(g)), (Some(900), Some("90")));
+    assert_eq!(
+        tree.rect(g),
+        None.or(tree.rect(g)),
+        "the same node was kept"
+    );
+}

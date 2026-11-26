@@ -4,9 +4,9 @@
 use fusuma::Tone;
 use fusuma::{
     Children, alert, avatar, badge, banner, breadcrumbs, button, card, checkbox, chip, column,
-    divider, each, gestures, icon, item, menu, named, pagination, paragraph, progress, radio, row,
-    scroll, section, segmented, slider, snackbar, stat_card, stepper, steps, switch, tab, tab_bar,
-    tag, text, text_field, text_fmt, toast,
+    divider, each, gauge, gestures, icon, item, menu, named, pagination, paragraph, progress,
+    radio, row, scroll, section, segmented, slider, snackbar, stat_card, stepper, steps, switch,
+    tab, tab_bar, tag, text, text_field, text_fmt, toast,
 };
 use fusuma::{CrossAlign, Id, Length, Swipe, SwipeDir};
 
@@ -281,6 +281,8 @@ fn side_by_side<'a, C: Children<PageMsg> + 'a>(
 /// The Components page: messages, a segmented control, chips, breadcrumbs, pagination and steps. A tiny panel gets the
 /// few that fit.
 pub fn components<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
+    let mut shown = fusuma::SmallText::EMPTY;
+    let _ = core::fmt::Write::write_fmt(&mut shown, format_args!("{}", s.page_no));
     let chips = side_by_side(
         look,
         (
@@ -291,9 +293,27 @@ pub fn components<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
     );
     (
         (!look.lite).then(|| text("Components").title()),
-        alert(Tone::Warning, "Low battery", "12 percent left"),
-        banner(Tone::Success, "Saved"),
-        row((tag(Tone::Info, "New"), tag(Tone::Danger, "Offline"))).gap(look.sm),
+        column((
+            alert(Tone::Warning, "Low battery", "12 percent left"),
+            banner(Tone::Success, "Saved"),
+            row((tag(Tone::Info, "New"), tag(Tone::Danger, "Offline"))).gap(look.sm),
+        ))
+        .gap(look.sm)
+        .align(CrossAlign::Stretch),
+        row((
+            gauge(
+                u16::try_from(s.page_no * 1000 / PAGES).unwrap_or(1000),
+                shown.as_str(),
+            )
+            .size(if look.micro { 48 } else { 72 }),
+            column((
+                text("Gauge").caption(),
+                text("The page number below").caption(),
+            ))
+            .gap(2),
+        ))
+        .gap(look.md)
+        .align(CrossAlign::Center),
         segmented(&SEGMENT_NAMES, usize::from(s.segment), |i| {
             PageMsg::Segment(i as u8)
         }),

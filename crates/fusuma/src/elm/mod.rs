@@ -16,9 +16,9 @@ pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
 };
 pub use components::{
-    Breadcrumbs, PAGE_SLOTS, PageSlot, Pagination, Segmented, StepState, Steps, alert, banner,
-    breadcrumbs, chip, empty_state, page_window, pagination, segmented, skeleton, snackbar,
-    stat_card, step_state, steps, tag,
+    Breadcrumbs, Gauge, PAGE_SLOTS, PageSlot, Pagination, Segmented, StepState, Steps, alert,
+    banner, breadcrumbs, chip, empty_state, gauge, page_window, pagination, segmented, skeleton,
+    snackbar, stat_card, step_state, steps, tag,
 };
 pub use container::{
     Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, named,

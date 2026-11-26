@@ -10,6 +10,7 @@ mod damage;
 mod dialog;
 mod event;
 mod focus;
+mod gauge;
 mod gesture;
 mod hidden;
 mod iconed;

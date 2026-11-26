@@ -262,6 +262,11 @@ pub(crate) enum Kind {
     Progress {
         permille: u16,
     },
+    /// A gauge: an arc that fills to `permille` thousandths, with `text` in the middle (a speed, a heart rate).
+    Gauge {
+        permille: u16,
+        text: SmallText,
+    },
     Switch {
         text: SmallText,
         on: bool,
@@ -369,6 +374,7 @@ impl Kind {
             | Self::Radio { text, .. }
             | Self::Switch { text, .. }
             | Self::Tab { text, .. }
+            | Self::Gauge { text, .. }
             | Self::ListItem { text, .. } => Some(text),
             _ => None,
         }
@@ -386,6 +392,7 @@ impl Kind {
             | Self::Radio { text, .. }
             | Self::Switch { text, .. }
             | Self::Tab { text, .. }
+            | Self::Gauge { text, .. }
             | Self::ListItem { text, .. } => Some(text),
             _ => None,
         }
@@ -1099,6 +1106,27 @@ impl<const N: usize> Tree<N> {
             parent,
             Kind::Progress {
                 permille: permille.min(1000),
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Adds a gauge: an arc of 270 degrees filled to `permille` thousandths with `text` in the middle. Its size is square
+    /// and from the theme (give it a `Fixed` width and height in a style to change that).
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn gauge(
+        &mut self,
+        parent: Option<NodeId>,
+        permille: u16,
+        text: &str,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Gauge {
+                permille: permille.min(1000),
+                text: SmallText::new(text),
             },
             Style::DEFAULT,
         )

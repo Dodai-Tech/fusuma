@@ -518,3 +518,66 @@ impl<M: Clone> View<M> for Steps<'_> {
 }
 
 impl ViewMarker for Steps<'_> {}
+
+// ── Gauge ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// An arc of 270 degrees that fills with a value, with a short text in the middle (a speed, a heart rate, a battery).
+#[derive(Clone, Copy, Debug)]
+pub struct Gauge {
+    permille: u16,
+    text: SmallText,
+    size: Option<u32>,
+}
+
+/// A gauge filled to `permille` thousandths, `text` in the middle.
+#[must_use]
+pub fn gauge(permille: u16, text: &str) -> Gauge {
+    Gauge {
+        permille,
+        text: SmallText::new(text),
+        size: None,
+    }
+}
+
+impl Gauge {
+    /// `px` pixels across (the theme's size by default).
+    #[must_use]
+    pub const fn size(mut self, px: u32) -> Self {
+        self.size = Some(px);
+        self
+    }
+
+    fn sync<M: Clone, const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        node: NodeId,
+    ) {
+        cx.tree.set_gauge(node, self.permille);
+        cx.tree.set_text(node, self.text.as_str());
+        let style = match self.size {
+            Some(px) => Style::new()
+                .width(Length::Fixed(px))
+                .height(Length::Fixed(px)),
+            None => Style::new(),
+        };
+        cx.tree.set_style(node, style);
+    }
+}
+
+impl<M: Clone> View<M> for Gauge {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = cx.tree.gauge(parent, self.permille, self.text.as_str())?;
+        self.sync(cx, node);
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.sync(cx, node);
+    }
+}
+
+impl ViewMarker for Gauge {}

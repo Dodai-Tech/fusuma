@@ -317,6 +317,27 @@ impl<const N: usize> Tree<N> {
         }
     }
 
+    /// How full a gauge is, in thousandths.
+    #[must_use]
+    pub fn gauge_value(&self, id: NodeId) -> Option<u16> {
+        match self.nodes[self.slot(id)?].kind {
+            Kind::Gauge { permille, .. } => Some(permille),
+            _ => None,
+        }
+    }
+
+    /// Sets how full a gauge is, in thousandths (0 to 1000; more is 1000).
+    pub fn set_gauge(&mut self, id: NodeId, permille: u16) {
+        let Some(i) = self.slot(id) else { return };
+        let permille = permille.min(1000);
+        if let Kind::Gauge { permille: p, .. } = &mut self.nodes[i].kind
+            && *p != permille
+        {
+            *p = permille;
+            self.request(i, Flags::PAINT);
+        }
+    }
+
     /// Sets how full a progress bar is, in thousandths (0 to 1000; more is 1000).
     pub fn set_progress(&mut self, id: NodeId, permille: u16) {
         let Some(i) = self.slot(id) else { return };
@@ -382,6 +403,11 @@ impl<const N: usize> Tree<N> {
                 )
             }
             Kind::Progress { .. } => Size::new(0, theme.track_height),
+            Kind::Gauge { .. } if theme.cells => Size::new(theme.indicator.saturating_mul(4), 1),
+            Kind::Gauge { .. } => {
+                let side = theme.control_height.saturating_mul(2);
+                Size::new(side, side)
+            }
             Kind::TextInput { .. } if theme.cells => Size::new(24, 1),
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)
@@ -602,6 +628,36 @@ impl<const N: usize> Tree<N> {
                 if w > 0 {
                     let color = if n.disabled_eff { c.border } else { c.primary };
                     r.fill_rect(Rect::new(track.x, track.y, w, h), (h / 2).min(w / 2), color)?;
+                }
+                Ok(())
+            }
+            Kind::Gauge { permille, text } => {
+                let side = rect.w.min(rect.h);
+                let stroke = (side / 10).clamp(2, theme.track_height.max(2) * 2);
+                let sq = Rect::new(
+                    rect.x + (rect.w.saturating_sub(side) / 2) as i32,
+                    rect.y + (rect.h.saturating_sub(side) / 2) as i32,
+                    side,
+                    side,
+                );
+                crate::gauge::stroke_arc(r, sq, stroke, crate::gauge::SWEEP, c.surface_raised)?;
+                let color = if n.disabled_eff { c.border } else { c.primary };
+                let sweep = (i32::from(permille) * crate::gauge::SWEEP) / 1000;
+                crate::gauge::stroke_arc(r, sq, stroke, sweep, color)?;
+                if !text.as_str().is_empty() {
+                    // The number sits inside the ring: body size, a title on a big gauge.
+                    let role = if side > theme.control_height.saturating_mul(4) {
+                        crate::theme::TextRole::Title
+                    } else {
+                        crate::theme::TextRole::Body
+                    };
+                    let style = theme.text_style(role);
+                    let size = r.measure_text(text.as_str(), &style);
+                    let at = Point::new(
+                        sq.x + (side as i32 - size.w as i32) / 2,
+                        sq.y + (side as i32 - size.h as i32) / 2,
+                    );
+                    r.draw_text(text.as_str(), at, &style)?;
                 }
                 Ok(())
             }

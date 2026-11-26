@@ -276,6 +276,7 @@ impl<const N: usize> Tree<N> {
             | Kind::ListItem { .. }
             | Kind::Tab { .. }
             | Kind::Progress { .. }
+            | Kind::Gauge { .. }
             | Kind::Switch { .. }
             | Kind::Slider { .. }
             | Kind::Toast { .. }

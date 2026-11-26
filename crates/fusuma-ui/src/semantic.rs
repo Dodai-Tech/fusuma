@@ -218,6 +218,15 @@ impl<const N: usize> Tree<N> {
                 None,
                 Some(i32::from(*permille)),
             ),
+            Kind::Gauge { permille, text } => (
+                Role::Progress,
+                text.as_str(),
+                "",
+                None,
+                None,
+                None,
+                Some(i32::from(*permille)),
+            ),
             Kind::Slider { permille } => (
                 Role::Slider,
                 "",
