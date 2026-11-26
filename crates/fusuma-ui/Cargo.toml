@@ -23,7 +23,7 @@ fusuma-cells.workspace = true
 
 [dev-dependencies]
 fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
-fusuma-render-embedded.workspace = true
+fusuma-render-integer.workspace = true
 
 [lints]
 workspace = true

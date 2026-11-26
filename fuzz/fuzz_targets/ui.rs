@@ -5,7 +5,7 @@
 
 use fusuma_ui::{BuildError, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
-use fusuma_render_embedded::{Embedded, Frame};
+use fusuma_render_integer::{Embedded, Frame};
 use libfuzzer_sys::fuzz_target;
 
 const N: usize = 12;

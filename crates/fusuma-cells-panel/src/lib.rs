@@ -290,7 +290,7 @@ mod tests {
 
     use fusuma_cells::{Cell, Style};
     use fusuma_render::Probe;
-    use fusuma_render_embedded::{Embedded, Frame};
+    use fusuma_render_integer::{Embedded, Frame};
 
     use super::*;
 

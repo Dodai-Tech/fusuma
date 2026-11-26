@@ -7,7 +7,7 @@ use fusuma::{
     Children, Program, Runner, Sub, Task, button, card, column, named, row, show, text_fmt, toast,
 };
 use fusuma_render::{Point, Rect};
-use fusuma_render_embedded::{Embedded, Frame};
+use fusuma_render_integer::{Embedded, Frame};
 use fusuma_ui::{App, Id, Pointer, Screen, Shell};
 
 const TOAST: Id = Id::new(1);

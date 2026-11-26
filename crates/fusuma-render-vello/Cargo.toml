@@ -32,7 +32,7 @@ wgpu = { workspace = true, features = ["webgpu"] }
 
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
-fusuma-render-embedded.workspace = true
+fusuma-render-integer.workspace = true
 # The GPU text test compares against the CPU drawing the same font.
 fusuma-render-vello-cpu = { workspace = true, features = ["std", "text"] }
 fusuma-fonts = { workspace = true, features = ["preset-fusuma"] }

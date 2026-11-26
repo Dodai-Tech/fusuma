@@ -12,7 +12,7 @@ libfuzzer-sys = "0.4"
 fusuma-render = { path = "../crates/fusuma-render" }
 fusuma-anim = { path = "../crates/fusuma-anim" }
 fusuma-ui = { path = "../crates/fusuma-ui" }
-fusuma-render-embedded = { path = "../crates/fusuma-render-embedded" }
+fusuma-render-integer = { path = "../crates/fusuma-render-integer" }
 fusuma-render-vello-cpu = { path = "../crates/fusuma-render-vello-cpu" }
 
 # Not part of the main workspace (needs nightly).

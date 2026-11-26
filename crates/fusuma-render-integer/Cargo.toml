@@ -1,8 +1,8 @@
 [package]
-name = "fusuma-render-embedded"
+name = "fusuma-render-integer"
 description = "Fusuma renderer backend for microcontroller displays: integer drawing on any embedded-graphics RGB565 target (no_std, no allocator)"
 readme = "README.md"
-documentation = "https://docs.rs/fusuma-render-embedded"
+documentation = "https://docs.rs/fusuma-render-integer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

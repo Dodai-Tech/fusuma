@@ -60,7 +60,7 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-ui`](crates/fusuma-ui) | the toolkit: widget tree, layout, theme and palettes, events, focus, scrolling, dialogs, text input, paint | yes, no allocator |
 | [`fusuma-anim`](crates/fusuma-anim) | easing, tweens, keyframes, springs, fling decay, clips, in fixed point | yes |
 | [`fusuma-render`](crates/fusuma-render) | the `Renderer` trait, geometry, colours, paths, the conformance suite every backend passes | yes |
-| [`fusuma-render-embedded`](crates/fusuma-render-embedded) | the integer renderer for microcontrollers: RGB565, smooth text from glyph atlases, smooth shapes | yes |
+| [`fusuma-render-integer`](crates/fusuma-render-integer) | the integer renderer for microcontrollers: RGB565, smooth text from glyph atlases, smooth shapes | yes |
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu), [`fusuma-render-vello`](crates/fusuma-render-vello) | Vello on the CPU and on the GPU (`wgpu`), sharing [`-vello-common`](crates/fusuma-render-vello-common) | CPU with `libm` |
 | [`fusuma-text`](crates/fusuma-text) | Parley layout over the linked fonts | with alloc |
 | [`fusuma-fonts`](crates/fusuma-fonts) | the font catalog: ten OFL families, five presets, Material Symbols icons, one feature each; glyph atlases | yes |

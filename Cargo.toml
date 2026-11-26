@@ -2,7 +2,7 @@
 resolver = "3"
 members = [
     "crates/fusuma-render",
-    "crates/fusuma-render-embedded",
+    "crates/fusuma-render-integer",
     "crates/fusuma-anim",
     "crates/fusuma",
     "crates/fusuma-ui",
@@ -45,7 +45,7 @@ toml = { version = "1", default-features = false, features = ["parse", "serde", 
 ab_glyph = "0.2"
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 fusuma-render = { path = "crates/fusuma-render", version = "0.2.0" }
-fusuma-render-embedded = { path = "crates/fusuma-render-embedded", version = "0.2.0" }
+fusuma-render-integer = { path = "crates/fusuma-render-integer", version = "0.2.0" }
 embedded-graphics = "0.8.2"
 fusuma-render-vello = { path = "crates/fusuma-render-vello", version = "0.2.0" }
 fusuma-render-vello-cpu = { path = "crates/fusuma-render-vello-cpu", version = "0.2.0", default-features = false }

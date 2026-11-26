@@ -5,7 +5,7 @@
 use allocation_counter::measure;
 use fusuma::{Host, View, button, card, checkbox, column, named, row, show, text, text_fmt};
 use fusuma_render::{Color, Point, Probe, Rect, Renderer};
-use fusuma_render_embedded::{Embedded, Frame};
+use fusuma_render_integer::{Embedded, Frame};
 use fusuma_ui::{ActionKind, ButtonVariant, CrossAlign, Pointer, Style, TextRole, Theme, Tree};
 
 const W: u16 = 240;

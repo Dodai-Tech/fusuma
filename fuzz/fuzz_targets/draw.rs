@@ -4,7 +4,7 @@
 
 use libfuzzer_sys::fuzz_target;
 use fusuma_render::{Align, Color, Image, PathCmd, Point, Probe, Rect, Renderer, TextStyle};
-use fusuma_render_embedded::{Embedded, Frame};
+use fusuma_render_integer::{Embedded, Frame};
 
 
 struct Bytes<'a>(&'a [u8]);

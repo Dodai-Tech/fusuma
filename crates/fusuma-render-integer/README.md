@@ -1,4 +1,4 @@
-# fusuma-render-embedded
+# fusuma-render-integer
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dodai-Tech/fusuma/blob/main/LICENSE)
 

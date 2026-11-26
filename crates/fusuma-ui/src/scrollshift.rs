@@ -236,7 +236,7 @@ impl<const N: usize> Tree<N> {
 #[cfg(test)]
 mod tests {
     use fusuma_render::{Color, Point, Probe, Rect, Renderer, Size, TextStyle};
-    use fusuma_render_embedded::{Embedded, Frame};
+    use fusuma_render_integer::{Embedded, Frame};
     use fusuma_render_vello_cpu::{Scene, VelloCpu};
 
     use crate::event::Pointer;

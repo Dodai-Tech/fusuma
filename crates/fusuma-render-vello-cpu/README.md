@@ -17,7 +17,7 @@ let png = fusuma_render_vello_cpu::png(&r).unwrap();
 assert_eq!(&png[1..4], b"PNG");
 ```
 
-Text is vector (Parley layout, drawn as glyph runs) with the `text` feature and the families `fusuma-fonts` links (`set_fonts` picks them), else the same bitmap fonts as `fusuma-render-embedded`. Vello's glyph runs
+Text is vector (Parley layout, drawn as glyph runs) with the `text` feature and the families `fusuma-fonts` links (`set_fonts` picks them), else the same bitmap fonts as `fusuma-render-integer`. Vello's glyph runs
 (real fonts, shaping) come with the text stack.
 
 `no_std` with `alloc` for a microcontroller: `default-features = false, features = ["libm"]` (the PNG output needs `std`). Built for the ESP32-S3 and the ESP32-C6 targets, run on the S3.

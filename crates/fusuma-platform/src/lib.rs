@@ -22,7 +22,7 @@ pub struct Machine {
 /// A renderer backend. Each is a crate of Fusuma and passes the same conformance suite.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Backend {
-    /// `fusuma-render-embedded`: integer drawing straight into RGB565; the lightest and fastest, and the one for
+    /// `fusuma-render-integer`: integer drawing straight into RGB565; the lightest and fastest, and the one for
     /// chips where Vello has no SIMD (every microcontroller).
     Integer,
     /// `fusuma-render-vello-cpu`: the richest CPU backend, for machines where Vello has SIMD.
@@ -65,7 +65,7 @@ impl Backend {
     #[must_use]
     pub const fn crate_name(self) -> &'static str {
         match self {
-            Self::Integer => "fusuma-render-embedded",
+            Self::Integer => "fusuma-render-integer",
             Self::VelloCpu => "fusuma-render-vello-cpu",
             Self::VelloGpu => "fusuma-render-vello",
         }

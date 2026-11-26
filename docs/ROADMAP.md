@@ -65,16 +65,37 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 
 ## Crates
 
+How the crates are layered (the same idea as Xilem over Masonry, or Iced over its widgets: the project-named crate is the API
+apps use, the toolkit sits below it, and every host and every heavy dependency has a crate of its own):
+
+```
+fusuma                       the front door: the Elm API (Program, views, Task, Sub); the toolkit as fusuma::ui; feature switches
+  fusuma-ui                  the complete toolkit: engine (tree, layout, damage, events), every widget, themes, hooks
+    fusuma-render            the contract: the Renderer trait, geometry, colour, text types, conformance suite (no_std, no deps)
+      fusuma-render-integer  the integer engine for chips (no_std, no allocator)
+      fusuma-render-vello*   Vello on the CPU and the GPU
+  fusuma-text, -fonts        shaping and bundled fonts (optional, by feature)
+  fusuma-platform-*          hosts: desktop (winit), embedded (Board) + esp, tui (crossterm), console (any writer)
+  fusuma-cells, -cells-panel the text UI
+  fusuma-test, -palette      the simulator, palette generation
+```
+
+A crate is split from its neighbour only for one of three reasons: a heavy dependency (Vello, `winit`, `crossterm`,
+`esp-idf-svc`) that a chip must never link, a different target (`no_std` against `std`), or a different audience (backend
+authors, app authors, platform authors). Features choose what an app gets: `renderer-integer`, `renderer-vello-cpu`,
+`renderer-vello-gpu`, `fonts-*`, `icons`; **a desktop app never compiles the integer renderer and a chip never compiles
+Vello.** Not done: presets (`desktop`, `web`, `embedded`), a CI `cargo tree` check that proves those opt-outs, merging the
+three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build script and the board crates use it on its own).
+
 | Crate | What | `no_std` |
 |---|---|---|
-| `fusuma` | the facade an app adds: re-exports the toolkit and, by feature, `render`, `anim`, `platform`, `text`, `fonts` and the backends | with `default-features = false` |
+| `fusuma` | **the front door apps add**: the Elm architecture at the top (`Program`, `Runner`, `Task`, `Sub`, the views `button`, `column`, `card`, `each`, `memo`, `animate`, `class`), the toolkit as `fusuma::ui`, and by feature `render`, `anim`, `platform`, `text`, `fonts` and the renderer backends | with `default-features = false` |
 | `fusuma-ui` | the toolkit: widget tree, layout (measures only what changed), theme, palettes and style hooks, events, focus, scrolling, dialogs, menus, toasts, tabs, text and wrapped text, gestures, slides, virtual lists, hidden nodes, app ids, the semantic tree, the cell paint pass, `Shell`, `App`, `Wake` | yes, no allocator |
-| `fusuma-view` | the Elm-style view layer: views for every widget, tuples, `show`, `each`, `memo`, `named`, `class`, `animate`, `Host`, `Program`, `Runner`, `Task`, `Sub` | yes, no allocator |
 | `fusuma-test` | the simulator: find, click, activate, type, time, messages, scripts, PNGs, on a program | no |
 | `fusuma-palette` | palettes from a seed colour in OKLCH with readable text guaranteed | no |
 | `fusuma-anim` | fixed-point easing, tweens, keyframes, springs, fling decay, clips, an animator, drag helpers | yes |
 | `fusuma-render` | the `Renderer` trait, geometry, colours, paths, text styles, the conformance suite | yes |
-| `fusuma-render-embedded` | the integer renderer: RGB565, kerned smooth text from glyph atlases, smooth shapes, strokes, paths and images with alpha in integer maths, pixel-shift scrolling | yes |
+| `fusuma-render-integer` | the integer renderer: RGB565, kerned smooth text from glyph atlases, smooth shapes, strokes, paths and images with alpha in integer maths, pixel-shift scrolling | yes |
 | `fusuma-render-vello-common`, `-vello-cpu`, `-vello` | the `Renderer` on Vello, on the CPU and on the GPU (`wgpu`) | CPU with `libm` |
 | `fusuma-text` | Parley layout over the linked font families, cached | with alloc |
 | `fusuma-fonts` | the font catalog (families, presets, icons), `FontSet`, glyph atlases made at build time | yes |
@@ -236,7 +257,7 @@ The Elm architecture on the retained tree (design in Decisions). Gates for every
 session, a node at most 184 bytes (aim 128), a view pass under 1 ms on the S3, a small update still 12 ms on the watch,
 the same pixels as the hand-built page, a message log that replays to the same state.
 
-- [x] **`fusuma-view`**: `update` is the only place state changes, `view(&State)` describes the screen, and the layer makes
+- [x] **The Elm layer** (now in `fusuma` itself, `fusuma::Program`, `fusuma::button`; the toolkit is `fusuma::ui`): `update` is the only place state changes, `view(&State)` describes the screen, and the layer makes
   the tree match it. Views are values made on the stack and thrown away (the tree is the previous state: setters compare
   first, so only what differs asks for layout or drawing). Children are tuples, `Option` (the page's shape) and `show`
   (hidden nodes, state kept); `named` gives a node an app id; messages are `Copy` values in a fixed table next to the node

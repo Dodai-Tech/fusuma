@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn the_same_scene_looks_the_same_as_on_the_integer_backend() {
-        use fusuma_render_embedded::{Embedded, Frame};
+        use fusuma_render_integer::{Embedded, Frame};
         let mut a = new(180, 120).unwrap();
         let mut b = Embedded::new(Frame::new(180, 120, vec![0u16; 180 * 120]).unwrap());
         scene(&mut a);
@@ -553,7 +553,7 @@ mod tests {
     #[test]
     fn curves_agree_with_the_integer_backend_except_on_their_edges() {
         use fusuma_render::triangle;
-        use fusuma_render_embedded::{Embedded, Frame};
+        use fusuma_render_integer::{Embedded, Frame};
         fn curves<R: fusuma_render::Renderer>(r: &mut R) {
             r.clear(Color::BLACK).unwrap();
             r.fill_circle(Point::new(40, 40), 25, Color::WHITE).unwrap();

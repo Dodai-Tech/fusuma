@@ -32,7 +32,7 @@ fusuma-text = { workspace = true, optional = true }
 [dev-dependencies]
 fusuma-fonts = { workspace = true, features = ["preset-fusuma", "material-symbols", "lucide", "phosphor"] }
 fusuma-render = { workspace = true, features = ["conformance"] }
-fusuma-render-embedded.workspace = true
+fusuma-render-integer.workspace = true
 
 [lints]
 workspace = true

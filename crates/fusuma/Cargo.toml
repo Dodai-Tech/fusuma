@@ -21,7 +21,7 @@ libm = ["fusuma-render-vello-cpu?/libm"]
 # Reading renderer settings from TOML (`fusuma.toml`).
 toml = ["fusuma-platform/toml"]
 # Renderer backends, each linked only when asked for. The platform picks among those linked.
-renderer-integer = ["dep:fusuma-render-embedded"]
+renderer-integer = ["dep:fusuma-render-integer"]
 renderer-vello-cpu = ["dep:fusuma-render-vello-cpu"]
 renderer-vello-gpu = ["dep:fusuma-render-vello"]
 # `fusuma::text`: Parley layout over the linked font families, for an app that lays out text itself.
@@ -33,7 +33,7 @@ fonts = [
     "dep:fusuma-fonts",
     "fusuma-render-vello-cpu?/text",
     "fusuma-render-vello?/text",
-    "fusuma-render-embedded?/fonts",
+    "fusuma-render-integer?/fonts",
 ]
 # Inter and JetBrains Mono, the default.
 fonts-fusuma = ["fonts", "fusuma-fonts/preset-fusuma"]
@@ -63,7 +63,7 @@ fusuma-cells.workspace = true
 fusuma-platform.workspace = true
 fusuma-text = { workspace = true, optional = true }
 fusuma-fonts = { workspace = true, optional = true, default-features = false }
-fusuma-render-embedded = { workspace = true, optional = true }
+fusuma-render-integer = { workspace = true, optional = true }
 fusuma-render-vello-cpu = { workspace = true, optional = true }
 fusuma-render-vello = { workspace = true, optional = true }
 
@@ -72,5 +72,5 @@ workspace = true
 
 [dev-dependencies]
 fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
-fusuma-render-embedded.workspace = true
+fusuma-render-integer.workspace = true
 allocation-counter = "0.8.1"

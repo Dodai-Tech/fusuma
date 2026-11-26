@@ -40,7 +40,7 @@ pub use fusuma_fonts as fonts;
 pub mod renderers {
     /// The integer, `no_std` renderer for microcontroller displays (`renderer-integer`).
     #[cfg(feature = "renderer-integer")]
-    pub use fusuma_render_embedded as embedded;
+    pub use fusuma_render_integer as embedded;
     /// Vello on a GPU (`renderer-vello-gpu`).
     #[cfg(feature = "renderer-vello-gpu")]
     pub use fusuma_render_vello as vello_gpu;
