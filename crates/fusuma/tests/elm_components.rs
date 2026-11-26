@@ -897,3 +897,49 @@ fn a_spinner_in_a_view_turns_and_a_bottom_sheet_rises_from_the_bottom_edge_and_i
     s.frame();
     assert_eq!(s.tree.rect(sheet(&s)).map(|r| r.h), Some(0));
 }
+
+#[test]
+fn a_grid_view_makes_equal_columns_and_a_keypad_of_buttons_presses() {
+    let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+    let v = fusuma::grid(
+        3,
+        (
+            fusuma::button("1").on_press(M2::Go(1)),
+            fusuma::button("2").on_press(M2::Go(2)),
+            fusuma::button("3").on_press(M2::Go(3)),
+            fusuma::button("4").on_press(M2::Go(4)),
+            fusuma::button("5").on_press(M2::Go(5)),
+            fusuma::button("6").on_press(M2::Go(6)),
+            fusuma::button("7").on_press(M2::Go(7)),
+            fusuma::button("8").on_press(M2::Go(8)),
+            fusuma::button("9").on_press(M2::Go(9)),
+            fusuma::button("*").on_press(M2::Go(10)),
+            fusuma::button("0").on_press(M2::Go(0)),
+            fusuma::button("#").on_press(M2::Go(11)),
+        ),
+    )
+    .width(Length::Fill(1))
+    .gap(4);
+    let mut a = Mini::new(&v);
+    a.frame();
+    let rects: Vec<Rect> = keys
+        .iter()
+        .map(|k| {
+            a.tree
+                .rect(a.tree.semantics().find(|s| s.name == *k).unwrap().id)
+                .unwrap()
+        })
+        .collect();
+    assert!(rects.iter().all(|r| r.w == rects[0].w), "equal columns");
+    assert_eq!(rects[0].x, rects[3].x);
+    assert_eq!(rects[1].x, rects[0].x + rects[0].w as i32 + 4);
+    assert_eq!(rects[3].y, rects[0].y + rects[0].h as i32 + 4);
+    assert_eq!(
+        rects[11].y,
+        rects[0].y + 3 * (rects[0].h as i32 + 4),
+        "four rows"
+    );
+    assert!(rects.iter().all(|r| r.right() <= i32::from(W)));
+    assert_eq!(a.tap("7"), Some(M2::Go(7)));
+    assert_eq!(a.tap("#"), Some(M2::Go(11)));
+}

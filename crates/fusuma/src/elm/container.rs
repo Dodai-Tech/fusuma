@@ -10,6 +10,7 @@ enum Shape {
     Column,
     Row,
     Wrap,
+    Grid(u8),
     Card,
 }
 
@@ -52,6 +53,17 @@ pub const fn row<C>(children: C) -> Row<C> {
 pub const fn wrap<C>(children: C) -> Row<C> {
     Container {
         shape: Shape::Wrap,
+        style: Style::DEFAULT,
+        children,
+    }
+}
+
+/// `cols` columns of equal width, each row as tall as its tallest cell (give it `.width(Length::Fill(1))` or a fixed width; the
+/// gap is between cells and between rows): a launcher, a settings grid, a keypad.
+#[must_use]
+pub const fn grid<C>(cols: u8, children: C) -> Row<C> {
+    Container {
+        shape: Shape::Grid(cols),
         style: Style::DEFAULT,
         children,
     }
@@ -138,6 +150,7 @@ impl<M: Clone, C: Children<M>> View<M> for Container<C> {
         let node = match self.shape {
             Shape::Row => cx.tree.row(parent, self.style())?,
             Shape::Wrap => cx.tree.flow(parent, self.style())?,
+            Shape::Grid(cols) => cx.tree.grid(parent, cols, self.style())?,
             Shape::Column | Shape::Card => cx.tree.column(parent, self.style())?,
         };
         self.children.build_all(cx, node)?;

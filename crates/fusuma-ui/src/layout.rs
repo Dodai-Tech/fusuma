@@ -132,7 +132,7 @@ impl<const N: usize> Tree<N> {
                 // A new screen: a flow wraps at what the screen gives it again, not at the width it had (which could only ever
                 // make it narrower).
                 for n in &mut self.nodes {
-                    if let Kind::Flow { wrap_w } = &mut n.kind {
+                    if let Kind::Flow { wrap_w, .. } = &mut n.kind {
                         *wrap_w = 0;
                     }
                 }
@@ -201,7 +201,7 @@ impl<const N: usize> Tree<N> {
     fn settle_paragraphs(&mut self) -> bool {
         let mut changed = false;
         for n in &mut self.nodes {
-            if let Kind::Paragraph { wrap_w, .. } | Kind::Flow { wrap_w } = &mut n.kind
+            if let Kind::Paragraph { wrap_w, .. } | Kind::Flow { wrap_w, .. } = &mut n.kind
                 && n.alive
             {
                 let width = n.rect.w.saturating_sub(n.style.padding.saturating_mul(2));
@@ -302,14 +302,19 @@ impl<const N: usize> Tree<N> {
                 };
                 Self::measure_paragraph(renderer, theme, text.as_str(), role, wrap)
             }
-            Kind::Flow { wrap_w } => {
+            Kind::Flow { wrap_w, cols } => {
                 // Wrapped to its own width if that is fixed, else the one it was last placed at, else the screen's.
                 let avail = match n.style.width {
                     Length::Fixed(w) => w.saturating_sub(pad),
                     _ if wrap_w > 0 => wrap_w,
                     _ => self.bounds.map_or(u32::MAX, |b| b.w).saturating_sub(pad),
                 };
-                self.flow_size(i, avail)
+                self.flow_size(
+                    i,
+                    avail,
+                    cols,
+                    n.style.width == Length::Content && wrap_w == 0,
+                )
             }
             Kind::Spacer => Size::new(0, 0),
             Kind::Checkbox { .. }
@@ -368,16 +373,38 @@ impl<const N: usize> Tree<N> {
         c
     }
 
+    /// How wide a grid's columns are at `avail`: its width shared out, or, when it has no width of its own yet (`natural`), as
+    /// wide as the widest cell.
+    fn grid_cell(&self, i: usize, avail: u32, cols: u8, natural: bool) -> u32 {
+        let gaps = self.nodes[i]
+            .style
+            .gap
+            .saturating_mul(u32::from(cols).saturating_sub(1));
+        let shared = avail.saturating_sub(gaps) / u32::from(cols.max(1));
+        if !natural {
+            return shared;
+        }
+        let mut widest = 0;
+        let mut c = self.live(self.nodes[i].first);
+        while let Some(ci) = c {
+            widest = widest.max(self.nodes[usize::from(ci)].size.w);
+            c = self.live(self.nodes[usize::from(ci)].next);
+        }
+        widest.min(shared)
+    }
+
     /// The next child of flow `i` and where it goes, breaking lines at `avail` (a child wider than that has a line of its
-    /// own): `(child, x, y, line height)`. Start with [`FlowCursor::new`]; `None` at the end. Nothing is allocated, so a
-    /// layout walks the children once.
+    /// own) or, in a grid, after `cols` cells of width `cell`: `(child, x, y, line height, width)`. `None` at the end. Nothing
+    /// is allocated, so a layout walks the children once.
     fn flow_next(
         &self,
         i: usize,
         avail: u32,
+        grid: (u8, u32),
         cur: &mut FlowCursor,
-    ) -> Option<(usize, u32, u32, u32)> {
+    ) -> Option<(usize, u32, u32, u32, u32)> {
         let gap = self.nodes[i].style.gap;
+        let (cols, cell) = grid;
         if cur.left == 0 {
             // Start a line: how many children fit it, and how tall it is.
             let at = if cur.started {
@@ -390,15 +417,24 @@ impl<const N: usize> Tree<N> {
             let mut d = Some(first);
             while let Some(di) = d {
                 let s = self.nodes[usize::from(di)].size;
-                let add = if count > 0 {
-                    gap.saturating_add(s.w)
+                if cols > 0 {
+                    if count == u32::from(cols) {
+                        break;
+                    }
+                    width = width
+                        .saturating_add(if count > 0 { gap } else { 0 })
+                        .saturating_add(cell);
                 } else {
-                    s.w
-                };
-                if count > 0 && width.saturating_add(add) > avail {
-                    break;
+                    let add = if count > 0 {
+                        gap.saturating_add(s.w)
+                    } else {
+                        s.w
+                    };
+                    if count > 0 && width.saturating_add(add) > avail {
+                        break;
+                    }
+                    width = width.saturating_add(add);
                 }
-                width = width.saturating_add(add);
                 height = height.max(s.h);
                 count += 1;
                 d = self.live(self.nodes[usize::from(di)].next);
@@ -415,20 +451,27 @@ impl<const N: usize> Tree<N> {
             cur.widest = cur.widest.max(width);
         }
         let ci = cur.next?;
-        let out = (usize::from(ci), cur.x, cur.y, cur.line_h);
-        cur.x = cur
-            .x
-            .saturating_add(self.nodes[usize::from(ci)].size.w)
-            .saturating_add(gap);
+        let w = if cols > 0 {
+            cell
+        } else {
+            self.nodes[usize::from(ci)].size.w
+        };
+        let out = (usize::from(ci), cur.x, cur.y, cur.line_h, w);
+        cur.x = cur.x.saturating_add(w).saturating_add(gap);
         cur.next = self.live(self.nodes[usize::from(ci)].next);
         cur.left -= 1;
         Some(out)
     }
 
     /// The size of flow `i` wrapped at `avail`: the widest line and the height of all lines.
-    fn flow_size(&self, i: usize, avail: u32) -> Size {
+    fn flow_size(&self, i: usize, avail: u32, cols: u8, natural: bool) -> Size {
+        let cell = if cols > 0 {
+            self.grid_cell(i, avail, cols, natural)
+        } else {
+            0
+        };
         let mut cur = FlowCursor::default();
-        while self.flow_next(i, avail, &mut cur).is_some() {}
+        while self.flow_next(i, avail, (cols, cell), &mut cur).is_some() {}
         let h = if cur.started {
             cur.y.saturating_add(cur.line_h)
         } else {
@@ -451,8 +494,12 @@ impl<const N: usize> Tree<N> {
             }
             c = self.nodes[ci].next;
         }
+        let (cols, cell) = match self.nodes[i].kind {
+            Kind::Flow { cols, .. } if cols > 0 => (cols, self.grid_cell(i, inner.w, cols, false)),
+            _ => (0, 0),
+        };
         let mut cur = FlowCursor::default();
-        while let Some((ci, x, y, line_h)) = self.flow_next(i, inner.w, &mut cur) {
+        while let Some((ci, x, y, line_h, w)) = self.flow_next(i, inner.w, (cols, cell), &mut cur) {
             let s = self.nodes[ci].size;
             let h = match (self.nodes[ci].style.height, st.align) {
                 (Length::Fixed(f), _) => f,
@@ -468,7 +515,7 @@ impl<const N: usize> Tree<N> {
             let rect = Rect::new(
                 offset(inner.x, i64::from(x)),
                 offset(inner.y, i64::from(y) + i64::from(dy)),
-                s.w,
+                w,
                 h,
             );
             self.set_rect(ci, rect.translate(i32::from(sx), i32::from(sy)));
@@ -685,6 +732,73 @@ mod tests {
         let (t, k, f) = flow_of(7, 30, 10, 5, 1000, CrossAlign::Start, false);
         assert!(k.iter().all(|c| rect(&t, *c).y == 0));
         assert_eq!(rect(&t, f).h, 10);
+    }
+
+    fn grid_of(
+        cols: u8,
+        n: usize,
+        gap: u32,
+        width: Length,
+        room: u32,
+    ) -> (
+        Tree<64>,
+        std::vec::Vec<crate::tree::NodeId>,
+        crate::tree::NodeId,
+    ) {
+        let mut t = Tree::<64>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let g = t
+            .grid(Some(root), cols, Style::new().width(width).gap(gap))
+            .unwrap();
+        let kids = (0..n)
+            .map(|i| {
+                t.spacer(
+                    Some(g),
+                    fixed(10 + (i as u32 % 2) * 5, 8 + (i as u32 % 3) * 4),
+                )
+                .unwrap()
+            })
+            .collect();
+        t.update(&screen(), &THEME, Rect::new(0, 0, room, 300));
+        (t, kids, g)
+    }
+
+    #[test]
+    fn a_grid_shares_its_width_in_equal_columns_and_each_row_is_as_tall_as_its_tallest_cell() {
+        // 100 wide, 3 columns, gap 5: (100 - 10) / 3 = 30 each.
+        let (t, k, g) = grid_of(3, 7, 5, Length::Fill(1), 100);
+        let at = |i: usize| rect(&t, k[i]);
+        for i in 0..7 {
+            assert_eq!(at(i).w, 30, "cell {i} is a column wide");
+            assert_eq!(at(i).x, (i as i32 % 3) * 35, "cell {i}");
+        }
+        // Row heights: cells 0..2 are 8, 12, 16 tall -> 16; cells 3..5 are 8, 12, 16 -> 16; cell 6 is 8.
+        assert_eq!((at(0).y, at(3).y, at(6).y), (0, 21, 42));
+        assert_eq!(rect(&t, g).h, 16 + 5 + 16 + 5 + 8);
+        assert_eq!(rect(&t, g).w, 100);
+        // A fixed width does the same; one column is a column of full-width cells.
+        let (t, k, _) = grid_of(2, 4, 0, Length::Fixed(80), 300);
+        assert!(k.iter().all(|c| rect(&t, *c).w == 40));
+        let (t, k, _) = grid_of(1, 3, 2, Length::Fill(1), 60);
+        assert!(
+            k.iter()
+                .all(|c| rect(&t, *c).w == 60 && rect(&t, *c).x == 0)
+        );
+        // Fewer cells than columns: the row is not stretched to fill, the cells keep their column width.
+        let (t, k, _) = grid_of(4, 2, 0, Length::Fill(1), 100);
+        assert_eq!((rect(&t, k[0]).w, rect(&t, k[1]).x), (25, 25));
+    }
+
+    #[test]
+    fn a_grid_with_no_width_of_its_own_has_columns_as_wide_as_its_widest_cell_and_follows_the_screen()
+     {
+        let (t, k, g) = grid_of(3, 6, 4, Length::Content, 300);
+        // Widest cell is 15: three columns and two gaps.
+        assert_eq!(rect(&t, g).w, 15 * 3 + 4 * 2);
+        assert!(k.iter().all(|c| rect(&t, *c).w == 15));
+        // A screen narrower than that squeezes the columns.
+        let (t, _, g) = grid_of(3, 6, 4, Length::Content, 30);
+        assert!(rect(&t, g).w <= 30, "{}", rect(&t, g).w);
     }
 
     #[test]

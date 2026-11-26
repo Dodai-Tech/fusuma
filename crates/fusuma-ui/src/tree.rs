@@ -220,6 +220,8 @@ pub(crate) enum Kind {
     /// it was last laid out at (0 until the first pass), which a line's breaks depend on.
     Flow {
         wrap_w: u32,
+        /// 0 for a row that wraps; else a grid: this many equal columns, each row as tall as its tallest cell.
+        cols: u8,
     },
     Label {
         text: SmallText,
@@ -909,7 +911,29 @@ impl<const N: usize> Tree<N> {
     /// # Errors
     /// [`BuildError`] when the node cannot be added there.
     pub fn flow(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
-        self.add(parent, Kind::Flow { wrap_w: 0 }, style)
+        self.add(parent, Kind::Flow { wrap_w: 0, cols: 0 }, style)
+    }
+
+    /// Adds a grid: `cols` columns of equal width (the width of the grid shared out), each row as tall as its tallest cell; `gap` is
+    /// between cells and between rows. Cells keep their own height unless the grid aligns with [`CrossAlign::Stretch`]. Give it
+    /// `Length::Fill(1)` or a fixed width; else the columns are as wide as the widest cell.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn grid(
+        &mut self,
+        parent: Option<NodeId>,
+        cols: u8,
+        style: Style,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Flow {
+                wrap_w: 0,
+                cols: cols.max(1),
+            },
+            style,
+        )
     }
 
     /// Adds an icon: the character `icon` of the icon font (look it up by name with `fusuma::fonts::FontSet::icon`),

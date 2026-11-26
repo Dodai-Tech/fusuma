@@ -22,8 +22,8 @@ pub use components::{
     segmented, skeleton, snackbar, spinner, stat_card, step_state, steps, tag, timeline,
 };
 pub use container::{
-    Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, named,
-    row, show, wrap,
+    Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, grid,
+    named, row, show, wrap,
 };
 pub use host::Host;
 pub use keyed::{Custom, Each, Imperative, Memo, each, imperative, memo};
