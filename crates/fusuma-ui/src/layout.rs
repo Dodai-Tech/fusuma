@@ -70,6 +70,7 @@ impl<const N: usize> Tree<N> {
     /// only the changed subtrees can follow without changing this interface.
     pub fn update<M: fusuma_render::Measure>(&mut self, renderer: &M, theme: &Theme, bounds: Rect) {
         self.update_disabled();
+        self.shadow_reach = theme.elevation.saturating_mul(2);
         self.layout(renderer, theme, bounds);
     }
 

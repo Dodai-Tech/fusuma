@@ -376,6 +376,9 @@ impl<const N: usize> Tree<N> {
         };
         let look = theme.panel_in(self.nodes[i].class, kind);
         let radius = look.radius;
+        if let Some(shadow) = look.shadow {
+            r.draw_shadow(rect, radius, shadow)?;
+        }
         r.fill_rect(rect, radius, look.fill)?;
         if let Some(border) = look.border {
             r.stroke_rect(rect, radius, theme.border_width, border)?;
@@ -855,6 +858,7 @@ mod tests {
             Capabilities {
                 alpha: false,
                 antialiasing: true,
+                effects: false,
             }
         }
         fn save(&mut self) -> Result<(), Self::Error> {

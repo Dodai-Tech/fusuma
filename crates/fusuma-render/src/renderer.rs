@@ -1,6 +1,7 @@
 //! The [`Renderer`] trait: what a backend must draw.
 
 use crate::color::Color;
+use crate::effects::{self, Gradient, Shadow};
 use crate::geometry::{Point, Rect, Size};
 use crate::image::Image;
 use crate::path::PathCmd;
@@ -16,6 +17,8 @@ pub struct Capabilities {
     pub alpha: bool,
     /// Edges of curves and diagonals are anti-aliased.
     pub antialiasing: bool,
+    /// Gradients and shadows are drawn natively and smoothly (every backend can draw them, from rectangles, with bands and steps).
+    pub effects: bool,
 }
 
 /// Why a drawing call failed.
@@ -114,6 +117,38 @@ pub trait Renderer {
         width: u32,
         color: Color,
     ) -> Result<(), Self::Error>;
+
+    /// Fills a rectangle with a [`Gradient`]; `radius` rounds the corners. The default draws strips of flat colour (at most
+    /// [`effects::MAX_BANDS`]) with the corners cut by the circle, which any backend can do; a backend with
+    /// real gradients overrides it and sets [`Capabilities::effects`].
+    ///
+    /// # Errors
+    /// Returns the backend's error.
+    fn fill_gradient(
+        &mut self,
+        rect: Rect,
+        radius: u32,
+        gradient: Gradient,
+    ) -> Result<(), Self::Error> {
+        effects::bands(rect, radius, &gradient, |strip, color| {
+            self.fill_rect(strip, 0, color)
+        })
+    }
+
+    /// Draws a soft [`Shadow`] of a box with corners of `radius`: under what is drawn next, so draw it first. The default stacks a
+    /// few translucent rounded rectangles and draws nothing where colours with alpha are not blended
+    /// ([`Capabilities::alpha`] false); a backend with real blur overrides it.
+    ///
+    /// # Errors
+    /// Returns the backend's error.
+    fn draw_shadow(&mut self, rect: Rect, radius: u32, shadow: Shadow) -> Result<(), Self::Error> {
+        if !self.capabilities().alpha {
+            return Ok(());
+        }
+        effects::shadow_layers(rect, radius, &shadow, |r, radius, color| {
+            self.fill_rect(r, radius, color)
+        })
+    }
 
     /// Fills the disc around `center` that covers the pixels within `radius` of it.
     ///

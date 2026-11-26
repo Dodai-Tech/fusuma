@@ -11,6 +11,7 @@
 #![no_std]
 
 pub mod color;
+pub mod effects;
 pub mod geometry;
 pub mod image;
 pub mod measure;
@@ -22,6 +23,7 @@ pub mod text;
 pub mod conformance;
 
 pub use color::Color;
+pub use effects::{Direction, Gradient, Shadow};
 pub use geometry::{Point, Rect, Size};
 pub use image::Image;
 pub use measure::Measure;

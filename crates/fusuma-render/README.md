@@ -33,7 +33,8 @@ The trait has optional parts with a safe default, so a backend that cannot do th
 pixels of a scrolled area instead of redrawing them; `false` means "draw it") and `will_draw` (tell a CPU renderer which part a
 frame will touch, so it rasterises only that). `Capabilities` says whether alpha and anti-aliasing are real.
 
-Not in the trait yet: gradients, shadows, blur, opacity layers and shaders (planned, see the roadmap's *Effects and shaders*).
+`fill_gradient` and `draw_shadow` have defaults made of rectangles, so every backend draws them; Vello does real gradients
+(`Capabilities::effects`). Not in the trait yet: blur, opacity layers and shaders (planned, see the roadmap's *Effects and shaders*).
 
 ## Development
 

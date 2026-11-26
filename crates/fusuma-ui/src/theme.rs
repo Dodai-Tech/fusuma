@@ -168,6 +168,9 @@ pub struct Theme {
     pub fonts: Fonts,
     /// Height of a button or an input, in pixels; also the smallest touch target.
     pub control_height: u32,
+    /// How far a floating panel (a dialog, a menu, a toast) lifts off the page, in pixels: the blur of its shadow, 0 for none.
+    /// A reflective screen (e-paper) takes it away, a shadow of grays is not a thing it can show.
+    pub elevation: u32,
     /// Width of outlines, in pixels.
     pub border_width: u32,
     /// Side of the box of a checkbox and the diameter of a radio button, in pixels.
@@ -284,6 +287,8 @@ pub struct PanelStyle {
     pub text: Color,
     /// Corner radius in pixels.
     pub radius: u32,
+    /// A soft shadow under the panel, if any (drawn where the renderer blends colours with alpha).
+    pub shadow: Option<fusuma_render::Shadow>,
 }
 
 /// The font of each kind of text. A backend without that font (or built without vector fonts) draws its bitmap
@@ -420,6 +425,7 @@ impl Theme {
                 icon: s(self.text.icon, p, 1),
             },
             control_height: s(self.control_height, p, 1),
+            elevation: s(self.elevation, p, 0),
             border_width: s(self.border_width, p, 1),
             indicator: s(self.indicator, p, 1),
             track_height: s(self.track_height, p, 1),
@@ -1051,6 +1057,7 @@ impl Theme {
         },
         fonts: Fonts::DEFAULT,
         control_height: 44,
+        elevation: 8,
         border_width: 1,
         indicator: 20,
         track_height: 8,
@@ -1094,6 +1101,7 @@ impl Theme {
             icons: Font::Bitmap,
         },
         control_height: 1,
+        elevation: 0,
         border_width: 1,
         indicator: 3,
         track_height: 1,
@@ -1307,18 +1315,32 @@ impl Theme {
             return f(self, class, kind);
         }
         let c = &self.colors;
+        // Darker on a light page would be too heavy and fainter on a dark one would not show: by the page's brightness.
+        let dark =
+            u32::from(c.background.r) + u32::from(c.background.g) + u32::from(c.background.b) < 384;
+        let shadow = if self.elevation == 0 {
+            None
+        } else {
+            Some(fusuma_render::Shadow::drop(
+                self.elevation,
+                i32::try_from(self.elevation / 3).unwrap_or(0),
+                if dark { 130 } else { 60 },
+            ))
+        };
         match kind {
             PanelKind::Dialog => PanelStyle {
                 fill: c.surface_raised,
                 border: Some(c.border_strong),
                 text: c.text,
                 radius: self.radius(Round::Large),
+                shadow,
             },
             PanelKind::Menu => PanelStyle {
                 fill: c.surface_raised,
                 border: Some(c.border_strong),
                 text: c.text,
                 radius: self.radius(Round::Medium),
+                shadow,
             },
             // The reverse of the page, so it stands out on either.
             PanelKind::Toast => PanelStyle {
@@ -1326,6 +1348,7 @@ impl Theme {
                 border: None,
                 text: c.background,
                 radius: self.radius(Round::Medium),
+                shadow,
             },
         }
     }
@@ -1845,6 +1868,7 @@ mod hook_tests {
             border: None,
             text: Color::BLACK,
             radius: t.radii.sm,
+            shadow: None,
         }
         .tap(kind)
     }

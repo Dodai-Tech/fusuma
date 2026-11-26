@@ -207,7 +207,15 @@ impl<const N: usize> Tree<N> {
     /// The place of toast `i` and the pixels it slides through.
     fn toast_travel(&self, i: usize) -> Rect {
         let r = self.nodes[i].rect;
-        Rect::new(r.x, r.y, r.w, r.h.saturating_add(SLIDE as u32))
+        // Its travel, and the shadow round it.
+        let m = self.shadow_reach;
+        Rect::new(
+            r.x.saturating_sub(m as i32),
+            r.y.saturating_sub(m as i32),
+            r.w.saturating_add(m.saturating_mul(2)),
+            r.h.saturating_add(SLIDE as u32)
+                .saturating_add(m.saturating_mul(2)),
+        )
     }
 
     /// Draws the toasts that are showing, over everything. `region` limits the drawing to what overlaps it.
@@ -252,6 +260,16 @@ impl<const N: usize> Tree<N> {
                 )
             };
             let look = theme.panel_in(n.class, crate::theme::PanelKind::Toast);
+            if let Some(sh) = look.shadow {
+                r.draw_shadow(
+                    rect,
+                    look.radius,
+                    fusuma_render::Shadow {
+                        color: with(sh.color),
+                        ..sh
+                    },
+                )?;
+            }
             r.fill_rect(rect, look.radius, with(look.fill))?;
             if let Some(border) = look.border {
                 r.stroke_rect(rect, look.radius, theme.border_width, with(border))?;
@@ -384,7 +402,8 @@ mod tests {
             assert_eq!(pixels(&s), full(&mut u), "entering, {waited} ms");
             let p = s.pixel(spot.0, spot.1).unwrap();
             let grey = u32::from(p.r) + u32::from(p.g) + u32::from(p.b);
-            assert!(grey >= last || waited >= normal, "{grey} after {last}");
+            // The shadow under a fading toast is fading too, so the sum may dip a little before the toast covers it.
+            assert!(grey + 8 >= last || waited >= normal, "{grey} after {last}");
             last = grey;
             seen_partial |= p != THEME.colors.background && p != THEME.colors.text;
         }

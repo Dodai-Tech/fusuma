@@ -79,6 +79,8 @@ pub fn run_all<R: Renderer + Probe>(make: impl Fn() -> R) {
     images(&make);
     optional_alpha(&make);
     optional_antialiasing(&make);
+    gradients(&make);
+    shadows(&make);
 }
 
 fn rect_fills_inside_only<R: Renderer + Probe>(make: &impl Fn() -> R) {
@@ -491,5 +493,151 @@ fn optional_antialiasing<R: Renderer + Probe>(make: &impl Fn() -> R) {
     assert!(
         between >= 8,
         "an anti-aliased circle has soft edge pixels, found {between}"
+    );
+}
+
+/// Within `tol` of `want` on every colour channel.
+fn within(c: Color, want: Color, tol: u8) -> bool {
+    c.r.abs_diff(want.r) <= tol && c.g.abs_diff(want.g) <= tol && c.b.abs_diff(want.b) <= tol
+}
+
+fn gradients<R: Renderer + Probe>(make: &impl Fn() -> R) {
+    use crate::effects::Gradient;
+    // Vertical: black at the top to white at the bottom of a 40 high box; nothing outside it.
+    let mut r = fresh(make);
+    r.fill_gradient(
+        Rect::new(10, 10, 20, 40),
+        0,
+        Gradient::vertical(BLACK, Color::WHITE),
+    )
+    .expect("gradient");
+    assert!(
+        within(r.pixel(20, 10).expect("top"), BLACK, 12),
+        "the top is the start colour"
+    );
+    assert!(
+        within(r.pixel(20, 49).expect("bottom"), Color::WHITE, 12),
+        "the bottom is the end colour"
+    );
+    let mut last = 0u8;
+    for y in 10..50 {
+        let c = r.pixel(20, y).expect("pixel");
+        assert!(
+            c.r >= last.saturating_sub(2),
+            "the gradient only gets lighter: {c:?} at {y}"
+        );
+        assert!(
+            c.r.abs_diff(c.g) <= 9 && c.g.abs_diff(c.b) <= 9,
+            "stays gray: {c:?}"
+        );
+        last = c.r;
+    }
+    let mid = r.pixel(20, 30).expect("middle");
+    assert!(
+        (100..=156).contains(&mid.r),
+        "about half way in the middle: {mid:?}"
+    );
+    assert_eq!(
+        r.pixel(20, 10),
+        r.pixel(10, 10),
+        "the same colour along a row"
+    );
+    for (x, y) in [(9, 30), (30, 30), (20, 9), (20, 50)] {
+        is(&r, x, y, BLACK, "outside the gradient");
+    }
+    // Horizontal: red to blue.
+    let mut r = fresh(make);
+    r.fill_gradient(Rect::new(0, 0, 40, 10), 0, Gradient::horizontal(RED, BLUE))
+        .expect("horizontal");
+    assert!(
+        within(r.pixel(0, 5).expect("left"), RED, 12)
+            && within(r.pixel(39, 5).expect("right"), BLUE, 12)
+    );
+    assert_eq!(
+        r.pixel(10, 0),
+        r.pixel(10, 9),
+        "the same colour down a column"
+    );
+    assert!(
+        r.pixel(20, 5).expect("m").r < r.pixel(5, 5).expect("l").r,
+        "less red going right"
+    );
+    // Round corners are cut, the middle of the edges is not.
+    let mut r = fresh(make);
+    r.fill_gradient(Rect::new(8, 8, 40, 40), 12, Gradient::vertical(RED, RED))
+        .expect("rounded");
+    is(&r, 8, 8, BLACK, "rounded corner of a gradient");
+    is(&r, 47, 47, BLACK, "rounded corner of a gradient");
+    is(&r, 28, 28, RED, "rounded centre");
+    is(&r, 28, 8, RED, "top edge");
+    // Nothing to draw, and nothing to fail on.
+    let mut r = fresh(make);
+    r.fill_gradient(Rect::new(5, 5, 0, 9), 3, Gradient::vertical(RED, BLUE))
+        .expect("empty");
+    r.fill_gradient(Rect::new(5, 5, 9, 0), 3, Gradient::vertical(RED, BLUE))
+        .expect("empty");
+    is(&r, 5, 5, BLACK, "an empty gradient draws nothing");
+    // Clipped like everything else.
+    r.save().expect("save");
+    r.clip(Rect::new(0, 0, 10, 10)).expect("clip");
+    r.fill_gradient(Rect::new(0, 0, 40, 40), 0, Gradient::vertical(RED, RED))
+        .expect("clipped");
+    r.restore().expect("restore");
+    is(&r, 5, 5, RED, "inside the clip");
+    is(&r, 20, 20, BLACK, "outside the clip");
+}
+
+fn shadows<R: Renderer + Probe>(make: &impl Fn() -> R) {
+    use crate::effects::Shadow;
+    let mut r = fresh(make);
+    let alpha = r.capabilities().alpha;
+    let rect = Rect::new(20, 20, 24, 20);
+    r.draw_shadow(rect, 4, Shadow::drop(8, 4, 200))
+        .expect("shadow");
+    // Black on black cannot be seen: draw it on white.
+    let mut r = fresh(make);
+    r.clear(Color::WHITE).expect("clear");
+    r.draw_shadow(rect, 4, Shadow::drop(8, 4, 200))
+        .expect("shadow");
+    if !alpha {
+        is(&r, 32, 32, Color::WHITE, "no alpha, no shadow");
+        return;
+    }
+    // Darkest under the box, softer away from it, nothing far away; and lower than the box by the offset.
+    let under = r.pixel(32, 34).expect("under").r;
+    assert!(under < 120, "the middle of the shadow is dark: {under}");
+    let near_edge = r.pixel(32, 44).expect("edge").r;
+    let far = r.pixel(32, 60).expect("far").r;
+    assert!(far > 250, "far from the box there is no shadow: {far}");
+    assert!(
+        under < near_edge && near_edge < far,
+        "it fades out: {under} {near_edge} {far}"
+    );
+    // The offset: just inside the box's bottom edge is darker than just inside its top edge (the shadow is 4 lower).
+    let top = r.pixel(32, 22).expect("top").r;
+    let bottom = r.pixel(32, 38).expect("bottom").r;
+    assert!(
+        bottom + 8 < top,
+        "shifted down: near the top {top}, near the bottom {bottom}"
+    );
+    // Left and right are alike (no horizontal offset).
+    let (l, rt) = (r.pixel(14, 30).expect("l").r, r.pixel(49, 30).expect("r").r);
+    assert!(l.abs_diff(rt) <= 12, "{l} {rt}");
+    // Clipped like everything else, and an invisible shadow draws nothing.
+    let mut r = fresh(make);
+    r.clear(Color::WHITE).expect("clear");
+    r.save().expect("save");
+    r.clip(Rect::new(0, 0, 10, 10)).expect("clip");
+    r.draw_shadow(rect, 4, Shadow::drop(8, 4, 200))
+        .expect("clipped");
+    r.restore().expect("restore");
+    r.draw_shadow(rect, 4, Shadow::drop(8, 4, 0))
+        .expect("invisible");
+    is(
+        &r,
+        32,
+        34,
+        Color::WHITE,
+        "a shadow outside the clip, and an invisible one",
     );
 }

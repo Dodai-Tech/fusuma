@@ -648,6 +648,8 @@ pub struct Tree<const N: usize> {
     pub(crate) clock: u32,
     /// The last press on a field: which, where and when, to see a double click.
     pub(crate) last_press: Option<(NodeId, i32, u32)>,
+    /// How far the shadow of a floating panel reaches past it, from the theme last laid out with: what a toast's damage adds.
+    pub(crate) shadow_reach: u32,
     /// The drag in progress (see `dnd`).
     pub(crate) dragging: Option<crate::dnd::DragState>,
     /// The press that may become a long press or a swipe.
@@ -714,6 +716,7 @@ impl<const N: usize> Tree<N> {
             pending_click: None,
             pending_y: 0,
             dragging: None,
+            shadow_reach: 0,
             rtl: false,
             history: crate::textedit::History::new(),
             clock: 0,

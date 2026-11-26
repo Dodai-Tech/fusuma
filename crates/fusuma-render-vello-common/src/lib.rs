@@ -396,6 +396,7 @@ impl<S: Scene> Renderer for Backend<S> {
         Capabilities {
             alpha: true,
             antialiasing: true,
+            effects: true,
         }
     }
 
@@ -486,6 +487,30 @@ impl<S: Scene> Renderer for Backend<S> {
             i.fill_solid_rect(rect, color);
         } else if i.rect_ok(rect) {
             i.scene.set_paint(solid(color));
+            i.scene.fill_path(&rounded(rect, r));
+        }
+        Ok(())
+    }
+
+    fn fill_gradient(&mut self, rect: Rect, radius: u32, g: fusuma_render::Gradient) -> Res {
+        let i = self.inner.get_mut();
+        if rect.is_empty() || i.hidden() || !i.rect_ok(rect) {
+            return Ok(());
+        }
+        let (x0, y0) = (f64::from(rect.x), f64::from(rect.y));
+        let (x1, y1) = (x0 + f64::from(rect.w), y0 + f64::from(rect.h));
+        let (start, end) = match g.direction {
+            fusuma_render::Direction::Vertical => ((x0, y0), (x0, y1)),
+            fusuma_render::Direction::Horizontal => ((x0, y0), (x1, y0)),
+        };
+        let stop = |c: Color| color::AlphaColor::from_rgba8(c.r, c.g, c.b, c.a);
+        let gradient =
+            peniko::Gradient::new_linear(start, end).with_stops([stop(g.from), stop(g.to)]);
+        i.scene.set_paint(PaintType::Gradient(gradient));
+        let r = radius.min(rect.w / 2).min(rect.h / 2);
+        if r == 0 {
+            i.scene.fill_rect(&kurbo::Rect::new(x0, y0, x1, y1));
+        } else {
             i.scene.fill_path(&rounded(rect, r));
         }
         Ok(())

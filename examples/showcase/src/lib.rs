@@ -1355,8 +1355,13 @@ impl Showcase {
         if self.cells {
             return Theme::CELLS.with_colors(self.palette.colors(self.dark));
         }
-        theme(self.dark, &self.palette)
-            .with_text_scale(self.text_scale)
+        let mut t = theme(self.dark, &self.palette);
+        // A shadow is a dozen translucent layers over the page: more than a watch's chip should do for a dialog, and nothing a
+        // reflective glass can show.
+        if self.class == Class::Watch || self.device.is_reflective() {
+            t.elevation = 0;
+        }
+        t.with_text_scale(self.text_scale)
             .scaled(self.scale)
             .with_motion(budget)
     }

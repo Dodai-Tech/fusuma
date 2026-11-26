@@ -430,6 +430,8 @@ where
         Capabilities {
             alpha: blend,
             antialiasing: blend,
+            // Gradients are bands and shadows are layers: right, not smooth.
+            effects: false,
         }
     }
 

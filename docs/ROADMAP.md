@@ -357,8 +357,17 @@ the same pixels as the hand-built page, a message log that replays to the same s
 
 ## Effects and shaders
 
-- [ ] `Capabilities` gains `effects` and `shaders`
-- [ ] `Effects` (gradients, drop shadow, blur, opacity and blend layers, masks), first on Vello; widgets fall back
+- [x] **Gradients and shadows** (`fusuma-render::effects`): `Renderer::fill_gradient(rect, radius, Gradient)` (vertical or horizontal, two
+  colours with alpha, round corners) and `Renderer::draw_shadow(rect, radius, Shadow { offset, blur, spread, color })`. **Every backend
+  has them**, because the trait defaults use rectangles only (a gradient is up to 256 strips with the corners cut by the circle, a
+  shadow is up to 12 stacked translucent rounded rectangles, and none where colours with alpha are not blended); Vello overrides the
+  gradient with a real one and says so in `Capabilities::effects`. Both are in the shared conformance suite (the ends are the
+  colours, it only gets lighter, nothing outside the box, corners cut, clipped, the shadow fades out and is shifted by its offset).
+  The toolkit uses the shadow: `Theme::elevation` (8 px; 0 on a watch's showcase and on a reflective glass) and `PanelStyle::shadow` give
+  dialogs, menus and toasts a soft lift, and a toast's damage covers it (the page is exactly back after it goes)
+- [ ] Opacity and blend **layers** (a group faded as one), blur of what is behind (backdrop), masks, radial and multi-stop gradients, and
+  a gradient surface in the theme (`Surface::Gradient`); these need a backend with real layers (Vello has them, the integer renderer
+  does not)
 - [ ] A shader contract (`ShaderSource`, uniforms, `draw_shader`) and `fusuma-shaders` (the engine of
   `dodai-shaders`, rendering to a texture on the host's `wgpu` device); a `ShaderView`, backdrop blur, transitions.
   `dodai-shaders` needs Rust 1.97, Fusuma is at 1.90: a feature or a raised MSRV

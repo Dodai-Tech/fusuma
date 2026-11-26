@@ -508,7 +508,13 @@ impl Screen {
     /// `base` for this screen's scale: every length multiplied (see [`Theme::scaled`]).
     #[must_use]
     pub const fn theme(&self, base: &Theme) -> Theme {
-        base.scaled(self.scale()).with_motion(self.motion())
+        let t = base.scaled(self.scale()).with_motion(self.motion());
+        // Grays do not show on a reflective glass, and a shadow is only grays.
+        if self.is_reflective() {
+            Theme { elevation: 0, ..t }
+        } else {
+            t
+        }
     }
 }
 
