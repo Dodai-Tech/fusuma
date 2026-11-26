@@ -2,6 +2,7 @@
 # 0x38, the FT3168, and 0x6b, the IMU, only on SDA 47 / SCL 48) and checked against Waveshare's Rust examples
 # (melastmohican/rust-waveshare-esp32s3-touch-amoled164-examples) and the weathertrack-esp firmware that runs on it.
 name = "s3-amoled-164"
+title = "Waveshare ESP32-S3-Touch-AMOLED-1.64"
 about = "Waveshare ESP32-S3-Touch-AMOLED-1.64 (280x456)"
 capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "imu", "storage"]
 

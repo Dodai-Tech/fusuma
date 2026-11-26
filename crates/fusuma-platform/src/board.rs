@@ -4,6 +4,7 @@
 //!
 //! ```toml
 //! name = "s3-amoled-206"
+//! title = "Waveshare ESP32-S3-Touch-AMOLED-2.06"   # the friendly name; optional, the name when absent
 //! about = "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch"
 //! capabilities = ["display", "touch"]     # optional, free-form (Hibari matches apps against them)
 //!
@@ -548,6 +549,8 @@ pub struct Buttons {
 pub struct BoardFile {
     /// The board's name: what `--board` takes.
     pub name: String,
+    /// The friendly name people know the board by (`Waveshare ESP32-S3-Touch-AMOLED-1.64`); the name when the file has none.
+    pub title: String,
     /// One line for people; the name when the file has none.
     pub about: String,
     /// Free-form capabilities (`display`, `touch`, `wifi`, ...).
@@ -595,6 +598,7 @@ enum RawPin {
 #[serde(deny_unknown_fields)]
 struct RawFile {
     name: String,
+    title: Option<String>,
     about: Option<String>,
     #[serde(default)]
     capabilities: Vec<String>,
@@ -878,6 +882,7 @@ impl BoardFile {
             .map_or(Ok(RenderLayer::EMPTY), RawRender::into_layer)
             .map_err(|e| err(format!("render: {e}")))?;
         Ok(Self {
+            title: raw.title.unwrap_or_else(|| raw.name.clone()),
             about: raw.about.unwrap_or_else(|| raw.name.clone()),
             name: raw.name,
             capabilities: raw.capabilities,
@@ -1527,6 +1532,7 @@ flash_mb = 32
         ] {
             let b = read(text).unwrap_or_else(|e| panic!("{path}: {e}"));
             assert_eq!(b.name, path, "the file's name is its directory's");
+            assert_ne!(b.title, b.name, "{path} has a friendly title");
             assert!(
                 b.display.is_some_and(|d| d.wiring.controller.is_some()),
                 "{path} is wired"

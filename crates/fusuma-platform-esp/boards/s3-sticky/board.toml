@@ -3,6 +3,7 @@
 # model `seeed-reterminal-sticky` and its Sticky Playground use; none of this has been run on a Sticky by Fusuma yet.
 # Schema: crates/fusuma-platform/board.schema.json.
 name = "s3-sticky"
+title = "Seeed reTerminal Sticky"
 about = "Seeed reTerminal Sticky, 3.97 inch e-paper (800x480)"
 capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage", "eink"]
 

@@ -1,5 +1,7 @@
 # ESP boards: what Fusuma runs, what is a file away, what needs a driver
 
+Each board file has a `name` (the id `--board` takes) and an optional `title`, the friendly product name shown to people.
+
 A board is a directory in `crates/fusuma-platform-esp/boards/` (see that crate's README). A board made of controllers the
 crate already drives is **only a file**; a new controller is also a C driver (`components/fusuma_esp/`), a Rust module
 (`src/display/`) and an entry in `CONTROLLERS` (`fusuma-platform/src/board.rs`).
@@ -10,13 +12,13 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 
 ## In Fusuma today
 
-| Board | Screen | Controllers | Status |
-|---|---|---|---|
-| `p4-7in` Waveshare ESP32-P4 7" | 1024x600 | ek79007, gt911 | run |
-| `s3-amoled-206` Waveshare S3 AMOLED 2.06 | 410x502 | co5300, ft3168 | run |
-| `s3-sticky` Seeed reTerminal Sticky | 800x480 e-paper | ssd1677 | run |
-| `s3-amoled-164` Waveshare S3 AMOLED 1.64 **V2** | 280x456 | co5300 init, ft3168 | pins run (weathertrack-esp), not yet through Fusuma's driver |
-| `s3-amoled-143` Waveshare S3 AMOLED 1.43 | 466x466 round | co5300 init, ft3168 | **file**, CO5300 variant only |
+| Id | Friendly name | Screen | Controllers | Status |
+|---|---|---|---|---|
+| `p4-7in` | Waveshare ESP32-P4 7-inch Touch Display | 1024x600 | ek79007, gt911 | run |
+| `s3-amoled-206` | Waveshare ESP32-S3-Touch-AMOLED-2.06 | 410x502 | co5300, ft3168 | run |
+| `s3-sticky` | Seeed reTerminal Sticky | 800x480 e-paper | ssd1677 | run |
+| `s3-amoled-164` | Waveshare ESP32-S3-Touch-AMOLED-1.64 (V2) | 280x456 | co5300 init, ft3168 | pins run (weathertrack-esp), not yet through Fusuma's driver |
+| `s3-amoled-143` | Waveshare ESP32-S3-Touch-AMOLED-1.43 | 466x466 round | co5300 init, ft3168 | **file**, CO5300 variant only |
 
 ## One file away or close
 

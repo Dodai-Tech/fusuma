@@ -6,6 +6,7 @@
 # different init with `44 01 D1`) or a CO5300 (column offset 6, the init this crate's driver sends). This file is the
 # CO5300 variant; the SH8601 one needs a driver option that does not exist yet.
 name = "s3-amoled-143"
+title = "Waveshare ESP32-S3-Touch-AMOLED-1.43"
 about = "Waveshare ESP32-S3-Touch-AMOLED-1.43 round watch (466x466, CO5300 variant)"
 capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
 

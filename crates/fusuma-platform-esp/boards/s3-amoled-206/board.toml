@@ -2,6 +2,7 @@
 # it to pick and wire its drivers, `scripts/showcase.nu` to recognise and flash it, and Hibari OS reads the same
 # format. Schema: crates/fusuma-platform/board.schema.json.
 name = "s3-amoled-206"
+title = "Waveshare ESP32-S3-Touch-AMOLED-2.06"
 about = "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502)"
 capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
 

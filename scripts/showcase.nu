@@ -41,6 +41,7 @@ export def board_from [text: string, dir: string]: nothing -> record {
     if $c == null { error make { msg: $"($dir): no ESP-IDF target known for chip ($chip); known: ($CHIPS | columns | str join ', ')" } }
     {
         name: $f.name
+        title: ($f.title? | default $f.name)
         about: ($f.about? | default $f.name)
         chip: $chip
         flash_mb: $f.firmware.flash_mb
@@ -322,7 +323,7 @@ def "main restore-flash" [--file: string, --port: string = ""] {
 
 def "main install" [--board: string = "", --slot: string = "", --port: string = "", --features: string = "", --backup, --force] {
     let b = if ($board | is-empty) { detect $port } else { board_named $board }
-    print -e $"Board: ($b.name), ($b.about)"
+    print -e $"Board: ($b.title) [($b.name)], ($b.about)"
     let table_file = mktemp --suffix .bin
     ^espflash read-flash ...(port_args $port) 0x8000 0xc00 $table_file
     let table = parse_ptable (open --raw $table_file | into binary)
