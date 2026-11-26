@@ -257,7 +257,14 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   on the watch gets a row of its own now that there are many pages
 - [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
   of the default; a test draws with all five
-- [ ] Accessibility with `AccessKit` (the semantic tree exists; nothing is bridged to a platform yet)
+- [x] **Accessibility with AccessKit** (`fusuma-access`): `tree_update`, `app_update` and `update_of` turn the semantic tree into an AccessKit
+  tree (window, roles, names, checked/selected/disabled, slider value and range, field value and hint, bounds, nesting, the focused
+  widget, a modal dialog, a polite live toast); `perform` does what a reader asks (click, focus, increment and decrement, type,
+  reveal) through `Tree::assist` / `App::assist`, refuses a stale handle (`Gone`) and what is behind a modal. The desktop crate's
+  `accessibility` feature (winit adapter: AT-SPI on Linux, UIA on Windows, NSAccessibility on macOS) tells the reader after every
+  frame; `--features accessibility` on the showcase. **Not tried with a real screen reader** (Orca, NVDA, VoiceOver): the tests check the
+  tree and the requests. Still to do: the web (ARIA), Android and iOS adapters, text selection and caret for a reader, and live
+  regions beyond the toast
 
 - [x] **Tones** (`Tone`: info, success, warning, danger; `Colors::{success, warning, info}` in every palette and in the generated
   ones, found by the same contrast search as `danger`; `Surface::Tone` solid with black or white text that reads, `Surface::ToneSoft`

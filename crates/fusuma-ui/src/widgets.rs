@@ -40,6 +40,21 @@ fn sane(r: Rect) -> bool {
 impl<const N: usize> Tree<N> {
     /// What pressing node `i` does, from the pointer or the keyboard: the one place the widgets'
     /// behaviour lives.
+    /// Does to widget `id` what a tap or Enter does (presses a button, ticks a box, chooses a row), as an assistive technology asks
+    /// to. Returns false when there is no such widget, it is disabled or behind a modal, or it takes no press.
+    pub fn activate_node(&mut self, id: NodeId) -> bool {
+        let Some(i) = self.slot(id) else { return false };
+        if self.nodes[i].disabled_eff
+            || self.nodes[i].hidden
+            || self.blocked(i)
+            || !self.focusable(i)
+        {
+            return false;
+        }
+        self.activate(i);
+        true
+    }
+
     pub(crate) fn activate(&mut self, i: usize) {
         if self.nodes[i].disabled_eff {
             return;

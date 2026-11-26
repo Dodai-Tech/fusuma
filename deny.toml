@@ -9,6 +9,12 @@ ignore = [
     # (winit -> sctk-adwaita -> ab_glyph -> ttf-parser), which GNOME on Wayland needs for a window frame.
     # Remove this when winit or sctk-adwaita moves to `skrifa`.
     { id = "RUSTSEC-2026-0192", reason = "unmaintained, used only for Wayland window decorations" },
+    # `zbus`'s helper crates are "no longer maintained as standalone crates": zbus itself carries the code now. They come in only
+    # through AccessKit's AT-SPI connection on Linux (accesskit_winit -> accesskit_unix -> zbus), behind the desktop crate's
+    # `accessibility` feature. Remove these when AccessKit moves to a zbus that no longer needs them.
+    { id = "RUSTSEC-2026-0370", reason = "unmaintained standalone, only under AccessKit's AT-SPI (zvariant)" },
+    { id = "RUSTSEC-2026-0371", reason = "unmaintained standalone, only under AccessKit's AT-SPI (zbus_names)" },
+    { id = "RUSTSEC-2026-0372", reason = "unmaintained standalone, only under AccessKit's AT-SPI (zvariant_derive)" },
 ]
 
 [licenses]

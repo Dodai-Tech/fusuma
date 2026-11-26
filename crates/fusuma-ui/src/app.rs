@@ -96,4 +96,16 @@ pub trait App {
     fn frame_rects(&self) -> &[Rect] {
         &[]
     }
+
+    /// Calls `visit` for every widget on the screen, in reading order (see [`Tree::semantics`](crate::Tree::semantics)): what a
+    /// bridge to assistive technology describes. The default has none.
+    fn semantics(&self, visit: &mut dyn FnMut(&crate::Semantic<'_>)) {
+        let _ = visit;
+    }
+
+    /// Does what an assistive technology asks of a widget (see [`Tree::assist`](crate::Tree::assist)). The default does nothing.
+    fn assist(&mut self, request: crate::Assist<'_>) -> crate::Assisted {
+        let _ = request;
+        crate::Assisted::Ignored
+    }
 }

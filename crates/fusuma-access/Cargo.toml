@@ -1,0 +1,26 @@
+[package]
+name = "fusuma-access"
+description = "Fusuma for assistive technology: the semantic tree of a screen as an AccessKit tree (roles, names, states, values, bounds, focus), and what a screen reader asks for (click, focus, increment, type) as a call on the tree"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-access"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "accessibility", "a11y", "accesskit", "screen-reader"]
+categories = ["gui", "accessibility"]
+# Not published yet: nothing has run it against a real screen reader.
+publish = false
+
+[dependencies]
+accesskit = "0.25"
+fusuma-ui.workspace = true
+fusuma-render.workspace = true
+
+[dev-dependencies]
+fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

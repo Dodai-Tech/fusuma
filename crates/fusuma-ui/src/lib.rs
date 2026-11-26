@@ -54,7 +54,7 @@ pub use screen::{
     Class, DisplayKind, FormFactor, Inputs, MICRO_BELOW, Metrics, PHONE_BELOW, PHONE_SHORT_SIDE_MM,
     Screen, SizeClass, TABLET_BELOW, WATCH_BELOW, WATCH_SHORT_SIDE_MM,
 };
-pub use semantic::{Role, Semantic};
+pub use semantic::{Assist, Assisted, Role, Semantic};
 pub use shape::{Insets, Shape};
 pub use shell::{Clock, Input, Shell, Stats, TouchTracker, deliver, text_inputs, wheel_pixels};
 pub use springs::MAX_SPRINGS;

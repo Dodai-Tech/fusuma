@@ -12,6 +12,7 @@ members = [
     "crates/fusuma-platform-desktop",
     "crates/fusuma-platform-embedded",
     "crates/fusuma-platform-eink",
+    "crates/fusuma-access",
     "crates/fusuma-cells",
     "crates/fusuma-platform-tui",
     "crates/fusuma-platform-console",

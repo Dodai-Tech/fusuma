@@ -89,7 +89,76 @@ pub struct Semantic<'a> {
     pub gestures: bool,
 }
 
+/// What an assistive technology asks of a widget. It is the same thing a person does with a finger or a key, in words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Assist<'a> {
+    /// A tap or Enter: press a button, tick a box, choose a row or a tab.
+    Click(NodeId),
+    /// Move the keyboard focus to it.
+    Focus(NodeId),
+    /// Move a slider one step up (`1`) or down (`-1`).
+    Step(NodeId, i32),
+    /// Type this into a text field (it takes the focus first).
+    Type(NodeId, &'a str),
+    /// Scroll so that it is in view.
+    Reveal(NodeId),
+}
+
+/// What [`Tree::assist`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Assisted {
+    /// It did what was asked.
+    Done,
+    /// The widget cannot do that (a label cannot be pressed, a disabled button cannot be, one behind a modal cannot).
+    Ignored,
+    /// The widget is no longer there (the screen changed after it was asked about): refused, never redirected to another.
+    Gone,
+}
+
 impl<const N: usize> Tree<N> {
+    /// Does what an assistive technology asks (see [`Assist`]).
+    pub fn assist(&mut self, request: Assist<'_>) -> Assisted {
+        let (Assist::Click(id)
+        | Assist::Focus(id)
+        | Assist::Step(id, _)
+        | Assist::Type(id, _)
+        | Assist::Reveal(id)) = request;
+        if self.semantic(id).is_none() {
+            return Assisted::Gone;
+        }
+        let done = |ok: bool| {
+            if ok {
+                Assisted::Done
+            } else {
+                Assisted::Ignored
+            }
+        };
+        match request {
+            Assist::Click(id) => done(self.activate_node(id)),
+            Assist::Focus(id) => done(self.focus(id)),
+            Assist::Step(id, by) => {
+                let Some(v) = self.slider_value(id) else {
+                    return Assisted::Ignored;
+                };
+                let step = i32::from(crate::focus::SLIDER_STEP);
+                let to = (i32::from(v) + by.signum() * step).clamp(0, 1000);
+                self.set_slider(id, u16::try_from(to).unwrap_or(0));
+                Assisted::Done
+            }
+            Assist::Type(id, text) => {
+                if !self.focus(id) {
+                    return Assisted::Ignored;
+                }
+                self.type_text(text);
+                Assisted::Done
+            }
+            Assist::Reveal(id) => {
+                self.scroll_to(id, 0);
+                Assisted::Done
+            }
+        }
+    }
+
     /// Every widget on the screen, in tree order (a parent before its children, which is also reading order), with its
     /// depth. A dialog or menu that is closed is not there, nor is what is inside it, nor a toast that is not
     /// showing.

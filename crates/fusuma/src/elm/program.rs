@@ -488,4 +488,18 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
     fn frame_rects(&self) -> &[Rect] {
         self.tree.frame_rects()
     }
+
+    fn semantics(&self, visit: &mut dyn FnMut(&fusuma_ui::Semantic<'_>)) {
+        for s in self.tree.semantics() {
+            visit(&s);
+        }
+    }
+
+    fn assist(&mut self, request: fusuma_ui::Assist<'_>) -> fusuma_ui::Assisted {
+        let r = self.tree.assist(request);
+        // What was asked changed the tree (a press makes a message): handle it as any input is.
+        self.collect_actions();
+        self.drain();
+        r
+    }
 }

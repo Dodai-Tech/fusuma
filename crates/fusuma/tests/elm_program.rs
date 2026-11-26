@@ -450,3 +450,72 @@ fn a_program_hears_about_a_change_of_screen_that_a_layout_cares_about_and_only_t
     );
     assert_eq!(*r.state(), after, "the same device again says nothing");
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Cm {
+    Press,
+}
+
+struct Clicker;
+
+impl Program for Clicker {
+    type State = u32;
+    type Msg = Cm;
+
+    fn init() -> u32 {
+        0
+    }
+
+    fn update(s: &mut u32, _: Cm) -> Task<Cm> {
+        *s += 1;
+        Task::none()
+    }
+
+    fn view<'a>(s: &'a u32, _: &Screen) -> impl Children<Cm> + 'a {
+        (
+            text_fmt(format_args!("Pressed {s}")),
+            button("Press me").on_press(Cm::Press),
+        )
+    }
+}
+
+#[test]
+fn a_program_is_described_to_assistive_technology_and_does_what_a_reader_asks() {
+    use accesskit::{Action, ActionRequest, Role, TreeId};
+    use fusuma_access::{Outcome, WINDOW, ak_id, app_update, perform_on_app};
+    let mut r = Runner::<Clicker, 16, 16, 0>::new(300, 200);
+    let mut s = fusuma_render_vello_cpu::new(300, 200).unwrap();
+    r.frame(&mut s).unwrap();
+    // The window, the text and the button, with their names.
+    let up = app_update(&r, "Clicker");
+    let window = &up.nodes.iter().find(|(i, _)| *i == WINDOW).unwrap().1;
+    assert_eq!(window.label(), Some("Clicker"));
+    let by_label = |up: &accesskit::TreeUpdate, l: &str| {
+        up.nodes
+            .iter()
+            .find(|(_, n)| n.label() == Some(l))
+            .map(|(i, n)| (*i, n.role()))
+    };
+    let (button_id, role) = by_label(&up, "Press me").expect("the button is described");
+    assert_eq!(role, Role::Button);
+    assert!(by_label(&up, "Pressed 0").is_some());
+    // A reader clicks it: the program's update runs, and the next description says so.
+    let click = |id| ActionRequest {
+        action: Action::Click,
+        target_tree: TreeId::ROOT,
+        target_node: id,
+        data: None,
+    };
+    assert_eq!(perform_on_app(&mut r, &click(button_id)), Outcome::Done);
+    r.frame(&mut s).unwrap();
+    let up = app_update(&r, "Clicker");
+    assert!(
+        by_label(&up, "Pressed 1").is_some(),
+        "the click reached the program"
+    );
+    assert!(by_label(&up, "Pressed 0").is_none());
+    // A request that names nothing there is refused; the window takes no action.
+    let wild = click(ak_id(fusuma_ui::NodeId::from_raw(0xFFFF_FFFF)));
+    assert_eq!(perform_on_app(&mut r, &wild), Outcome::Gone);
+    assert_eq!(perform_on_app(&mut r, &click(WINDOW)), Outcome::Ignored);
+}

@@ -79,8 +79,9 @@ pub fn run<A: App + 'static>(
     let fonts = font_set(&settings.fonts)?;
     let palette = palette_for(&settings.theme)?;
     let layers = [settings.render, options.build];
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let mut handler = Handler {
+        proxy: event_loop.create_proxy(),
         make: Some(Box::new(make)),
         options,
         layers,
@@ -114,11 +115,22 @@ struct State<A> {
     ime_area: Option<fusuma::render::Rect>,
     /// The window must be shown again even if nothing was redrawn (it was exposed, or resized).
     show: bool,
+    /// What tells the screen reader about the window.
+    #[cfg(feature = "accessibility")]
+    access: accesskit_winit::Adapter,
     /// The loop was asleep: the time asleep is not time the app lived through.
     idle: bool,
 }
 
+/// What the event loop is sent from elsewhere: a request from the screen reader (with the `accessibility` feature), else nothing.
+#[cfg(feature = "accessibility")]
+type UserEvent = accesskit_winit::Event;
+#[cfg(not(feature = "accessibility"))]
+type UserEvent = ();
+
 struct Handler<A> {
+    #[cfg_attr(not(feature = "accessibility"), allow(dead_code))]
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
     make: Option<Box<dyn FnOnce(u32, u32) -> A>>,
     options: Options,
     layers: [RenderLayer; 2],
@@ -176,7 +188,17 @@ impl<A: App> Handler<A> {
         let attrs = Window::default_attributes()
             .with_title(self.options.title)
             .with_inner_size(PhysicalSize::new(self.options.size.0, self.options.size.1));
+        // With an assistive technology to talk to, the adapter must exist before the window is first shown.
+        #[cfg(feature = "accessibility")]
+        let attrs = attrs.with_visible(false);
         let window = Arc::new(el.create_window(attrs)?);
+        #[cfg(feature = "accessibility")]
+        let access = {
+            let a =
+                accesskit_winit::Adapter::with_event_loop_proxy(el, &window, self.proxy.clone());
+            window.set_visible(true);
+            a
+        };
         let size = window.inner_size();
         let (w, h) = (size.width.max(1), size.height.max(1));
         let gpu = fusuma::renderers::vello_gpu::gpu_available();
@@ -223,6 +245,8 @@ impl<A: App> Handler<A> {
             ime_on: false,
             ime_area: None,
             show: true,
+            #[cfg(feature = "accessibility")]
+            access,
             idle: false,
         })
     }
@@ -328,6 +352,14 @@ impl<A: App> State<A> {
         }
         let redrawn = self.canvas.frame(&mut self.shell, now).is_some();
         self.idle = !self.shell.wants_frame();
+        #[cfg(feature = "accessibility")]
+        if redrawn {
+            // What is on the screen changed: the screen reader hears of it (nothing is built while none is listening).
+            let title = self.window.title();
+            let app = &self.shell.app;
+            self.access
+                .update_if_active(|| fusuma_access::app_update(app, &title));
+        }
         if !(redrawn || force || self.show) {
             return Ok(());
         }
@@ -352,7 +384,33 @@ impl<A: App> State<A> {
     }
 }
 
-impl<A: App> ApplicationHandler for Handler<A> {
+impl<A: App> ApplicationHandler<UserEvent> for Handler<A> {
+    #[cfg(feature = "accessibility")]
+    fn user_event(&mut self, el: &ActiveEventLoop, event: UserEvent) {
+        let Some(st) = self.state.as_mut() else {
+            return;
+        };
+        match event.window_event {
+            accesskit_winit::WindowEvent::InitialTreeRequested => {
+                let title = st.window.title();
+                let app = &st.shell.app;
+                st.access
+                    .update_if_active(|| fusuma_access::app_update(app, &title));
+            }
+            accesskit_winit::WindowEvent::ActionRequested(request) => {
+                fusuma_access::perform_on_app(&mut st.shell.app, &request);
+                // What was asked may have changed the screen: draw it and tell the reader.
+                if let Err(e) = st.step(true) {
+                    self.fail(el, e);
+                }
+            }
+            accesskit_winit::WindowEvent::AccessibilityDeactivated => {}
+        }
+    }
+
+    #[cfg(not(feature = "accessibility"))]
+    fn user_event(&mut self, _: &ActiveEventLoop, (): UserEvent) {}
+
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.state.is_some() {
             return;
@@ -368,6 +426,8 @@ impl<A: App> ApplicationHandler for Handler<A> {
         let Some(st) = self.state.as_mut() else {
             return;
         };
+        #[cfg(feature = "accessibility")]
+        st.access.process_event(&st.window, &event);
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(size) => st.resize(size, &layers),

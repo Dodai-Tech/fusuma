@@ -74,3 +74,5 @@ workspace = true
 fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
 fusuma-render-integer.workspace = true
 allocation-counter = "0.8.1"
+fusuma-access = { path = "../fusuma-access" }
+accesskit = "0.25"

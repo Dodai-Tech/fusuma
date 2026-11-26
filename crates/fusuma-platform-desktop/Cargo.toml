@@ -22,6 +22,15 @@ arboard = { version = "3", default-features = false, features = ["wayland-data-c
 log = "0.4"
 anyhow = "1"
 
+# Assistive technology (a screen reader): the window describes itself through AccessKit. Off by default: it adds AccessKit and, on
+# Linux, an AT-SPI connection (zbus). Not tried with a real screen reader yet.
+fusuma-access = { path = "../fusuma-access", optional = true }
+accesskit_winit = { version = "0.34", optional = true }
+
+[features]
+default = []
+accessibility = ["dep:fusuma-access", "dep:accesskit_winit"]
+
 [dev-dependencies]
 fusuma-showcase = { path = "../../examples/showcase" }
 

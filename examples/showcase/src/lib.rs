@@ -1586,6 +1586,16 @@ impl App for Showcase {
         self.tree.frame_rects()
     }
 
+    fn semantics(&self, visit: &mut dyn FnMut(&fusuma::Semantic<'_>)) {
+        for s in self.tree.semantics() {
+            visit(&s);
+        }
+    }
+
+    fn assist(&mut self, request: fusuma::Assist<'_>) -> fusuma::Assisted {
+        self.tree.assist(request)
+    }
+
     fn pointer(&mut self, event: Pointer) {
         Self::pointer(self, event);
     }

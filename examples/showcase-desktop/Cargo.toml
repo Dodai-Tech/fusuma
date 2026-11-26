@@ -15,5 +15,9 @@ fusuma-platform-desktop = { path = "../../crates/fusuma-platform-desktop" }
 anyhow = "1"
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
 
+# `cargo run -p fusuma-showcase-desktop --features accessibility`: the window tells a screen reader what is on it.
+[features]
+accessibility = ["fusuma-platform-desktop/accessibility"]
+
 [lints]
 workspace = true

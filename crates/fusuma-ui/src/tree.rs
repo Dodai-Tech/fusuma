@@ -77,6 +77,25 @@ pub struct NodeId {
     pub(crate) generation: u8,
 }
 
+impl NodeId {
+    /// This handle as one number (the generation above the index), for a bridge that must name nodes with an integer: an
+    /// accessibility tree, a script. [`from_raw`](Self::from_raw) gives it back; the number means nothing else.
+    #[must_use]
+    pub const fn to_raw(self) -> u32 {
+        (self.generation as u32) << 16 | self.index as u32
+    }
+
+    /// The handle for a number from [`to_raw`](Self::to_raw). A number that names nothing (a stale or invented one) gives a
+    /// handle that finds nothing.
+    #[must_use]
+    pub const fn from_raw(raw: u32) -> Self {
+        Self {
+            index: (raw & 0xFFFF) as u16,
+            generation: ((raw >> 16) & 0xFF) as u8,
+        }
+    }
+}
+
 /// How many samples a chart holds.
 pub const CHART_MAX: usize = 32;
 
