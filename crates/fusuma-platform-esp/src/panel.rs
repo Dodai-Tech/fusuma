@@ -20,6 +20,7 @@ pub(crate) struct EspBoard {
 impl EspBoard {
     /// Brings every part up, at `percent` brightness (0 to 100).
     pub(crate) fn open(percent: i32) -> anyhow::Result<Self> {
+        crate::power::rails()?;
         backlight::init();
         let mut display = Display::open()?;
         let touch = touch::init();

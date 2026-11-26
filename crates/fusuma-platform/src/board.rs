@@ -140,21 +140,105 @@ const fn opt(name: &'static str, default: i64, min: i64, max: i64) -> OptionSpec
     }
 }
 
+/// The pins of a QSPI AMOLED whose reset line is wired to the chip.
+const QSPI_PINS: &[PinSpec] = &[
+    pin("sck", 1, true),
+    pin("d", 4, true),
+    pin("cs", 1, true),
+    pin("rst", 1, true),
+];
+
+/// The pins of a QSPI AMOLED whose reset may come from somewhere else (an I/O expander, the chip's own command).
+const QSPI_PINS_OPTIONAL_RST: &[PinSpec] = &[
+    pin("sck", 1, true),
+    pin("d", 4, true),
+    pin("cs", 1, true),
+    pin("rst", 1, false),
+];
+
+/// The pins of an LCD on plain SPI: a data/command line and no read line.
+const SPI_LCD_PINS: &[PinSpec] = &[
+    pin("sck", 1, true),
+    pin("mosi", 1, true),
+    pin("cs", 1, true),
+    pin("dc", 1, true),
+    pin("rst", 1, false),
+];
+
+/// The pins of a touch controller on I2C that may have a reset and an interrupt line.
+const TOUCH_I2C_PINS: &[PinSpec] = &[
+    pin("sda", 1, true),
+    pin("scl", 1, true),
+    pin("rst", 1, false),
+    pin("int", 1, false),
+];
+
 /// The controllers Fusuma's ESP drivers know (`fusuma-platform-esp`). A board made of these is one file.
-pub const CONTROLLERS: [Controller; 8] = [
+pub const CONTROLLERS: [Controller; 15] = [
     Controller {
         name: "co5300",
         kind: PartKind::Display,
         bus: "qspi",
-        pins: &[
-            pin("sck", 1, true),
-            pin("d", 4, true),
-            pin("cs", 1, true),
-            pin("rst", 1, true),
-        ],
-        options: &[opt("pclk_mhz", 80, 1, 80)],
+        pins: QSPI_PINS,
+        // `probe_id` 1: read the chip's ID first and take an SH8601's start-up when it is one (a board that ships with either).
+        options: &[opt("pclk_mhz", 80, 1, 80), opt("probe_id", 0, 0, 1)],
         chips: &[],
         sizes: &[],
+        offset: true,
+    },
+    Controller {
+        name: "sh8601",
+        kind: PartKind::Display,
+        bus: "qspi",
+        // The CO5300's older sibling, with the same transport and another start-up. The 1.8 inch board's reset is behind an
+        // I/O expander, so the pin is optional.
+        pins: QSPI_PINS_OPTIONAL_RST,
+        options: &[opt("pclk_mhz", 40, 1, 80)],
+        chips: &[],
+        sizes: &[],
+        offset: true,
+    },
+    Controller {
+        name: "rm690b0",
+        kind: PartKind::Display,
+        bus: "qspi",
+        // Raydium's AMOLED controller (a 482x600 memory); the same transport again. Its windows start and end on even pixels.
+        pins: QSPI_PINS_OPTIONAL_RST,
+        options: &[opt("pclk_mhz", 40, 1, 80)],
+        chips: &[],
+        sizes: &[],
+        offset: true,
+    },
+    Controller {
+        name: "st7789",
+        kind: PartKind::Display,
+        bus: "spi",
+        // A TFT LCD on plain SPI. `madctl` is register 0x36 (mirror, swap and colour order bits); `invert` 1 for an IPS panel;
+        // `tuned` 1 sends the porch, voltage and gamma settings of Waveshare's 1.47 inch panel, 0 leaves the chip's own.
+        pins: SPI_LCD_PINS,
+        options: &[
+            opt("pclk_mhz", 40, 1, 80),
+            opt("madctl", 0, 0, 255),
+            opt("invert", 1, 0, 1),
+            opt("tuned", 0, 0, 1),
+        ],
+        chips: &[],
+        sizes: &[],
+        offset: true,
+    },
+    Controller {
+        name: "gc9a01",
+        kind: PartKind::Display,
+        bus: "spi",
+        // The round 240x240 LCD; its colour order is the BGR bit of `madctl`, set by default.
+        pins: SPI_LCD_PINS,
+        options: &[
+            opt("pclk_mhz", 40, 1, 80),
+            opt("madctl", 0x08, 0, 255),
+            opt("invert", 1, 0, 1),
+        ],
+        chips: &[],
+        sizes: &[(240, 240)],
         offset: true,
     },
     Controller {
@@ -260,6 +344,39 @@ pub const CONTROLLERS: [Controller; 8] = [
             pin("scl", 1, true),
             pin("rst", 1, false),
         ],
+        options: &[],
+        chips: &[],
+        sizes: &[],
+        offset: false,
+    },
+    Controller {
+        name: "ft5x06",
+        kind: PartKind::Touch,
+        bus: "i2c",
+        // FocalTech's FT5x06 at 0x38.
+        pins: TOUCH_I2C_PINS,
+        options: &[],
+        chips: &[],
+        sizes: &[],
+        offset: false,
+    },
+    Controller {
+        name: "cst816",
+        kind: PartKind::Touch,
+        bus: "i2c",
+        // Hynitron's CST816 at 0x15, in FocalTech's register layout.
+        pins: TOUCH_I2C_PINS,
+        options: &[],
+        chips: &[],
+        sizes: &[],
+        offset: false,
+    },
+    Controller {
+        name: "cst92xx",
+        kind: PartKind::Touch,
+        bus: "i2c",
+        // Hynitron's CST9217 and CST9220 at 0x5A, with 16-bit registers.
+        pins: TOUCH_I2C_PINS,
         options: &[],
         chips: &[],
         sizes: &[],
@@ -564,9 +681,11 @@ pub struct PowerI2c {
     pub sda: u8,
     /// The bus's clock pin.
     pub scl: u8,
-    /// `[address, register, value, mask]`, in order. Mask `0xFF` writes the register whole; a smaller mask reads it first and
-    /// changes only the bits in the mask (a chip whose register holds several rails). Written `[a, r, v]` the mask is `0xFF`.
-    pub writes: Vec<[u8; 4]>,
+    /// `[address, register, value, mask, delay_ms]`, in order. Mask `0xFF` writes the register whole; a smaller mask reads
+    /// it first and changes only the bits in the mask (a chip whose register holds several rails). The delay is the pause
+    /// after the write, for a reset line that must stay low a while. Written with fewer numbers the mask is `0xFF` and the
+    /// delay 0.
+    pub writes: Vec<[u8; 5]>,
 }
 
 /// The keys a board can have, and what the toolkit does with each (`ok` presses, `up` and `down` move the focus).
@@ -856,12 +975,13 @@ impl BoardFile {
                             .writes
                             .iter()
                             .map(|w| {
-                                let (a, r, v, m) = match w[..] {
-                                    [a, r, v] => (a, r, v, 0xFF),
-                                    [a, r, v, m] => (a, r, v, m),
+                                let (a, r, v, m, d) = match w[..] {
+                                    [a, r, v] => (a, r, v, 0xFF, 0),
+                                    [a, r, v, m] => (a, r, v, m, 0),
+                                    [a, r, v, m, d] => (a, r, v, m, d),
                                     _ => {
                                         return Err(format!(
-                                            "[power.i2c] a write is three or four numbers (address, register, value, optional mask), not {w:?}"
+                                            "[power.i2c] a write is three to five numbers (address, register, value, optional mask, optional delay in ms), not {w:?}"
                                         ));
                                     }
                                 };
@@ -871,7 +991,13 @@ impl BoardFile {
                                 let byte = |n: &str, x: i64| {
                                     u8::try_from(x).map_err(|_| format!("[power.i2c] {n} {x} is not 0 to 255"))
                                 };
-                                Ok([byte("address", a)?, byte("register", r)?, byte("value", v)?, byte("mask", m)?])
+                                Ok([
+                                    byte("address", a)?,
+                                    byte("register", r)?,
+                                    byte("value", v)?,
+                                    byte("mask", m)?,
+                                    byte("delay", d)?,
+                                ])
                             })
                             .collect::<Result<Vec<_>, String>>()?;
                         Ok(PowerI2c { sda, scl, writes })
@@ -1329,15 +1455,23 @@ fpu = true
         .unwrap();
         let i = b.power.unwrap().i2c.unwrap();
         assert_eq!((i.sda, i.scl), (18, 8));
-        assert_eq!(i.writes, [[0x20, 3, 0xFE, 0xFF], [0x20, 1, 0x01, 0xFF]]);
-        let m =
-            with_tables("[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x34, 0x90, 4, 4]]").unwrap();
-        assert_eq!(m.power.unwrap().i2c.unwrap().writes, [[0x34, 0x90, 4, 4]]);
+        assert_eq!(
+            i.writes,
+            [[0x20, 3, 0xFE, 0xFF, 0], [0x20, 1, 0x01, 0xFF, 0]]
+        );
+        let m = with_tables(
+            "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x34, 0x90, 4, 4], [0x20, 1, 0, 255, 100]]",
+        )
+        .unwrap();
+        assert_eq!(
+            m.power.unwrap().i2c.unwrap().writes,
+            [[0x34, 0x90, 4, 4, 0], [0x20, 1, 0, 0xFF, 100]]
+        );
         for (text, says) in [
             ("[power.i2c]\nsda = 1\nscl = 1\nwrites = []", "same pin"),
             (
                 "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x20, 3]]",
-                "three or four numbers",
+                "three to five numbers",
             ),
             (
                 "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x80, 3, 1]]",
@@ -1516,8 +1650,8 @@ fpu = true
         );
         fails(
             "controller = \"co5300\"",
-            "controller = \"st7789\"",
-            "known: co5300, ek79007",
+            "controller = \"st7790\"",
+            "known: co5300, sh8601, rm690b0, st7789, gc9a01, ek79007",
         );
         fails(
             "controller = \"ft3168\"",
@@ -1655,6 +1789,42 @@ flash_mb = 32
             (
                 "s3-amoled-164",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-164/board.toml"),
+            ),
+            (
+                "c6-lcd-147",
+                include_str!("../../fusuma-platform-esp/boards/c6-lcd-147/board.toml"),
+            ),
+            (
+                "c6-touch-lcd-128",
+                include_str!("../../fusuma-platform-esp/boards/c6-touch-lcd-128/board.toml"),
+            ),
+            (
+                "c6-touch-lcd-183",
+                include_str!("../../fusuma-platform-esp/boards/c6-touch-lcd-183/board.toml"),
+            ),
+            (
+                "s3-lcd-128",
+                include_str!("../../fusuma-platform-esp/boards/s3-lcd-128/board.toml"),
+            ),
+            (
+                "s3-amoled-18",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-18/board.toml"),
+            ),
+            (
+                "s3-amoled-241",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-241/board.toml"),
+            ),
+            (
+                "s3-amoled-175c",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-175c/board.toml"),
+            ),
+            (
+                "s3-amoled-216",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-216/board.toml"),
+            ),
+            (
+                "s3-amoled-132",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-132/board.toml"),
             ),
         ] {
             let b = read(text).unwrap_or_else(|e| panic!("{path}: {e}"));

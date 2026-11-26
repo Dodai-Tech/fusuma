@@ -11,7 +11,13 @@ pub(crate) fn read() -> Option<(bool, u16, u16)> {
     imp::read()
 }
 
-#[cfg(any(fusuma_touch = "ft3168", fusuma_touch = "gt911"))]
+#[cfg(any(
+    fusuma_touch = "ft3168",
+    fusuma_touch = "ft5x06",
+    fusuma_touch = "cst816",
+    fusuma_touch = "gt911",
+    fusuma_touch = "cst92xx"
+))]
 mod imp {
     use esp_idf_svc::sys::fusuma_esp as ffi;
 
@@ -33,9 +39,21 @@ mod imp {
             {
                 ffi::fusuma_ft3168_init(&cfg)
             }
+            #[cfg(fusuma_touch = "ft5x06")]
+            {
+                ffi::fusuma_ft5x06_init(&cfg)
+            }
+            #[cfg(fusuma_touch = "cst816")]
+            {
+                ffi::fusuma_cst816_init(&cfg)
+            }
             #[cfg(fusuma_touch = "gt911")]
             {
                 ffi::fusuma_gt911_init(&cfg)
+            }
+            #[cfg(fusuma_touch = "cst92xx")]
+            {
+                ffi::fusuma_cst92xx_init(&cfg)
             }
         };
         if err != 0 {
@@ -48,7 +66,11 @@ mod imp {
         let (mut down, mut x, mut y) = (false, 0u16, 0u16);
         // SAFETY: out-pointers are valid for the call.
         let ok = unsafe {
-            #[cfg(fusuma_touch = "ft3168")]
+            #[cfg(any(
+                fusuma_touch = "ft3168",
+                fusuma_touch = "ft5x06",
+                fusuma_touch = "cst816"
+            ))]
             {
                 ffi::fusuma_ft3168_read(&mut down, &mut x, &mut y)
             }
@@ -56,12 +78,22 @@ mod imp {
             {
                 ffi::fusuma_gt911_read(&mut down, &mut x, &mut y)
             }
+            #[cfg(fusuma_touch = "cst92xx")]
+            {
+                ffi::fusuma_cst92xx_read(&mut down, &mut x, &mut y)
+            }
         };
         ok.then_some((down, x, y))
     }
 }
 
-#[cfg(not(any(fusuma_touch = "ft3168", fusuma_touch = "gt911")))]
+#[cfg(not(any(
+    fusuma_touch = "ft3168",
+    fusuma_touch = "ft5x06",
+    fusuma_touch = "cst816",
+    fusuma_touch = "gt911",
+    fusuma_touch = "cst92xx"
+)))]
 mod imp {
     pub(super) fn init() -> bool {
         false

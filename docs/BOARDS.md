@@ -21,41 +21,47 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 | `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file**; panel power and battery latch through `[power.i2c]` on the TCA9554; built and linked for the C6, not run; 4 MB flash assumed |
 | `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 800x480 e-paper | ssd1677 | **file**; AXP2101 voltages and the ALDO3 enable (masked write) through `[power.i2c]`; built, not run; 16 MB flash; Y direction differs from the vendor (see EINK.md) |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file** from vendor firmware (GPIO6 low powers the panel); built, not run; 4 MB flash assumed |
-| `s3-amoled-143` | Waveshare ESP32-S3-Touch-AMOLED-1.43 | 466x466 round | co5300 init, ft3168 | **file**, CO5300 variant only |
+| `s3-amoled-143` | Waveshare ESP32-S3-Touch-AMOLED-1.43 | 466x466 round | co5300 or sh8601 (read from the chip), ft3168 | **file**; the chip's ID is read at start-up (`probe_id`), bit-banged, not run |
+| `s3-amoled-18` | Waveshare ESP32-S3-Touch-AMOLED-1.8 | 368x448 | sh8601, ft3168 | **file**; reset and display power through `[power.i2c]` on the TCA9554; the modified CO5300 + CST816 variant is not a file |
+| `s3-amoled-241` | Waveshare ESP32-S3-Touch-AMOLED-2.41 | 450x600 | rm690b0, ft5x06 | **file**; resets through `[power.i2c]`; the column offset 16 is the convention of the chip, not stated by Waveshare |
+| `s3-amoled-175c` | Waveshare ESP32-S3-Touch-AMOLED-1.75C | 466x466 round | co5300, cst92xx | **file**; 32 MB flash |
+| `s3-amoled-216` | Waveshare ESP32-S3-Touch-AMOLED-2.16 | 480x480 | co5300, cst92xx | **file** |
+| `s3-amoled-132` | Waveshare ESP32-S3-Touch-AMOLED-1.32 | 466x466 round (assumed) | co5300, cst816 | **file**; flash 8 MB assumed (examples say 8 and 16) |
+| `c6-lcd-147` | Waveshare ESP32-C6-LCD-1.47 | 172x320 | st7789 | **file**; pins and panel settings are what WeatherTrack's `weathertrack-gui` runs (so the display path ran on hardware, through mipidsi, not through Fusuma) |
+| `c6-touch-lcd-128` | Waveshare ESP32-C6-Touch-LCD-1.28 | 240x240 round | gc9a01, cst816 | **file**; the TF card's select (GPIO15) is held high on the shared bus |
+| `c6-touch-lcd-183` | Waveshare ESP32-C6-Touch-LCD-1.83 | 240x284 | st7789, cst816 | **file** |
+| `s3-lcd-128` | Waveshare ESP32-S3-Touch-LCD-1.28 | 240x240 round | gc9a01, cst816 | **file**; 2 MB quad PSRAM |
 
 E-paper boards, the controllers and how to add one: [EINK.md](EINK.md).
+
+Every file marked **file** was written from the vendor's firmware, built and linked, and never run. Their drivers
+(`qspi_amoled.c`, `lcd_spi.c`, `cst92xx.c`, the FocalTech-style touch in `ft3168.c`) were read from Waveshare's sources, not
+run either. The hardware-specific facts that stay open are listed in each board file's header.
 
 ## One file away or close
 
 * **1.64 V1**: the same board with chip select GPIO9 instead of 46 (the V2 firmware uses 46). A second file, or a `cs` list.
-* **1.43, SH8601 variant**: offset 0 and a different init (`44 01 D1`, no `C4 80`). The board picks its variant by reading the
-  panel ID at run time, which a board file cannot say: needs a `variant` option on the driver.
+* **1.8, the modified variant** (CO5300 with a CST816): the board ships in two variants, told apart by which touch chip answers
+  (0x15 or 0x38). The file is the original SH8601 + FT3168.
 
-## Needs a driver
+## Needs a driver or more reading
 
-| Board | Screen | Controller, bus | Touch | Pins read from the vendor |
-|---|---|---|---|---|
-| ESP32-C6-LCD-1.47 (what WeatherTrack's `-gui` runs) | 172x320 | ST7789, SPI | none (button GPIO9, WS2812 GPIO8) | SCLK 7, MOSI 6, CS 14, DC 15, RST 21, BL 22, offset 34,0, inverted. **run** in weathertrack-gui |
-| ESP32-C6-ePaper-1.54 | 200x200 e-paper | SSD1681 (the `epaper-1in54` preset), SPI | none | SCK 6, MOSI 5, MISO 4, CS 7, DC 15, RST 11, BUSY 10; I2C SDA 18, SCL 8; BOOT 9, PWR button 2; 16 MB flash, no PSRAM. **The panel's power switch is expander output 0** (TCA9554 at 0x20, high = on; the same chip also gates audio on 1, the battery sense on 5 and the LED on 4). Source: `waveshareteam/ESP32-C6-ePaper-1.54`, `02_Example/espidf_v5.5.3`. Not a file yet: Fusuma's e-paper driver switches power with a GPIO (`en`), so without the expander the panel stays dark |
-| ESP32-C6-Touch-LCD-1.83 | | ST7789, SPI | yes | not extracted |
-| ESP32-C6-Touch-LCD-2.8 | | SPI | I2C 6/7, INT 18 | SCLK 0, MOSI 1, DC 10, CS 11 |
-| ESP32-C6-Touch-AMOLED-1.64 | 280x456 | SH8601 (the CO5300 init), QSPI | FT3168 | not extracted: a C6 has fewer pins than the S3 |
-| ESP32-S3-Touch-AMOLED-1.8 | 368x448 | SH8601, QSPI | FT3168 or CST816, I2C 15/14 | **TCA9554 I/O expander** drives the display reset: Fusuma has no expander support |
-| ESP32-S3-Touch-AMOLED-2.41 | 600x450 | SH8601 library with an RM690B0-style init (`FE 20`, `26 0A`, `24 80`), QSPI | FT5x06, I2C 47/48, INT 3 | CS 9, SCLK 10, D0..3 = 11..14 |
-| ESP32-S3-Touch-AMOLED-1.75C, 2.16 | 1.75C: 466x466 | not confirmed | I2C 15/14 | SCLK 38, CS 12 (the pin file only) |
-| ESP32-P4-WIFI6-Touch-LCD 3.5, 4.3, 5, X, XC | | not read | | `7B` is `p4-7in` |
+| Board | Screen | Controller, bus | Why it is not a file |
+|---|---|---|---|
+| ESP32-C6-Touch-LCD-2.8 | 240x320 | ST7789, SPI (SCLK 0, MOSI 1, DC 10, CS 11) | the LCD reset, the backlight PWM and the touch reset all go through a **CH32V003 co-processor** ("EXIO") on I2C 6/7: a protocol Fusuma has not read. Touch is a CST3530 (another protocol), INT 18 |
+| ESP32-C6-Touch-AMOLED-1.64 | 280x456 | SH8601 (the CO5300 init), QSPI | not extracted: a C6 has fewer pins than the S3 |
+| ESP32-P4-WIFI6-Touch-LCD 3.5, 4.3, 5, X, XC | | not read | `7B` is `p4-7in` |
 
-Also exist as Waveshare repos and were not looked at: ESP32-S3-Touch-AMOLED-1.32, ESP32-C6-Touch-AMOLED-1.8, -2.06, -2.16,
-ESP32-C6-GEEK, ESP32-C6-Zero. Other makers (Seeed, LilyGO T-Display / T-Watch, M5Stack, the "cheap yellow display"
-ESP32-2432S028, Espressif's own DevKits) are not researched.
+Also exist as Waveshare repos and were not looked at: ESP32-C6-Touch-AMOLED-1.8, -2.06, -2.16, ESP32-C6-GEEK, ESP32-C6-Zero.
+Other makers (Seeed, LilyGO T-Display / T-Watch, M5Stack, the "cheap yellow display" ESP32-2432S028, Espressif's own DevKits)
+are not researched.
 
-## Order that pays most
+## What is left
 
-1. **ST7789 over SPI** (one driver): the C6 1.47 WeatherTrack already runs, plus the C6 Touch LCD 1.83 and 2.8, and a large
-   share of cheap boards. It needs a plain-SPI bus next to the QSPI one.
-2. **A `variant` option on `co5300`** (1.43 SH8601, 1.64 V1/V2): small, and turns three boards into files.
-3. **An I/O expander in the board file** (TCA9554): the 1.8.
-4. **RM690B0 init** (2.41) and a **FT5x06** touch driver.
+1. Run any of the files above on a board: the first thing to read is the serial log (`panel errors` in the per-update line) and
+   whether the glass shows the picture; then `espflash board-info` for the real flash size.
+2. A CH32V003 EXIO driver (the C6 2.8").
+3. CST3530 touch.
 
 ## Every Waveshare ESP32 board (from docs.waveshare.com/ESP32-Series-Products-Intro)
 
@@ -65,7 +71,7 @@ incomplete). Only the boards in the tables above have a file or a researched pin
 
 Wanted next, by what you asked for:
 
-* **Round IPS:** `ESP32-S3-Touch-LCD-1.28`, `ESP32-C6-Touch-LCD-1.28` (GC9A01 + CST816 is the `round-1in28` preset; needs the SPI display driver), and the dual-eye `ESP32-S3-DualEye-Touch-LCD-1.28`.
+* **Round IPS:** `ESP32-S3-Touch-LCD-1.28`, `ESP32-C6-Touch-LCD-1.28` (GC9A01 + CST816 is the `round-1in28` preset; both are files now), and the dual-eye `ESP32-S3-DualEye-Touch-LCD-1.28`.
 * **E-paper:** `ESP32-C6-ePaper-1.54`, `ESP32-S3-ePaper-1.54`, `ESP32-S3-ePaper-3.97`, `ESP32-S3-ePaper-1.54G`, `ESP32-S3-ePaper-13.3E6`, `ESP32-S3-PhotoPainter`. The 1.54 panel is the `epaper-1in54` preset (SSD1681), which Fusuma already knows; the board wiring is still to read from the vendor repo.
 * **Watches:** `ESP32-S3-Touch-AMOLED-2.06` (done), `-1.43` (done as a file), `-1.75`, `-1.75C`, `-1.8`, `-1.32`.
 

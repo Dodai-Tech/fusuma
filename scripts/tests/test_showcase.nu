@@ -104,7 +104,9 @@ def "test showcase: each connected chip picks its board" [] {
     # Two S3 boards have 32 MB of flash (the watch and the Sticky), so the chip alone cannot say: --board settles it.
     assert error { pick_board { chip: "esp32s3", flash_mb: 32 } }
     assert equal (pick_board { chip: "esp32p4", flash_mb: 32 }).name "p4-7in"
-    assert equal (pick_board { chip: "esp32c6", flash_mb: 4 }).name "c6-epaper-154"
+    # Two C6 boards have 4 MB (the e-paper and the 1.47 inch LCD), so the chip and the flash cannot say: --board settles it.
+    assert error { pick_board { chip: "esp32c6", flash_mb: 4 } }
+    assert equal (pick_board { chip: "esp32c6", flash_mb: 16 } ([{ name: "a", chip: "esp32c6", flash_mb: 16 }])).name "a"
     assert error { pick_board { chip: "esp32c3", flash_mb: 4 } }
 }
 
@@ -122,7 +124,7 @@ def "test showcase: two boards with one chip are told apart by flash, else --boa
 
 def "test showcase: the boards come from their board files, with the chip target and toolchain" [] {
     let boards = load_boards
-    assert equal ($boards.name) ["c6-epaper-154" "p4-7in" "s3-amoled-143" "s3-amoled-164" "s3-amoled-206" "s3-epaper-154" "s3-epaper-397" "s3-sticky"]
+    assert equal ($boards.name) ["c6-epaper-154" "c6-lcd-147" "c6-touch-lcd-128" "c6-touch-lcd-183" "p4-7in" "s3-amoled-132" "s3-amoled-143" "s3-amoled-164" "s3-amoled-175c" "s3-amoled-18" "s3-amoled-206" "s3-amoled-216" "s3-amoled-241" "s3-epaper-154" "s3-epaper-397" "s3-lcd-128" "s3-sticky"]
     for b in $boards {
         assert ($b.dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
         assert ($b.dir | path join partitions.csv | path exists) $"($b.name) has a partition table"

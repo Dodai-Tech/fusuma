@@ -1,0 +1,43 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-1.32 (466x466, a CO5300 with a CST816 touch). NOT RUN ON A BOARD: read from Waveshare's
+# ESP-IDF examples (waveshareteam/ESP32-S3-Touch-AMOLED-1.32). The round shape and the 8 MB flash are assumptions: the examples
+# configure 8 and 16 MB. Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-amoled-132"
+title = "Waveshare ESP32-S3-Touch-AMOLED-1.32"
+about = "Waveshare ESP32-S3 1.32-inch AMOLED touch board (466x466, CO5300)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage", "audio"]
+
+[display]
+width = 466
+height = 466
+shape = "circle"
+# The vendor draws at x + 6.
+offset = [6, 0]
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 11, d = [12, 13, 14, 15], cs = 10, rst = 8 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "watch"
+width_mm = 34
+height_mm = 34
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "cst816"
+bus = "i2c"
+# The interrupt is GPIO6.
+pins = { sda = 47, scl = 48, rst = 7, int = 6 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 8
+# The examples configure 8 MB in some projects and 16 MB in others; the smaller number is safe on both.
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

@@ -30,9 +30,12 @@ needs it`). Which boards exist, which are a file away and which need a driver: [
 
 | Controller | Part | Bus | Notes |
 |---|---|---|---|
-| `co5300` | display | QSPI | AMOLED without a frame buffer: updates go out in bands of rows through two DMA buffers, one filled while the other is sent; `grid = 2` |
+| `co5300` | display | QSPI | AMOLED without a frame buffer: updates go out in bands of rows through two DMA buffers, one filled while the other is sent; `grid = 2`; `probe_id = 1` reads the chip's ID and takes an SH8601's start-up when it is one |
+| `sh8601`, `rm690b0` | display | QSPI | the same transport and bands with their own start-up (the 1.43/1.8 and the 2.41); the reset pin may be absent (an expander resets the panel) |
+| `st7789`, `gc9a01` | display | SPI | LCDs with a data/command line (`dc`), in bands too; `madctl` and `invert` options; the backlight is a separate `ledc` |
 | `ek79007` | display | MIPI DSI | ESP32-P4 only, 1024x600; a frame buffer the DMA scans out |
-| `ft3168` | touch | I2C | |
+| `ft3168`, `ft5x06`, `cst816` | touch | I2C | FocalTech's register map; 0x38, 0x38 and 0x15; one read function |
+| `cst92xx` | touch | I2C | CST9217 / CST9220 at 0x5A, 16-bit registers |
 | `gt911` | touch | I2C | address found at 0x5D or 0x14 |
 | `ledc` | backlight | PWM | |
 
@@ -48,7 +51,9 @@ now and then).
 | `c6-epaper-154`: Waveshare ESP32-C6-ePaper-1.54 (200x200 e-paper, TCA9554 rail switch) | `ssd1680`, `[power.i2c]`; from vendor firmware, built, not run; see docs/EINK.md |
 | `s3-epaper-397`: Waveshare ESP32-S3-ePaper-3.97 (800x480 e-paper, AXP2101) | `ssd1677`, `[power.i2c]` (masked ALDO3 enable); from vendor firmware, built, not run; see docs/EINK.md |
 | `s3-epaper-154`: Waveshare ESP32-S3-ePaper-1.54 (200x200 e-paper) | `ssd1680`; from vendor firmware, built, not run; see docs/EINK.md |
-| `s3-amoled-143`: Waveshare ESP32-S3-Touch-AMOLED-1.43 (466x466 round, CO5300 variant) | `co5300`, `ft3168`; read from the vendor's firmware, not run on a board; see docs/BOARDS.md |
+| `s3-amoled-143`: Waveshare ESP32-S3-Touch-AMOLED-1.43 (466x466 round) | `co5300` (or `sh8601`, probed), `ft3168`; read from the vendor's firmware, not run on a board; see docs/BOARDS.md |
+| `s3-amoled-18`, `s3-amoled-241`, `s3-amoled-175c`, `s3-amoled-216`, `s3-amoled-132` | the 1.8" (`sh8601`), 2.41" (`rm690b0`), 1.75C, 2.16 and 1.32 AMOLED boards; from vendor firmware, built, not run; see docs/BOARDS.md |
+| `c6-lcd-147`, `c6-touch-lcd-128`, `c6-touch-lcd-183`, `s3-lcd-128`: Waveshare LCD boards | `st7789` or `gc9a01` on SPI, `cst816`; from vendor firmware, built, not run (the 1.47's pins and settings are WeatherTrack's, which ran) |
 | `s3-amoled-164`: Waveshare ESP32-S3-Touch-AMOLED-1.64 (280x456) | `co5300`, `ft3168`; pins verified on a real board, CS is GPIO46 on this V2 board (9 on a V1) |
 | `s3-amoled-206`: Waveshare ESP32-S3-Touch-AMOLED-2.06 watch | `co5300`, `ft3168`; its 70 px corner radius is a guess by eye |
 

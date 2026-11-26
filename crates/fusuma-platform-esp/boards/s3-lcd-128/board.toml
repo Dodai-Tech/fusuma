@@ -1,0 +1,44 @@
+# The Waveshare ESP32-S3-Touch-LCD-1.28: a round 240x240 GC9A01 LCD on plain SPI with a CST816S touch panel, on an ESP32-S3R2
+# (16 MB flash, 2 MB quad PSRAM). NOT RUN ON A BOARD: pins from Waveshare's Arduino example
+# (waveshareteam/ESP32-S3-Touch-LCD-1.28, ESP32-S3-Touch-LCD-1.28-Test). Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-lcd-128"
+title = "Waveshare ESP32-S3-Touch-LCD-1.28"
+about = "Waveshare ESP32-S3 1.28-inch round touch LCD board (240x240, GC9A01)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "imu"]
+
+[display]
+width = 240
+height = 240
+shape = "circle"
+controller = "gc9a01"
+bus = "spi"
+pins = { sck = 10, mosi = 11, cs = 9, dc = 8, rst = 14 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "watch"
+width_mm = 32
+height_mm = 32
+kind = "emissive"
+inputs = ["touch"]
+
+[backlight]
+controller = "ledc"
+bus = "pwm"
+pins = { pwm = 2 }
+
+[touch]
+controller = "cst816"
+bus = "i2c"
+# The interrupt is GPIO5.
+pins = { sda = 6, scl = 7, rst = 13, int = 5 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 2048
+fpu = true
+simd = false

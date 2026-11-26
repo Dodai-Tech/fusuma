@@ -68,7 +68,7 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | a window on Linux, macOS and Windows (`winit`) | no |
 | [`fusuma-platform-embedded`](crates/fusuma-platform-embedded) | what every board shares: `Board`, `Driver`, the frame step | yes |
 | [`fusuma-access`](crates/fusuma-access) | the semantic tree as an AccessKit tree, and what a screen reader asks as calls on the tree (unpublished, std) | no |
-| [`fusuma-platform-esp`](crates/fusuma-platform-esp) | ESP-IDF boards described by files, drivers per controller (CO5300, EK79007, FT3168, GT911) | no |
+| [`fusuma-platform-esp`](crates/fusuma-platform-esp) | ESP-IDF boards described by files, drivers per controller (CO5300, SH8601, RM690B0, ST7789, GC9A01, EK79007, FT3168, FT5x06, CST816, CST92xx, GT911) | no |
 | [`fusuma-cells`](crates/fusuma-cells), [`fusuma-platform-tui`](crates/fusuma-platform-tui) | scaffolds of the text UI: a cell grid with ANSI output; a terminal | yes / no |
 
 What is built and what comes next: [the roadmap](docs/ROADMAP.md). A renderer crate never depends on the toolkit,

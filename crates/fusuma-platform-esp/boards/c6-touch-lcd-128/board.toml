@@ -1,0 +1,53 @@
+# The Waveshare ESP32-C6-Touch-LCD-1.28: a round 240x240 GC9A01 LCD on plain SPI with a CST816S touch panel, on an ESP32-C6 with
+# 16 MB flash. NOT RUN ON A BOARD: pins from Waveshare's hardware reference and BSP (waveshareteam/ESP32-C6-Touch-LCD-1.28); the
+# GC9A01's start-up is the Arduino_GFX/Waveshare table, which the S3 twin's example repeats. The TF card shares the LCD's SPI
+# bus, so its chip select (GPIO15) must idle high. Schema: crates/fusuma-platform/board.schema.json.
+name = "c6-touch-lcd-128"
+title = "Waveshare ESP32-C6-Touch-LCD-1.28"
+about = "Waveshare ESP32-C6 1.28-inch round touch LCD board (240x240, GC9A01)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 240
+height = 240
+shape = "circle"
+controller = "gc9a01"
+bus = "spi"
+# The SPI bus is shared with the TF card; the vendor runs the LCD at 80 MHz, this starts at 40.
+pins = { sck = 11, mosi = 21, cs = 10, dc = 19, rst = 20 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "watch"
+width_mm = 32
+height_mm = 32
+kind = "emissive"
+inputs = ["touch"]
+
+# The TF card's chip select: high keeps the card off the shared bus.
+[power]
+high = [15]
+
+[backlight]
+controller = "ledc"
+bus = "pwm"
+pins = { pwm = 7 }
+
+[touch]
+controller = "cst816"
+bus = "i2c"
+pins = { sda = 18, scl = 8, rst = 23, int = 4 }
+
+[buttons]
+pins = { ok = 9 }
+active_low = true
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

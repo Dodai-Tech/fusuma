@@ -1,0 +1,52 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-2.41 (450x600, an RM690B0). NOT RUN ON A BOARD: read from Waveshare's firmware
+# (waveshareteam/ESP32-S3-Touch-AMOLED-2.41, its LVGL example). The panel's reset and the touch reset are on a TCA9554 I/O
+# expander (0x20); the panel's memory is 482 columns wide and the visible part starts at column 16 (the convention of other boards
+# with this chip, not stated in Waveshare's example: if the picture is shifted by 16 columns, this is the number to change).
+# Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-amoled-241"
+title = "Waveshare ESP32-S3-Touch-AMOLED-2.41"
+about = "Waveshare ESP32-S3 2.41-inch AMOLED touch board (450x600, RM690B0)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
+
+[display]
+width = 450
+height = 600
+offset = [16, 0]
+# The RM690B0 takes windows that start and end on even pixels.
+grid = 2
+controller = "rm690b0"
+bus = "qspi"
+# No reset pin: the expander resets the panel.
+pins = { sck = 10, d = [11, 12, 13, 14], cs = 9 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "panel"
+width_mm = 37
+height_mm = 49
+kind = "emissive"
+inputs = ["touch"]
+
+# The expander's pins 0 (panel reset) and 1 (touch reset) are outputs; both are pulsed low for 100 ms and given 200 ms to
+# start, as the vendor's firmware does.
+[power.i2c]
+sda = 47
+scl = 48
+writes = [[0x20, 3, 0xFC], [0x20, 1, 0x03, 255, 100], [0x20, 1, 0x00, 255, 100], [0x20, 1, 0x03, 255, 200]]
+
+[touch]
+controller = "ft5x06"
+bus = "i2c"
+# The reset is the expander's; the interrupt is GPIO3.
+pins = { sda = 47, scl = 48, int = 3 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+# 16 MB flash and 8 MB octal PSRAM, from Waveshare's README.
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

@@ -1,0 +1,38 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-2.16 (480x480, a CO5300 with a CST9220 touch). NOT RUN ON A BOARD: read from Waveshare's
+# Arduino examples (waveshareteam/ESP32-S3-Touch-AMOLED-2.16). Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-amoled-216"
+title = "Waveshare ESP32-S3-Touch-AMOLED-2.16"
+about = "Waveshare ESP32-S3 2.16-inch AMOLED touch board (480x480, CO5300)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage", "audio"]
+
+[display]
+width = 480
+height = 480
+grid = 2
+controller = "co5300"
+bus = "qspi"
+pins = { sck = 38, d = [4, 5, 6, 7], cs = 12, rst = 39 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "panel"
+width_mm = 39
+height_mm = 39
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "cst92xx"
+bus = "i2c"
+pins = { sda = 15, scl = 14, rst = 40, int = 11 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+# 16 MB flash and 8 MB octal PSRAM, from the vendor's sdkconfig.
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

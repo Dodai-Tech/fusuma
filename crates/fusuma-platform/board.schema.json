@@ -21,7 +21,7 @@
         "radius": { "type": "integer", "minimum": 1 },
         "offset": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 },
         "grid": { "type": "integer", "minimum": 1, "maximum": 16 },
-        "controller": { "enum": ["co5300", "ek79007", "ssd1677", "ssd1680", "uc8179"] },
+        "controller": { "enum": ["co5300", "sh8601", "rm690b0", "st7789", "gc9a01", "ek79007", "ssd1677", "ssd1680", "uc8179"] },
         "bus": { "enum": ["qspi", "dsi", "spi"] },
         "pins": { "$ref": "#/$defs/pins" },
         "options": { "$ref": "#/$defs/options" }
@@ -59,8 +59,8 @@
             "scl": { "type": "integer", "minimum": 0, "maximum": 255 },
             "writes": {
               "type": "array",
-              "description": "[address, register, value] or [address, register, value, mask], in order. A mask below 255 reads the register and changes only its bits.",
-              "items": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 4 }
+              "description": "[address, register, value, mask, delay_ms], in order; the last two are optional. A mask below 255 reads the register and changes only its bits; the delay is the pause after the write in milliseconds.",
+              "items": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 5 }
             }
           }
         }
@@ -90,7 +90,7 @@
       "additionalProperties": false,
       "required": ["controller"],
       "properties": {
-        "controller": { "enum": ["gt911", "ft3168"] },
+        "controller": { "enum": ["gt911", "ft3168", "ft5x06", "cst816", "cst92xx"] },
         "bus": { "enum": ["i2c"] },
         "pins": { "$ref": "#/$defs/pins" },
         "options": { "$ref": "#/$defs/options" },

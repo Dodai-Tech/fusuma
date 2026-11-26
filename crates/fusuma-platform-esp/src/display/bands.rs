@@ -1,20 +1,22 @@
-//! A CO5300 AMOLED over QSPI. The panel has no frame buffer the chip can write into: every update is sent as a
-//! rectangle, in bands of rows through two buffers in internal RAM, so one band is filled while the one before it is
-//! still being sent (the driver's next command waits for that transfer to end).
+//! Sending a rectangle to a panel that has no frame buffer the chip writes: in bands of rows through two buffers in
+//! internal RAM, so one band is filled while the one before it is still being sent (the driver's next command waits for
+//! that transfer to end). The QSPI AMOLEDs and the plain SPI LCDs both work this way; only the call that sends a band
+//! differs.
 
 use std::time::Instant;
 
-use esp_idf_svc::sys::{MALLOC_CAP_DMA, MALLOC_CAP_INTERNAL, fusuma_esp as ffi, heap_caps_malloc};
+use esp_idf_svc::sys::{MALLOC_CAP_DMA, MALLOC_CAP_INTERNAL, heap_caps_malloc};
 use fusuma::render::Rect;
 use fusuma_platform_embedded::{Block, ByteOrder, Pixels, aligned, band_rows};
 
-use crate::board::{self, DISPLAY_OPTIONS as OPTIONS, DISPLAY_PINS as PINS, GRID, HEIGHT, WIDTH};
+use crate::board::{GRID, HEIGHT, WIDTH};
 
 /// Pixels in one band buffer: 32 KB, the driver's largest transfer.
-const BAND_PX: usize = 16 * 1024;
+pub(super) const BAND_PX: usize = 16 * 1024;
 
-/// The panel and its two band buffers.
-pub(crate) struct Display {
+/// The two band buffers and what `present` counted.
+pub(super) struct Bands {
+    name: &'static str,
     bands: [&'static mut [u16]; 2],
     /// The band to fill next; the other one may still be in flight.
     next: usize,
@@ -30,32 +32,11 @@ pub(crate) struct Display {
     pixels: u64,
 }
 
-impl Display {
-    /// Brings the panel up.
-    pub(crate) fn open() -> anyhow::Result<Self> {
-        let d = PINS
-            .iter()
-            .find(|(n, _)| *n == "d")
-            .map_or(&[][..], |(_, g)| *g);
-        anyhow::ensure!(d.len() == 4, "co5300: pins.d needs four GPIOs");
-        let cfg = ffi::fusuma_co5300_config_t {
-            sck: board::pin(PINS, "sck"),
-            d0: d[0],
-            d1: d[1],
-            d2: d[2],
-            d3: d[3],
-            cs: board::pin(PINS, "cs"),
-            rst: board::pin(PINS, "rst"),
-            pclk_hz: u32::try_from(board::option(OPTIONS, "pclk_mhz") * 1_000_000)
-                .unwrap_or(80_000_000),
-            x_offset: board::OFFSET[0],
-            y_offset: board::OFFSET[1],
-            max_transfer: BAND_PX * 2,
-        };
-        // SAFETY: called once at startup, before anything else touches the panel; `cfg` lives for the call.
-        let err = unsafe { ffi::fusuma_co5300_init(&cfg) };
-        anyhow::ensure!(err == 0, "co5300 init failed: esp_err {err}");
+impl Bands {
+    /// Allocates the buffers; `name` is the controller, for the report.
+    pub(super) fn new(name: &'static str) -> anyhow::Result<Self> {
         Ok(Self {
+            name,
             bands: [band()?, band()?],
             next: 0,
             errors: 0,
@@ -68,19 +49,12 @@ impl Display {
         })
     }
 
-    /// Sets the brightness, 0 to 100; true, an AMOLED sets its own.
-    pub(crate) fn brightness(&mut self, percent: i32) -> bool {
-        let level = u8::try_from(percent.clamp(0, 100) * 255 / 100).unwrap_or(u8::MAX);
-        // SAFETY: plain setter after init.
-        unsafe { ffi::fusuma_co5300_brightness(level) };
-        true
-    }
-
     /// Where `present`'s time went since the last report, then starts counting again.
-    pub(crate) fn report(&mut self) -> Option<String> {
+    pub(super) fn report(&mut self) -> Option<String> {
         let n = u64::from(self.presents.max(1));
         let line = format!(
-            "co5300 per update: filling {} us, waiting for the panel {} us, {} px; panel errors {} of {} bands (last esp_err {:#x})",
+            "{} per update: filling {} us, waiting for the panel {} us, {} px; panel errors {} of {} bands (last esp_err {:#x})",
+            self.name,
             self.fill_us / n,
             self.wait_us / n,
             self.pixels / n,
@@ -92,8 +66,14 @@ impl Display {
         Some(line)
     }
 
-    /// Sends `region` (cut to the screen and grown to the panel's grid).
-    pub(crate) fn present(&mut self, region: Rect, pixels: &mut dyn Pixels) {
+    /// Sends `region` (cut to the screen and grown to the panel's grid); `draw(x0, y0, x1, y1, pixels)` sends one band
+    /// and returns the ESP-IDF error.
+    pub(super) fn present(
+        &mut self,
+        region: Rect,
+        pixels: &mut dyn Pixels,
+        draw: impl Fn(u16, u16, u16, u16, *const u16) -> i32,
+    ) {
         let Some(r) = aligned(region, WIDTH, HEIGHT, GRID) else {
             return;
         };
@@ -109,17 +89,15 @@ impl Display {
             // One pass: the rows, already in the panel's big-endian order.
             pixels.rows(Block::band(x0, y, width, ByteOrder::BigEndian), band);
             let t1 = Instant::now();
-            // SAFETY: the band is DMA-capable and stays untouched until the driver's next call: the other band is
-            // filled next, and its draw waits for this transfer before it starts.
-            let err = unsafe {
-                ffi::fusuma_co5300_draw(
-                    x0 as u16,
-                    y as u16,
-                    x1 as u16,
-                    (y + h) as u16,
-                    band.as_ptr(),
-                )
-            };
+            // The band is DMA-capable and stays untouched until the driver's next call: the other band is filled next,
+            // and its draw waits for this transfer before it starts.
+            let err = draw(
+                x0 as u16,
+                y as u16,
+                x1 as u16,
+                (y + h) as u16,
+                band.as_ptr(),
+            );
             self.bands_sent += 1;
             if err != 0 {
                 self.errors += 1;

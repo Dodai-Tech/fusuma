@@ -1,0 +1,46 @@
+# The Waveshare ESP32-C6-LCD-1.47: a 172x320 ST7789 IPS LCD on plain SPI, an ESP32-C6 with 4 MB flash and no PSRAM, a BOOT
+# key and an RGB LED. The wiring and the panel settings (offset 34, RGB order, inverted, 40 MHz, the chip's own porch and gamma)
+# are the ones WeatherTrack's `weathertrack-gui` runs on this board, through the mipidsi driver, so the display path has run
+# on hardware; Fusuma's own driver has not. The TF card shares the SPI bus (its chip select is on another pin). Waveshare's example
+# tunes the panel more (`tuned = 1` sends that: porch, voltages, gamma) and ends with the BGR bit and a mirror in x. Schema:
+# crates/fusuma-platform/board.schema.json.
+name = "c6-lcd-147"
+title = "Waveshare ESP32-C6-LCD-1.47"
+about = "Waveshare ESP32-C6 1.47-inch LCD board (172x320, ST7789)"
+capabilities = ["display", "button", "wifi", "ble", "storage"]
+
+[display]
+width = 172
+height = 320
+# The panel sits 34 columns into the controller's 240 x 320 memory.
+offset = [34, 0]
+controller = "st7789"
+bus = "spi"
+pins = { sck = 7, mosi = 6, cs = 14, dc = 15, rst = 21 }
+options = { pclk_mhz = 40, madctl = 0, invert = 1 }
+
+[screen]
+form = "micro"
+width_mm = 18
+height_mm = 33
+kind = "emissive"
+inputs = ["keys"]
+
+[backlight]
+controller = "ledc"
+bus = "pwm"
+pins = { pwm = 22 }
+
+[buttons]
+pins = { ok = 9 }
+active_low = true
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 4
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

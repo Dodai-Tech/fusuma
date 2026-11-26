@@ -9,24 +9,62 @@
 #include <stdint.h>
 #include "esp_err.h"
 
-// ── CO5300: AMOLED over QSPI, no frame buffer the chip writes; takes rectangles. ─────────────────────────────────
+// ── AMOLED over QSPI (CO5300, SH8601, RM690B0): no frame buffer the chip writes; takes rectangles. ───────────────
+// The controller (`kind`).
+#define FUSUMA_AMOLED_CO5300 0
+#define FUSUMA_AMOLED_SH8601 1
+#define FUSUMA_AMOLED_RM690B0 2
+
 typedef struct {
+    // FUSUMA_AMOLED_*.
+    int kind;
+    // For a CO5300 board that ships with either chip: read the ID register first and use the SH8601's start-up (and no column
+    // offset) when it is one. Needs `rst`.
+    int probe;
+    // `rst` of -1: the chip's software reset.
     int sck, d0, d1, d2, d3, cs, rst;
     uint32_t pclk_hz;
     // Where the visible area starts in the panel's memory.
     uint16_t x_offset, y_offset;
     // The largest pixel transfer in bytes (the band buffer).
     size_t max_transfer;
-} fusuma_co5300_config_t;
+} fusuma_amoled_config_t;
 
-esp_err_t fusuma_co5300_init(const fusuma_co5300_config_t *cfg);
+esp_err_t fusuma_amoled_init(const fusuma_amoled_config_t *cfg);
 // Sends [x0, x1) x [y0, y1), row by row, big-endian RGB565. Returns before the transfer ends: `pixels` must stay
-// untouched until the next fusuma_co5300_* call, which waits for it. `pixels` must be DMA-capable internal memory.
-esp_err_t fusuma_co5300_draw(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, const uint16_t *pixels);
+// untouched until the next fusuma_amoled_* call, which waits for it. `pixels` must be DMA-capable internal memory.
+esp_err_t fusuma_amoled_draw(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, const uint16_t *pixels);
 // Waits until every pixel transfer has ended.
-esp_err_t fusuma_co5300_wait(void);
+esp_err_t fusuma_amoled_wait(void);
 // Brightness, 0 to 255.
-esp_err_t fusuma_co5300_brightness(uint8_t level);
+esp_err_t fusuma_amoled_brightness(uint8_t level);
+
+// ── ST7789 and GC9A01: LCDs on plain SPI with a data/command line (the backlight is a separate LEDC pin). ────────
+// The controller (`kind`).
+#define FUSUMA_LCD_ST7789 0
+#define FUSUMA_LCD_GC9A01 1
+
+typedef struct {
+    // FUSUMA_LCD_*.
+    int kind;
+    int sck, mosi, cs, dc, rst;
+    uint32_t pclk_hz;
+    // Where the visible area starts in the controller's memory (a 172x320 panel sits in a 240x320 memory).
+    uint16_t x_offset, y_offset;
+    // Memory data access control (0x36): the mirror and swap bits and the colour order.
+    uint8_t madctl;
+    // Colour inversion on (an IPS panel).
+    int invert;
+    // ST7789 only: send the porch, voltage and gamma settings tuned for Waveshare's 1.47 inch panel; 0 keeps the chip's defaults.
+    int tuned;
+    // The largest pixel transfer in bytes (the band buffer).
+    size_t max_transfer;
+} fusuma_lcd_config_t;
+
+esp_err_t fusuma_lcd_init(const fusuma_lcd_config_t *cfg);
+// Sends [x0, x1) x [y0, y1), big-endian RGB565. Same contract as fusuma_amoled_draw.
+esp_err_t fusuma_lcd_draw(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, const uint16_t *pixels);
+esp_err_t fusuma_lcd_wait(void);
 
 // ── EK79007: MIPI DSI panel with a frame buffer the chip writes (ESP32-P4 only; 1024x600). ──────────────────────
 typedef struct {
@@ -52,11 +90,18 @@ typedef struct {
     uint16_t width, height;
 } fusuma_touch_config_t;
 
+// The FocalTech-style register map (finger count at 0x02, then x and y as 12-bit values): the FT3168 and FT5x06 at 0x38, the
+// CST816 at 0x15. One read function serves all three.
 esp_err_t fusuma_ft3168_init(const fusuma_touch_config_t *cfg);
+esp_err_t fusuma_ft5x06_init(const fusuma_touch_config_t *cfg);
+esp_err_t fusuma_cst816_init(const fusuma_touch_config_t *cfg);
 esp_err_t fusuma_gt911_init(const fusuma_touch_config_t *cfg);
+// The CST9217 and CST9220 at 0x5A, which use 16-bit registers.
+esp_err_t fusuma_cst92xx_init(const fusuma_touch_config_t *cfg);
 // One sample. False when the bus failed; otherwise `*down`, and when down the position as the controller reports it.
 bool fusuma_ft3168_read(bool *down, uint16_t *x, uint16_t *y);
 bool fusuma_gt911_read(bool *down, uint16_t *x, uint16_t *y);
+bool fusuma_cst92xx_read(bool *down, uint16_t *x, uint16_t *y);
 
 // ── Backlight on an LEDC PWM channel. ────────────────────────────────────────────────────────────────────────────
 esp_err_t fusuma_ledc_backlight_init(int pin, bool invert, uint32_t freq_hz);

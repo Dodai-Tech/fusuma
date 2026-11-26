@@ -7,21 +7,27 @@ use esp_idf_svc::sys::fusuma_esp as ffi;
 use fusuma::platform::{Machine, Render, Settings};
 use fusuma::render::Point;
 use fusuma::{App, Input, Key, TouchTracker};
-#[cfg_attr(any(fusuma_display = "uc8179", fusuma_display = "ssd1680"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::bus::Bus;
+#[cfg_attr(
+    any(fusuma_display = "uc8179", fusuma_display = "ssd1680"),
+    allow(unused_imports)
+)]
 use fusuma_platform_embedded::eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
 #[cfg_attr(not(fusuma_display = "ssd1680"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::ssd1680::{Config as Ssd1680Config, Ssd1680};
-#[cfg_attr(any(fusuma_display = "uc8179", fusuma_display = "ssd1680"), allow(unused_imports))]
+#[cfg_attr(
+    any(fusuma_display = "uc8179", fusuma_display = "ssd1680"),
+    allow(unused_imports)
+)]
 use fusuma_platform_embedded::eink::sticky::{Sticky, Variant};
 #[cfg_attr(not(fusuma_display = "uc8179"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::uc8179::{Config as Uc8179Config, Uc8179};
-use fusuma_platform_embedded::eink::bus::Bus;
 use fusuma_platform_embedded::eink::{EinkDriver, Panel, RefreshPolicy};
 use fusuma_platform_embedded::{HeldTouch, orient};
 
 use crate::board::{
     self, BUTTONS, BUTTONS_ACTIVE_LOW, DISPLAY_OPTIONS as OPTIONS, DISPLAY_PINS as PINS, HEIGHT,
-    POWER_HIGH, POWER_I2C, POWER_I2C_WRITES, POWER_LOW, TOUCH_MIRROR, TOUCH_SWAP_XY, WIDTH,
+    TOUCH_MIRROR, TOUCH_SWAP_XY, WIDTH,
 };
 use crate::{LINKED, Options, hardware, heap, touch};
 
@@ -43,7 +49,8 @@ impl EspBus {
             rst: board::pin(PINS, "rst"),
             busy: board::pin(PINS, "busy"),
             en: board::pin(PINS, "en"),
-            hz: u32::try_from(board::option(OPTIONS, "data_rate_mhz") * 1_000_000).unwrap_or(10_000_000),
+            hz: u32::try_from(board::option(OPTIONS, "data_rate_mhz") * 1_000_000)
+                .unwrap_or(10_000_000),
         };
         // SAFETY: called once at startup; `cfg` lives for the call.
         let err = unsafe { ffi::fusuma_epd_init(&cfg) };
@@ -101,7 +108,10 @@ impl Bus for EspBus {
 
 /// The panel this firmware drives, by what the board file names.
 enum Chosen {
-    #[cfg_attr(any(fusuma_display = "uc8179", fusuma_display = "ssd1680"), allow(dead_code))]
+    #[cfg_attr(
+        any(fusuma_display = "uc8179", fusuma_display = "ssd1680"),
+        allow(dead_code)
+    )]
     Sticky(Sticky<EspBus>),
     #[cfg_attr(not(fusuma_display = "uc8179"), allow(dead_code))]
     Uc8179(Uc8179<EspBus>),
@@ -213,24 +223,7 @@ pub(crate) fn run_here<A: App>(
     log::info!("board: {} ({}, {})", board::NAME, board::ABOUT, board::CHIP);
     // Rails and latches first: the board switches itself off without them, and the touch panel needs its power before
     // anything talks to it.
-    for &g in POWER_HIGH {
-        // SAFETY: a plain GPIO setup at startup.
-        unsafe { ffi::fusuma_gpio_output(g, 1) };
-    }
-    for &g in POWER_LOW {
-        // SAFETY: as above.
-        unsafe { ffi::fusuma_gpio_output(g, 0) };
-    }
-    // Rails behind an I2C chip (an I/O expander, a PMIC): register writes on a bus that is freed again afterwards.
-    let (sda, scl) = POWER_I2C;
-    for &[addr, reg, value, mask] in POWER_I2C_WRITES {
-        // SAFETY: a short blocking I2C write, on a bus the call opens and closes itself.
-        let err = unsafe {
-            ffi::fusuma_i2c_write_reg(sda, scl, i32::from(addr), i32::from(reg), i32::from(value), i32::from(mask))
-        };
-        anyhow::ensure!(err == 0, "rail chip {addr:#x} register {reg:#x}: esp error {err}");
-    }
-    std::thread::sleep(Duration::from_millis(100));
+    crate::power::rails()?;
 
     let bus = EspBus::open()?;
     let mirror = board::option(OPTIONS, "mirror_x") == 1;
@@ -240,7 +233,13 @@ pub(crate) fn run_here<A: App>(
         let _ = mirror;
         // Waveshare's 7.5 inch: about four seconds for a full refresh, 0.4 for a partial, a clean-up now and then.
         (
-            Chosen::Uc8179(Uc8179::new(bus, Uc8179Config { width: WIDTH, height: HEIGHT })),
+            Chosen::Uc8179(Uc8179::new(
+                bus,
+                Uc8179Config {
+                    width: WIDTH,
+                    height: HEIGHT,
+                },
+            )),
             RefreshPolicy {
                 min_interval_ms: 800,
                 settle_ms: 150,

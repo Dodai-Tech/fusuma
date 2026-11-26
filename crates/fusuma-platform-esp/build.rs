@@ -15,8 +15,14 @@ fn main() {
     println!("cargo::rerun-if-env-changed=MCU");
     println!("cargo::rerun-if-changed=boards");
     for (key, values) in [
-        ("fusuma_display", "\"co5300\", \"ek79007\", \"ssd1677\", \"ssd1680\", \"uc8179\""),
-        ("fusuma_touch", "\"ft3168\", \"gt911\""),
+        (
+            "fusuma_display",
+            "\"co5300\", \"sh8601\", \"rm690b0\", \"st7789\", \"gc9a01\", \"ek79007\", \"ssd1677\", \"ssd1680\", \"uc8179\"",
+        ),
+        (
+            "fusuma_touch",
+            "\"ft3168\", \"ft5x06\", \"cst816\", \"gt911\", \"cst92xx\"",
+        ),
         ("fusuma_backlight", "\"ledc\""),
     ] {
         println!("cargo::rustc-check-cfg=cfg({key}, values({values}))");
@@ -132,7 +138,10 @@ fn main() {
     line(format!(
         "/// The screen's outline.\n#[allow(dead_code)]\npub(crate) const SHAPE: fusuma::Shape = {shape};"
     ));
-    let mut screen = format!("fusuma::Screen::new({}, {}).with_shape(SHAPE)", display.width, display.height);
+    let mut screen = format!(
+        "fusuma::Screen::new({}, {}).with_shape(SHAPE)",
+        display.width, display.height
+    );
     if let Some(spec) = &board.screen {
         if spec.width_mm > 0 {
             screen += &format!(".with_size_mm({}, {})", spec.width_mm, spec.height_mm);
@@ -142,7 +151,11 @@ fn main() {
             let variant = format!("{}{}", form[..1].to_uppercase(), &form[1..]);
             screen += &format!(".with_form_factor(fusuma::FormFactor::{variant})");
         }
-        let kind = if spec.reflective { "Reflective" } else { "Emissive" };
+        let kind = if spec.reflective {
+            "Reflective"
+        } else {
+            "Emissive"
+        };
         screen += &format!(
             ".with_glass(fusuma::DisplayKind::{kind}, {}, {})",
             spec.depth_bits, spec.refresh_ms
@@ -203,17 +216,22 @@ fn main() {
         .power
         .as_ref()
         .and_then(|p| p.i2c.as_ref())
-        .map_or((-1, -1, vec![]), |i| (i32::from(i.sda), i32::from(i.scl), i.writes.clone()));
+        .map_or((-1, -1, vec![]), |i| {
+            (i32::from(i.sda), i32::from(i.scl), i.writes.clone())
+        });
     line(format!(
-        "/// The I2C bus (SDA, SCL; -1 for none) a rail chip is on, and its `[address, register, value, mask]` writes.\n#[allow(dead_code)]\npub(crate) const POWER_I2C: (i32, i32) = ({}, {});\n#[allow(dead_code)]\npub(crate) const POWER_I2C_WRITES: &[[u8; 4]] = &{:?};",
+        "/// The I2C bus (SDA, SCL; -1 for none) a rail chip is on, and its `[address, register, value, mask, delay_ms]` writes.\n#[allow(dead_code)]\npub(crate) const POWER_I2C: (i32, i32) = ({}, {});\n#[allow(dead_code)]\npub(crate) const POWER_I2C_WRITES: &[[u8; 5]] = &{:?};",
         writes.0, writes.1, writes.2
     ));
-    let (keys, active_low) = board
-        .buttons
-        .as_ref()
-        .map_or((vec![], true), |b| {
-            (b.keys.iter().map(|(n, g)| (n.clone(), i32::from(*g))).collect(), b.active_low)
-        });
+    let (keys, active_low) = board.buttons.as_ref().map_or((vec![], true), |b| {
+        (
+            b.keys
+                .iter()
+                .map(|(n, g)| (n.clone(), i32::from(*g)))
+                .collect(),
+            b.active_low,
+        )
+    });
     line(format!(
         "/// The hardware keys: name and GPIO.\n#[allow(dead_code)]\npub(crate) const BUTTONS: &[(&str, i32)] = &{:?};",
         keys

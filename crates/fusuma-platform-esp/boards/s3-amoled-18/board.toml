@@ -1,0 +1,52 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-1.8 (368x448). NOT RUN ON A BOARD: read from Waveshare's firmware
+# (waveshareteam/ESP32-S3-Touch-AMOLED-1.8: its Arduino examples and `board_variant`). The board ships in two variants, told
+# apart by the touch chip's address: the original SH8601 + FT3168 (this file) and a modified CO5300 + CST816 (change the display
+# controller to co5300, the touch to cst816 and the offset; not measured here). The panel's reset, the touch reset and the
+# display's power enable are behind a TCA9554 I/O expander (0x20) on the touch's I2C bus. Schema:
+# crates/fusuma-platform/board.schema.json.
+name = "s3-amoled-18"
+title = "Waveshare ESP32-S3-Touch-AMOLED-1.8"
+about = "Waveshare ESP32-S3 1.8-inch AMOLED touch board (368x448, SH8601 variant)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage", "audio"]
+
+[display]
+width = 368
+height = 448
+grid = 2
+controller = "sh8601"
+bus = "qspi"
+# No reset pin: the expander resets the panel (see [power.i2c]).
+pins = { sck = 11, d = [4, 5, 6, 7], cs = 12 }
+options = { pclk_mhz = 40 }
+
+[screen]
+form = "panel"
+width_mm = 29
+height_mm = 35
+kind = "emissive"
+inputs = ["touch"]
+
+# The expander's pins: 0 the panel's reset, 1 the display's power enable, 2 the touch reset, 7 the SD card's chip select. As the
+# vendor's firmware does: all four outputs with the card deselected and the rest low for 20 ms, then everything high and 150 ms
+# for the chips to start.
+[power.i2c]
+sda = 15
+scl = 14
+writes = [[0x20, 3, 0x78], [0x20, 1, 0x80, 255, 20], [0x20, 1, 0x87, 255, 150]]
+
+[touch]
+controller = "ft3168"
+bus = "i2c"
+# The reset is the expander's; the interrupt (GPIO21) is not used.
+pins = { sda = 15, scl = 14 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+# Flash and PSRAM from the vendor's sdkconfig (16 MB, 8 MB octal); the chip itself was not read.
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

@@ -2,12 +2,13 @@
 # firmware (waveshareteam/ESP32-S3-Touch-AMOLED-1.43, examples/esp-idf/08_LVGL_SDIMG), the way s3-amoled-164 was before it
 # was flashed. Treat it as a starting point and measure.
 #
-# The board ships with one of two panels, told apart at run time by reading the panel ID: an SH8601 (column offset 0, a
-# different init with `44 01 D1`) or a CO5300 (column offset 6, the init this crate's driver sends). This file is the
-# CO5300 variant; the SH8601 one needs a driver option that does not exist yet.
+# The board ships with one of two panels, told apart at run time by reading the panel ID (register 0xDA): an SH8601 (column
+# offset 0, its own start-up) or a CO5300 (column offset 6). `probe_id = 1` makes the driver read it and take the SH8601's
+# start-up and no offset when it answers 0x86, as Waveshare's firmware does. The probe is bit-banged on the QSPI pins before
+# the SPI peripheral takes them and has not run on a board.
 name = "s3-amoled-143"
 title = "Waveshare ESP32-S3-Touch-AMOLED-1.43"
-about = "Waveshare ESP32-S3-Touch-AMOLED-1.43 round watch (466x466, CO5300 variant)"
+about = "Waveshare ESP32-S3-Touch-AMOLED-1.43 round watch (466x466, CO5300 or SH8601)"
 capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage"]
 
 [display]
@@ -20,7 +21,7 @@ controller = "co5300"
 bus = "qspi"
 pins = { sck = 10, d = [11, 12, 13, 14], cs = 9, rst = 21 }
 # Start low and raise it in steps (the 1.64 showed nothing at 40 MHz with a wrong chip select, so the clock was never the proof).
-options = { pclk_mhz = 10 }
+options = { pclk_mhz = 10, probe_id = 1 }
 
 [screen]
 form = "watch"

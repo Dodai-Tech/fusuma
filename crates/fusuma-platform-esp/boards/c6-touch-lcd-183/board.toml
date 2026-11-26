@@ -1,0 +1,44 @@
+# The Waveshare ESP32-C6-Touch-LCD-1.83: a 240x284 ST7789 LCD on plain SPI with a CST816S touch panel, on an ESP32-C6 with 16 MB
+# flash and an AXP2101. NOT RUN ON A BOARD: pins and settings from Waveshare's ESP-IDF example
+# (waveshareteam/ESP32-C6-Touch-LCD-1.83, lvgl_example_04), which uses Espressif's plain ST7789 driver with the colours
+# inverted. The vendor sets no window offset for the 284 rows. Schema: crates/fusuma-platform/board.schema.json.
+name = "c6-touch-lcd-183"
+title = "Waveshare ESP32-C6-Touch-LCD-1.83"
+about = "Waveshare ESP32-C6 1.83-inch touch LCD board (240x284, ST7789)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage", "audio"]
+
+[display]
+width = 240
+height = 284
+controller = "st7789"
+bus = "spi"
+pins = { sck = 1, mosi = 2, cs = 5, dc = 3, rst = 4 }
+options = { pclk_mhz = 40, madctl = 0, invert = 1 }
+
+[screen]
+form = "micro"
+width_mm = 31
+height_mm = 37
+kind = "emissive"
+inputs = ["touch"]
+
+[backlight]
+controller = "ledc"
+bus = "pwm"
+pins = { pwm = 6 }
+
+[touch]
+controller = "cst816"
+bus = "i2c"
+# The reset is not wired to the chip; the interrupt is GPIO11.
+pins = { sda = 7, scl = 8, int = 11 }
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false
