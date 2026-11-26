@@ -30,6 +30,8 @@ pub enum Role {
     Switch,
     /// A slider.
     Slider,
+    /// A picture.
+    Image,
     /// A progress bar.
     Progress,
     /// A row of a list.
@@ -227,6 +229,7 @@ impl<const N: usize> Tree<N> {
                 None,
                 Some(i32::from(*permille)),
             ),
+            Kind::Image { .. } => (Role::Image, "", "", None, None, None, None),
             Kind::Spinner { .. } => (Role::Progress, "Loading", "", None, None, None, None),
             Kind::Slider { permille } | Kind::Splitter { permille } => (
                 Role::Slider,

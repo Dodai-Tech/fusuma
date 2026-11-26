@@ -1098,3 +1098,222 @@ fn a_vertical_split_view_divides_the_height() {
     assert!((t.h as i32 - b.h as i32).abs() <= 3, "{t:?} {b:?}");
     assert!(b.y > t.bottom());
 }
+
+// ── Third batch: select, combobox, tree, image ───────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum M3 {
+    Toggle,
+    Pick(usize),
+    Close,
+    Typed(String),
+    Row(u8),
+    Fold(u8),
+}
+
+struct Mini3 {
+    tree: Tree<160>,
+    host: Host<M3, 64>,
+    scr: Screen,
+}
+
+impl Mini3 {
+    fn new<V: View<M3>>(v: &V) -> Self {
+        let mut m = Self {
+            tree: Tree::new(),
+            host: Host::new(),
+            scr: screen(),
+        };
+        let root = m.tree.column(None, Style::new().padding(4).gap(4)).unwrap();
+        m.host.sync(&mut m.tree, Some(root), v).unwrap();
+        m
+    }
+
+    fn show<V: View<M3>>(&mut self, v: &V) {
+        let root = self.tree.root_id();
+        self.host.sync(&mut self.tree, root, v).unwrap();
+        self.frame();
+    }
+
+    fn frame(&mut self) {
+        self.tree.update(&self.scr, &THEME, BOUNDS);
+        self.tree
+            .paint_frame(&mut self.scr, &THEME, BOUNDS)
+            .unwrap();
+    }
+
+    fn tap(&mut self, name: &str) -> Option<M3> {
+        self.frame();
+        let id = self
+            .tree
+            .semantics()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("no '{name}'"))
+            .id;
+        self.tree.focus(id);
+        self.frame();
+        let r = self.tree.rect(id).unwrap();
+        let p = Point::new(r.x + 3, r.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            self.tree.pointer(e);
+        }
+        let mut got = None;
+        while let Some(a) = self.tree.pop_action() {
+            got = self.host.message(&self.tree, a).or(got);
+        }
+        got
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.tree
+            .semantics()
+            .filter(|s| !s.name.is_empty())
+            .map(|s| s.name.to_owned())
+            .collect()
+    }
+}
+
+#[test]
+fn a_select_shows_the_choice_opens_a_menu_of_the_options_and_sends_what_was_picked() {
+    const OPTS: [&str; 3] = ["Small", "Medium", "Large"];
+    let view = |sel: Option<usize>, open: bool| {
+        fusuma::select(&OPTS, sel, open, M3::Toggle, M3::Pick, M3::Close).placeholder("Size")
+    };
+    let mut a = Mini3::new(&view(None, false));
+    a.frame();
+    assert!(
+        a.names().iter().any(|n| n == "Size"),
+        "the placeholder while nothing is chosen"
+    );
+    assert!(
+        !a.names().iter().any(|n| n == "Large"),
+        "the menu is closed: no options are shown"
+    );
+    assert_eq!(a.tap("Size"), Some(M3::Toggle));
+    a.show(&view(None, true));
+    for n in OPTS {
+        assert!(a.names().iter().any(|x| x == n), "{n} in the open menu");
+    }
+    assert_eq!(a.tap("Medium"), Some(M3::Pick(1)));
+    a.show(&view(Some(1), false));
+    assert!(a.names().iter().any(|n| n == "Medium") && !a.names().iter().any(|n| n == "Size"));
+    assert!(!a.names().iter().any(|n| n == "Large"), "closed again");
+    // Open with a choice: the chosen row is marked; a press outside asks to close.
+    a.show(&view(Some(1), true));
+    let mid = a
+        .tree
+        .semantics()
+        .filter(|s| s.name == "Medium")
+        .last()
+        .unwrap();
+    assert!(mid.checked == Some(true) || a.tree.is_checked(mid.id));
+    let outside = Point::new(i32::from(W) - 5, i32::from(H) - 5);
+    for e in [Pointer::Down(outside), Pointer::Up(outside), Pointer::Leave] {
+        a.tree.pointer(e);
+    }
+    let mut closed = false;
+    while let Some(act) = a.tree.pop_action() {
+        closed |= a.host.message(&a.tree, act) == Some(M3::Close);
+    }
+    assert!(closed, "a press outside the menu is a dismissal");
+}
+
+#[test]
+fn a_combobox_lists_suggestions_under_the_field_and_hides_the_unused_slots() {
+    let view = |typed: &'static str, sug: &'static [&'static str]| {
+        fusuma::combobox(typed, "City", |t| M3::Typed(t.to_owned()), sug, M3::Pick)
+    };
+    let mut a = Mini3::new(&view("", &[]));
+    a.frame();
+    assert!(!a.names().iter().any(|n| n == "Berlin"));
+    a.show(&view("be", &["Berlin", "Bergen"]));
+    assert!(a.names().iter().any(|n| n == "Berlin") && a.names().iter().any(|n| n == "Bergen"));
+    assert_eq!(a.tap("Bergen"), Some(M3::Pick(1)));
+    a.show(&view("berl", &["Berlin"]));
+    assert!(
+        !a.names().iter().any(|n| n == "Bergen"),
+        "the list shrinks with the filter"
+    );
+    // More than the slots: the first five.
+    a.show(&view("a", &["A1", "A2", "A3", "A4", "A5", "A6", "A7"]));
+    assert!(a.names().iter().any(|n| n == "A5") && !a.names().iter().any(|n| n == "A6"));
+    assert_eq!(fusuma::SUGGESTIONS, 5);
+}
+
+#[test]
+fn a_tree_is_rows_indented_by_depth_that_open_and_close_their_children() {
+    let view = |open: bool| {
+        column((
+            fusuma::tree_item("src", 0, Some(open), false, M3::Fold(0), M3::Row(0)),
+            fusuma::show(
+                open,
+                column((
+                    fusuma::tree_item("lib.rs", 1, None, true, M3::Fold(1), M3::Row(1)),
+                    fusuma::tree_item("main.rs", 1, None, false, M3::Fold(2), M3::Row(2)),
+                )),
+            ),
+        ))
+    };
+    let mut a = Mini3::new(&view(false));
+    a.frame();
+    assert!(a.names().iter().any(|n| n == "src") && a.names().iter().any(|n| n == ">"));
+    assert!(
+        !a.names().iter().any(|n| n == "lib.rs"),
+        "closed: the children are not shown"
+    );
+    assert_eq!(a.tap(">"), Some(M3::Fold(0)));
+    a.show(&view(true));
+    assert!(
+        a.names().iter().any(|n| n == "v"),
+        "open: the triangle points down"
+    );
+    let x = |a: &Mini3, n: &str| {
+        a.tree
+            .rect(a.tree.semantics().find(|s| s.name == n).unwrap().id)
+            .unwrap()
+            .x
+    };
+    assert!(
+        x(&a, "lib.rs") > x(&a, "src"),
+        "children are indented: {} {}",
+        x(&a, "lib.rs"),
+        x(&a, "src")
+    );
+    assert_eq!(x(&a, "lib.rs"), x(&a, "main.rs"));
+    // A leaf has no triangle: only the folder's.
+    assert_eq!(
+        a.names().iter().filter(|n| *n == "v" || *n == ">").count(),
+        1
+    );
+    assert_eq!(a.tap("main.rs"), Some(M3::Row(2)));
+}
+
+static PIXEL: [u8; 16] = [
+    255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
+];
+
+#[test]
+fn an_image_view_draws_its_picture_and_a_bad_one_fails_the_build_with_a_name() {
+    let mut a = Mini3::new(&fusuma::image(2, 2, &PIXEL).boxed(20, 20));
+    a.frame();
+    let img = a
+        .tree
+        .semantics()
+        .find(|s| s.role == fusuma_ui::Role::Image)
+        .unwrap();
+    assert_eq!((img.rect.w, img.rect.h), (20, 20));
+    let c = a.scr.pixel(img.rect.x + 10, img.rect.y + 10).unwrap();
+    assert_eq!(
+        c.to_rgb565(),
+        fusuma_render::Color::rgb(255, 0, 0).to_rgb565()
+    );
+    // Wrong byte count: the build fails.
+    let mut tree = Tree::<8>::new();
+    let mut host = Host::<M3, 8>::new();
+    let root = tree.column(None, Style::new()).unwrap();
+    assert_eq!(
+        host.sync(&mut tree, Some(root), &fusuma::image(3, 3, &PIXEL))
+            .unwrap_err(),
+        fusuma_ui::BuildError::BadImage
+    );
+}

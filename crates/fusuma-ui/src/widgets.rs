@@ -478,6 +478,11 @@ impl<const N: usize> Tree<N> {
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)
             }
+            Kind::Image { w, h, .. } if theme.cells => {
+                // In cells a picture is as many cells as fit about 8 pixels each across and 16 down.
+                Size::new(u32::from(w).div_ceil(8), u32::from(h).div_ceil(16))
+            }
+            Kind::Image { w, h, .. } => Size::new(u32::from(w), u32::from(h)),
             Kind::Splitter { .. } => {
                 let bar = if theme.cells {
                     1
@@ -662,6 +667,16 @@ impl<const N: usize> Tree<N> {
                 self.ring(i, r, theme, theme.radii.sm)
             }
             Kind::TextInput { .. } => self.paint_text_input(i, r, theme),
+            Kind::Image { rgba, w, h } => {
+                let Some(img) = fusuma_render::Image::new(u32::from(w), u32::from(h), rgba) else {
+                    return Ok(());
+                };
+                let at = Point::new(
+                    rect.x + (rect.w as i32 - i32::from(w)) / 2,
+                    rect.y + (rect.h as i32 - i32::from(h)) / 2,
+                );
+                Self::in_clip(r, rect, |r| r.draw_image(&img, at))
+            }
             Kind::Splitter { .. } => {
                 // A thin bar; a short grip in the middle that lights while it is held or has the focus.
                 let c = &theme.colors;
@@ -1469,5 +1484,108 @@ mod tests {
         let before = t.slider_value(bar);
         drag_to(&mut t, Point::new(150, r.y + 1), Point::new(150, 200));
         assert_eq!(t.slider_value(bar), before);
+    }
+
+    static RED_BLUE: [u8; 4 * 4 * 4] = {
+        let mut p = [0u8; 64];
+        let mut i = 0;
+        while i < 16 {
+            // The left two columns red, the right two blue, all opaque; the top-left pixel transparent.
+            let (x, y) = (i % 4, i / 4);
+            p[i * 4] = if x < 2 { 255 } else { 0 };
+            p[i * 4 + 2] = if x < 2 { 0 } else { 255 };
+            p[i * 4 + 3] = if x == 0 && y == 0 { 0 } else { 255 };
+            i += 1;
+        }
+        p
+    };
+
+    #[test]
+    fn an_image_is_its_own_size_drawn_centred_in_its_box_and_cut_to_it() {
+        use fusuma_render::{Color, Renderer};
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new().padding(10)).unwrap();
+        let img = t.image(Some(root), 4, 4, &RED_BLUE).unwrap();
+        let mut r = screen();
+        let bounds = Rect::new(0, 0, 100, 100);
+        t.update(&r, &THEME, bounds);
+        assert_eq!(
+            t.rect(img).map(|r| (r.w, r.h)),
+            Some((4, 4)),
+            "as big as the picture"
+        );
+        r.clear(Color::WHITE).unwrap();
+        t.paint(&mut r, &THEME).unwrap();
+        let at = t.rect(img).unwrap();
+        assert_eq!(r.pixel(at.x + 1, at.y + 1), Some(Color::rgb(255, 0, 0)));
+        assert_eq!(r.pixel(at.x + 3, at.y + 2), Some(Color::rgb(0, 0, 255)));
+        assert_eq!(
+            r.pixel(at.x, at.y),
+            Some(Color::WHITE),
+            "a transparent pixel shows what is behind"
+        );
+        assert_eq!(
+            r.pixel(at.x - 1, at.y + 1),
+            Some(Color::WHITE),
+            "nothing outside it"
+        );
+        // In a bigger box it sits in the middle; in a smaller one it is cut.
+        t.set_style(
+            img,
+            Style::new()
+                .width(crate::tree::Length::Fixed(20))
+                .height(crate::tree::Length::Fixed(20)),
+        );
+        t.update(&r, &THEME, bounds);
+        let b = t.rect(img).unwrap();
+        r.clear(Color::WHITE).unwrap();
+        t.paint(&mut r, &THEME).unwrap();
+        assert_eq!(
+            r.pixel(b.x + 10 - 2 + 1, b.y + 10 - 2 + 1),
+            Some(Color::rgb(255, 0, 0)),
+            "in the middle of a 20 box"
+        );
+        assert_eq!(r.pixel(b.x + 1, b.y + 1), Some(Color::WHITE));
+        t.set_style(
+            img,
+            Style::new()
+                .width(crate::tree::Length::Fixed(2))
+                .height(crate::tree::Length::Fixed(2)),
+        );
+        t.update(&r, &THEME, bounds);
+        let b = t.rect(img).unwrap();
+        r.clear(Color::WHITE).unwrap();
+        t.paint(&mut r, &THEME).unwrap();
+        assert_eq!(
+            r.pixel(b.x + 3, b.y),
+            Some(Color::WHITE),
+            "cut to a 2 box: the blue half is outside it"
+        );
+        assert_eq!(
+            t.semantics()
+                .filter(|s| s.role == crate::semantic::Role::Image)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_image_with_the_wrong_number_of_bytes_or_too_big_is_refused() {
+        let mut t = Tree::<4>::new();
+        assert_eq!(
+            t.image(None, 4, 4, &RED_BLUE[..60]),
+            Err(crate::tree::BuildError::BadImage)
+        );
+        assert_eq!(
+            t.image(None, 5, 4, &RED_BLUE),
+            Err(crate::tree::BuildError::BadImage)
+        );
+        static TALL: [u8; 4] = [0; 4];
+        assert_eq!(
+            t.image(None, 70_000, 1, &TALL),
+            Err(crate::tree::BuildError::BadImage)
+        );
+        assert!(t.image(None, 1, 1, &TALL).is_ok());
+        assert_eq!(t.len(), 1, "a refused image leaves no node behind");
     }
 }

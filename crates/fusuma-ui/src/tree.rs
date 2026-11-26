@@ -210,6 +210,8 @@ pub enum BuildError {
     NotContainer,
     /// The tree already has a root.
     SecondRoot,
+    /// An image whose bytes are not `width * height * 4`, or that is wider or taller than 65 535 pixels.
+    BadImage,
 }
 
 /// What a node is.
@@ -268,6 +270,13 @@ pub(crate) enum Kind {
     /// Progress in thousandths, 0 to 1000.
     Progress {
         permille: u16,
+    },
+    /// A picture of `w` x `h` pixels, RGBA, row by row, that lives for the whole program (flash on a chip, `include_bytes!` on a
+    /// computer). It is drawn at its own size, centred in its box and cut to it.
+    Image {
+        rgba: &'static [u8],
+        w: u16,
+        h: u16,
     },
     /// A divider between two panes that the user drags: `permille` is where it is along its parent (a row: from the left; a
     /// column: from the top), and a drag or the arrow keys change it and send [`ActionKind::Changed`]. It does not move the panes
@@ -1143,6 +1152,27 @@ impl<const N: usize> Tree<N> {
             },
             Style::DEFAULT,
         )
+    }
+
+    /// Adds an image: `width` x `height` pixels of straight RGBA, row by row. It is as big as the picture unless the style gives
+    /// it a size, in which case the picture sits in the middle of that box and is cut to it.
+    ///
+    /// # Errors
+    /// [`BuildError::BadImage`] when `rgba` is not exactly `width * height * 4` bytes or a side is over 65 535;
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn image(
+        &mut self,
+        parent: Option<NodeId>,
+        width: u32,
+        height: u32,
+        rgba: &'static [u8],
+    ) -> Result<NodeId, BuildError> {
+        fusuma_render::Image::new(width, height, rgba).ok_or(BuildError::BadImage)?;
+        let (w, h) = (
+            u16::try_from(width).map_err(|_| BuildError::BadImage)?,
+            u16::try_from(height).map_err(|_| BuildError::BadImage)?,
+        );
+        self.add(parent, Kind::Image { rgba, w, h }, Style::DEFAULT)
     }
 
     /// Adds a splitter: the thin bar between two panes in a row (or a column), dragged to share the room between them.

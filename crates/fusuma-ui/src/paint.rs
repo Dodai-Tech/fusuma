@@ -271,6 +271,7 @@ impl<const N: usize> Tree<N> {
             | Kind::Switch { .. }
             | Kind::Slider { .. }
             | Kind::Splitter { .. }
+            | Kind::Image { .. }
             | Kind::TextInput { .. } => self.paint_widget(i, r, theme),
             Kind::Label { text, role } => {
                 let mut style = theme.text_style(role);

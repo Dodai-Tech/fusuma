@@ -16,11 +16,12 @@ pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
 };
 pub use components::{
-    Breadcrumbs, Gauge, Kbd, PAGE_SLOTS, PageDots, PageSlot, Pagination, STARS, Segmented, Spinner,
-    StepState, Steps, Table, Timeline, accordion, alert, banner, breadcrumbs, carousel, chip,
-    dismissible_alert, empty_state, gauge, kbd, page_dots, page_window, pagination, rating,
-    segmented, skeleton, snackbar, spinner, split_view, split_view_vertical, splitter, stat_card,
-    step_state, steps, table, tag, timeline,
+    Breadcrumbs, Gauge, Image, Kbd, PAGE_SLOTS, PageDots, PageSlot, Pagination, STARS, SUGGESTIONS,
+    Segmented, Select, Spinner, Splitter, StepState, Steps, Table, Timeline, accordion, alert,
+    banner, breadcrumbs, carousel, chip, combobox, dismissible_alert, empty_state, gauge, image,
+    kbd, page_dots, page_window, pagination, rating, segmented, select, skeleton, snackbar,
+    spinner, split_view, split_view_vertical, splitter, stat_card, step_state, steps, table, tag,
+    timeline, tree_item,
 };
 pub use container::{
     Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, grid,

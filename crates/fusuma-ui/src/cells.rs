@@ -816,6 +816,46 @@ impl<const N: usize> Tree<N> {
                 }
                 pen.put(rect.x + 1 + inner, row, ']', off);
             }
+            Kind::Image { rgba, w, h } => {
+                // A coarse picture: each cell takes the colour of the pixel at its middle (a background colour), or, with no
+                // colours, a shade by how bright that pixel is.
+                let Some(img) = fusuma_render::Image::new(u32::from(w), u32::from(h), rgba) else {
+                    return;
+                };
+                for cy in 0..rect.h as i32 {
+                    for cx in 0..rect.w as i32 {
+                        let (px, py) = (cx as u32 * 8 + 4, cy as u32 * 16 + 8);
+                        let Some([r, g, b, a]) =
+                            img.pixel(px.min(u32::from(w) - 1), py.min(u32::from(h) - 1))
+                        else {
+                            continue;
+                        };
+                        if a < 128 {
+                            continue;
+                        }
+                        let color = Color::rgb(r, g, b);
+                        if look.cells.colors {
+                            pen.put(
+                                rect.x + cx,
+                                rect.y + cy,
+                                ' ',
+                                look.style(c.text, Some(color), Attrs::NONE),
+                            );
+                        } else {
+                            let y =
+                                (u32::from(r) * 77 + u32::from(g) * 150 + u32::from(b) * 29) >> 8;
+                            let ch = [' ', '\u{2591}', '\u{2592}', '\u{2593}', '\u{2588}']
+                                [(y * 4 / 255) as usize];
+                            pen.put(
+                                rect.x + cx,
+                                rect.y + cy,
+                                ch,
+                                look.style(c.text, None, Attrs::NONE),
+                            );
+                        }
+                    }
+                }
+            }
             Kind::Splitter { .. } => {
                 let on = look.style(
                     if disabled { c.border } else { c.border_strong },
@@ -1276,5 +1316,42 @@ mod tests {
         let mut g = grid(10, 2);
         tree.paint_cells(&mut g, &Theme::CELLS, &t);
         assert_eq!(g.get(1, 0).unwrap().ch, 'X');
+    }
+
+    static HALVES: [u8; 16 * 32 * 4] = {
+        let mut p = [255u8; 16 * 32 * 4];
+        let mut i = 0;
+        while i < 16 * 32 {
+            // Left half black, right half white.
+            let x = i % 16;
+            let v = if x < 8 { 0 } else { 255 };
+            p[i * 4] = v;
+            p[i * 4 + 1] = v;
+            p[i * 4 + 2] = v;
+            i += 1;
+        }
+        p
+    };
+
+    #[test]
+    fn a_picture_in_cells_is_one_cell_for_eight_by_sixteen_pixels_shaded_or_coloured() {
+        let mut t = Tree::<4>::new();
+        let root = t.column(None, LayoutStyle::new()).unwrap();
+        let img = t.image(Some(root), 16, 32, &HALVES).unwrap();
+        let theme = Theme::CELLS;
+        let bounds = Rect::new(0, 0, 10, 6);
+        t.update(&CellMeasure, &theme, bounds);
+        assert_eq!(t.rect(img).map(|r| (r.w, r.h)), Some((2, 2)));
+        // With no colours: a space for black and a full block for white, by brightness.
+        let mut g = grid(10, 6);
+        t.paint_cells(&mut g, &theme, &CellTheme::MONO);
+        let at = |g: &Grid<std::vec::Vec<Cell>>, x| g.get(x, 0).unwrap().ch;
+        assert_eq!((at(&g, 0), at(&g, 1)), (' ', '\u{2588}'));
+        // With colours: the cell's background is the pixel's colour.
+        let mut g = grid(10, 6);
+        t.paint_cells(&mut g, &theme, &CellTheme::UNICODE);
+        let bg = |x| g.get(x, 1).unwrap().style.bg;
+        assert_eq!(bg(0), CColor::Rgb(0, 0, 0));
+        assert_eq!(bg(1), CColor::Rgb(255, 255, 255));
     }
 }

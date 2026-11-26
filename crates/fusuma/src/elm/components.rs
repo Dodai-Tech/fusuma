@@ -11,7 +11,8 @@ use fusuma_ui::{
 };
 
 use super::{
-    Button, Children, Cx, Handler, View, ViewMarker, button, card, column, row, show, spacer, text,
+    Button, Children, Cx, Handler, View, ViewMarker, button, card, column, item, row, show, spacer,
+    text, text_field,
 };
 
 /// A message in a card with a bar of its tone down the side: a title and a line under it.
@@ -1088,4 +1089,227 @@ pub fn split_view_vertical<'a, M: Clone + 'a, T: Children<M> + 'a, B: Children<M
     ))
     .align(CrossAlign::Stretch)
     .height(Length::Fill(1))
+}
+
+// ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// A picture of straight RGBA bytes that lives for the whole program (flash on a chip, `include_bytes!` on a computer).
+#[derive(Clone, Copy, Debug)]
+pub struct Image {
+    width: u32,
+    height: u32,
+    rgba: &'static [u8],
+    size: Option<(u32, u32)>,
+}
+
+/// An image of `width` x `height` pixels. A picture whose bytes are not `width * height * 4` is left out (the build fails
+/// with [`BuildError::BadImage`], which a view reports like any other).
+#[must_use]
+pub const fn image(width: u32, height: u32, rgba: &'static [u8]) -> Image {
+    Image {
+        width,
+        height,
+        rgba,
+        size: None,
+    }
+}
+
+impl Image {
+    /// A box of `width` x `height` pixels for the picture: it sits in the middle, cut to the box.
+    #[must_use]
+    pub const fn boxed(mut self, width: u32, height: u32) -> Self {
+        self.size = Some((width, height));
+        self
+    }
+
+    fn style(&self) -> Style {
+        match self.size {
+            Some((w, h)) => Style::new()
+                .width(Length::Fixed(w))
+                .height(Length::Fixed(h)),
+            None => Style::new(),
+        }
+    }
+}
+
+impl<M: Clone> View<M> for Image {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = cx.tree.image(parent, self.width, self.height, self.rgba)?;
+        cx.tree.set_style(node, self.style());
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        cx.tree.set_style(node, self.style());
+    }
+}
+
+impl ViewMarker for Image {}
+
+// ── Select, combobox, tree item ─────────────────────────────────────────────────────────────────────────────────
+
+/// A drop-down: a button that shows the chosen option and, when pressed, a menu of all of them under it.
+#[derive(Clone, Copy, Debug)]
+pub struct Select<'a, M> {
+    options: &'a [&'a str],
+    selected: Option<usize>,
+    open: bool,
+    placeholder: &'a str,
+    on_toggle: M,
+    on_pick: fn(usize) -> M,
+    on_dismiss: M,
+}
+
+/// A select over `options` with `selected` chosen, the menu `open` or not. `on_toggle` is what pressing the button sends (the app
+/// flips `open`), `on_pick` what choosing an option sends (the app stores it and closes), `on_dismiss` a press outside or
+/// Escape (the app closes). The number of options stays the same for as long as it is shown.
+#[must_use]
+pub const fn select<'a, M>(
+    options: &'a [&'a str],
+    selected: Option<usize>,
+    open: bool,
+    on_toggle: M,
+    on_pick: fn(usize) -> M,
+    on_dismiss: M,
+) -> Select<'a, M> {
+    Select {
+        options,
+        selected,
+        open,
+        placeholder: "Select...",
+        on_toggle,
+        on_pick,
+        on_dismiss,
+    }
+}
+
+impl<'a, M> Select<'a, M> {
+    /// What the button says while nothing is chosen.
+    #[must_use]
+    pub const fn placeholder(mut self, text: &'a str) -> Self {
+        self.placeholder = text;
+        self
+    }
+}
+
+impl<M: Clone> Select<'_, M> {
+    fn sync<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, group: NodeId) {
+        let Some(button) = cx.tree.first_child(group) else {
+            return;
+        };
+        let Some(menu) = cx.tree.next_sibling(button) else {
+            return;
+        };
+        let shown = self
+            .selected
+            .and_then(|i| self.options.get(i))
+            .copied()
+            .unwrap_or(self.placeholder);
+        cx.tree.set_text(button, shown);
+        cx.msgs.on(button, Handler::Press(self.on_toggle.clone()));
+        let mut at = cx.tree.first_child(menu);
+        for (i, name) in self.options.iter().enumerate() {
+            let Some(row) = at else { break };
+            cx.tree.set_text(row, name);
+            cx.tree.set_checked(row, Some(i) == self.selected);
+            cx.msgs.on(row, Handler::Press((self.on_pick)(i)));
+            at = cx.tree.next_sibling(row);
+        }
+        cx.msgs.on(menu, Handler::Dismiss(self.on_dismiss.clone()));
+        if self.open != cx.tree.is_menu_open(menu) {
+            if self.open {
+                cx.tree.open_menu(menu, button);
+            } else {
+                cx.tree.close_menu(menu);
+            }
+        }
+    }
+}
+
+impl<M: Clone> View<M> for Select<'_, M> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let group = cx.tree.column(parent, Style::new())?;
+        cx.tree
+            .button(Some(group), "", fusuma_ui::ButtonVariant::Secondary)?;
+        let menu = cx.tree.menu(Some(group), Style::new().padding(4).gap(2))?;
+        for name in self.options {
+            cx.tree.list_item(Some(menu), name, false)?;
+        }
+        self.sync(cx, group);
+        Ok(group)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.sync(cx, node);
+    }
+}
+
+impl<M> ViewMarker for Select<'_, M> {}
+
+/// How many suggestions a [`combobox`] shows.
+pub const SUGGESTIONS: usize = 5;
+
+/// A text field with a list of suggestions under it: the app filters its options by what was typed and gives the first
+/// [`SUGGESTIONS`] of them; pressing one sends `on_pick(index)` (the app puts it in the field and clears the list). The list is
+/// part of the page, not a floating menu, so the field keeps the focus while the person types.
+#[must_use]
+pub fn combobox<'a, M: Clone + 'a>(
+    value: &'a str,
+    placeholder: &'static str,
+    on_input: fn(&str) -> M,
+    suggestions: &'a [&'a str],
+    on_pick: fn(usize) -> M,
+) -> impl View<M> + 'a {
+    let slot = move |i: usize| {
+        let name = suggestions.get(i).copied();
+        show(
+            name.is_some(),
+            button(name.unwrap_or("")).on_press(on_pick(i)),
+        )
+    };
+    column((
+        text_field(value)
+            .placeholder(placeholder)
+            .on_input(on_input),
+        column((slot(0), slot(1), slot(2), slot(3), slot(4)))
+            .gap(2)
+            .align(CrossAlign::Stretch),
+    ))
+    .gap(2)
+    .align(CrossAlign::Stretch)
+}
+
+/// One row of a tree: indented by `depth`, a triangle that opens and closes it when it has children (`expanded` is `Some`), and
+/// the label as a choice. Build a tree by putting a row and then, under `show(expanded, column(..))`, its children's rows one
+/// level deeper.
+#[must_use]
+pub fn tree_item<'a, M: Clone + 'a>(
+    label: &'a str,
+    depth: u32,
+    expanded: Option<bool>,
+    selected: bool,
+    on_toggle: M,
+    on_select: M,
+) -> impl View<M> + 'a {
+    row((
+        row(()).width(Length::Fixed(depth.saturating_mul(16))),
+        // A slot of the same width with a triangle in it or nothing, so a leaf lines up with its folder's label.
+        column((show(
+            expanded.is_some(),
+            button(if expanded == Some(true) { "v" } else { ">" }).on_press(on_toggle),
+        ),))
+        .width(Length::Fixed(40))
+        .align(CrossAlign::Stretch),
+        item(label, selected).on_select(on_select),
+    ))
+    .gap(2)
+    .align(CrossAlign::Center)
 }
