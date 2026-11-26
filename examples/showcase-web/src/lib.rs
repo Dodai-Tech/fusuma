@@ -661,7 +661,7 @@ async fn run() -> Result<(), JsValue> {
     }
     doc.body().ok_or("no body")?.append_child(&textarea)?;
 
-    let mut app = Showcase::new(size.0, size.1);
+    let app = Showcase::new(size.0, size.1);
     // The address can ask for a look, so a screenshot test takes the same picture every time: `?page=Navigation&dark=0
     // &palette=ember&still=1&menu=1`.
     let query = window()
@@ -680,6 +680,17 @@ async fn run() -> Result<(), JsValue> {
         param("menu").is_some(),
     );
 
+    // A page knows its pixel ratio and, from the browser, whether there is a touch screen; it cannot know the glass's size in
+    // millimetres (CSS says so itself, 96 to the inch, whatever the screen), so a phone is told from a watch by its width.
+    let touch = window().navigator().max_touch_points() > 0;
+    let inputs = fusuma::Inputs::POINTER.with(fusuma::Inputs::KEYS);
+    shell.input(Input::Screen(fusuma::Screen::new(0, 0).with_inputs(
+        if touch {
+            inputs.with(fusuma::Inputs::TOUCH)
+        } else {
+            inputs
+        },
+    )));
     shell.input(Input::Resize {
         width: size.0,
         height: size.1,

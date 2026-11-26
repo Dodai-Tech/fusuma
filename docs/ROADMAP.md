@@ -417,8 +417,11 @@ derives the rest.
 - [x] **Hosts report the glass:** ESP `board.toml`; `fusuma_platform_mobile::android::display` (`DisplayMetrics`),
   `fusuma_platform_mobile::ios::display` (points and scale, the model's size), `fusuma_platform_mobile::linux::display`
   (`wl_output` mm, rotation swaps the sizes)
-- [ ] Desktop (`winit` monitor size), web (no mm, `devicePixelRatio`), and a change (rotation, resize, keyboard) as an
-  Elm message
+- [x] **Desktop and web report what they know**: a desktop window declares itself a `Desktop` with pointer and keys (touch is
+  added at the first finger), so a window dragged narrow gets a phone's layout, never a watch's tiles; a page reports pointer, keys
+  and touch (`navigator.maxTouchPoints`) and its pixel ratio. Neither knows the glass in millimetres (winit and CSS have no such
+  value). **`Program::on_screen`** turns a change a layout cares about (form factor, class, size class, orientation, reflective) into a
+  message; not every pixel of a resize
 - [x] **A layout for tiny panels in the showcase** (`Showcase::micro()`: one tile to a row, no palette switcher, short words, buttons
   stacked, small margins; looked at at 128x296 and 200x200). [ ] Still: one that reads `Inputs` and `Metrics`
 

@@ -103,6 +103,8 @@ struct State<A> {
     shell: Shell<A>,
     started: Instant,
     cursor: Option<fusuma::render::Point>,
+    /// A finger has touched the window: the device has a touch screen.
+    touch_seen: bool,
     shift: bool,
     /// Ctrl, or Cmd on a Mac: the key of shortcuts.
     command: bool,
@@ -200,6 +202,7 @@ impl<A: App> Handler<A> {
             .ok_or_else(|| anyhow::anyhow!("the app was already made"))?;
         let mut shell = Shell::new(make(w, h));
         shell.input(Input::Palette(self.palette));
+        shell.input(Input::Screen(input::device(false)));
         shell.input(Input::Resize {
             width: w,
             height: h,
@@ -213,6 +216,7 @@ impl<A: App> Handler<A> {
             shell,
             started: Instant::now(),
             cursor: None,
+            touch_seen: false,
             shift: false,
             command: false,
             clipboard: SystemClipboard::new(),
@@ -402,6 +406,11 @@ impl<A: App> ApplicationHandler for Handler<A> {
                 }
             }
             WindowEvent::Touch(t) => {
+                if !st.touch_seen {
+                    // The first finger tells us there is a touch screen: say so once.
+                    st.touch_seen = true;
+                    st.shell.input(Input::Screen(input::device(true)));
+                }
                 let at = input::point(t.location);
                 for e in input::touch(t.phase, at).into_iter().flatten() {
                     st.pointer(e);

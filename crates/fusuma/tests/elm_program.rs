@@ -380,3 +380,73 @@ mod animated {
         );
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sm {
+    Screen(u32),
+}
+
+struct Watcher;
+
+impl Program for Watcher {
+    type State = u32;
+    type Msg = Sm;
+
+    fn init() -> u32 {
+        0
+    }
+
+    fn update(s: &mut u32, m: Sm) -> Task<Sm> {
+        let Sm::Screen(n) = m;
+        *s += n;
+        Task::none()
+    }
+
+    fn view<'a>(s: &'a u32, _: &Screen) -> impl Children<Sm> + 'a {
+        (text_fmt(format_args!("{s}")),)
+    }
+
+    fn on_screen(screen: &Screen) -> Option<Sm> {
+        // 1 for a phone or smaller, 10 for a tablet or bigger: the form of the layout the view should use.
+        Some(Sm::Screen(if screen.class().is_compact() { 1 } else { 10 }))
+    }
+}
+
+#[test]
+fn a_program_hears_about_a_change_of_screen_that_a_layout_cares_about_and_only_that() {
+    let mut r = Runner::<Watcher, 16, 16, 0>::new(800, 600);
+    assert_eq!(
+        *r.state(),
+        0,
+        "nothing yet: the program started with this screen"
+    );
+    // A resize within the same class, size class and orientation is not news (800 to 830 is a tablet, medium, all the way).
+    App::resized(&mut r, 820, 610, 100);
+    App::resized(&mut r, 830, 700, 100);
+    assert_eq!(*r.state(), 0);
+    // Crossing the size class (840 and up is expanded) is.
+    App::resized(&mut r, 900, 700, 100);
+    assert_eq!(*r.state(), 10);
+    // A window dragged narrow crosses into the compact classes: one message, and still compact is not another.
+    App::resized(&mut r, 400, 700, 100);
+    assert_eq!(*r.state(), 11);
+    App::resized(&mut r, 390, 700, 100);
+    assert_eq!(*r.state(), 11, "still compact");
+    // A rotation to landscape is news even though the class by width is no longer compact: this one is a tablet again.
+    App::resized(&mut r, 700, 390, 100);
+    assert_eq!(*r.state(), 21);
+    // A scale change that moves the logical width across a limit is too: 700 px at 2x is 350 logical.
+    App::resized(&mut r, 700, 390, 200);
+    assert_eq!(*r.state(), 22);
+    // What the device is: a declared form factor, sent by a platform, is news, and the same again is not.
+    App::screen(
+        &mut r,
+        Screen::new(700, 390).with_form_factor(fusuma_ui::FormFactor::Desktop),
+    );
+    let after = *r.state();
+    App::screen(
+        &mut r,
+        Screen::new(700, 390).with_form_factor(fusuma_ui::FormFactor::Desktop),
+    );
+    assert_eq!(*r.state(), after, "the same device again says nothing");
+}

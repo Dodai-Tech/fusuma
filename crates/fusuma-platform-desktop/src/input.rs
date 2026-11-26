@@ -11,6 +11,21 @@ use winit::keyboard::{Key as WKey, NamedKey};
 /// a better number can change it.
 pub const WHEEL_LINE_PX: i32 = 40;
 
+/// What a desktop window is, for the toolkit: a desktop (so a window dragged narrow gets a phone's layout, never a watch's tiles),
+/// driven by a pointer and keys. winit reports no millimetres for a monitor, so the glass size stays unknown; a touch screen
+/// is added by the host once a finger is seen (`touch_seen`).
+#[must_use]
+pub const fn device(touch_seen: bool) -> fusuma::Screen {
+    let inputs = fusuma::Inputs::POINTER.with(fusuma::Inputs::KEYS);
+    fusuma::Screen::new(0, 0)
+        .with_form_factor(fusuma::FormFactor::Desktop)
+        .with_inputs(if touch_seen {
+            inputs.with(fusuma::Inputs::TOUCH)
+        } else {
+            inputs
+        })
+}
+
 /// A window position in physical pixels as a point: rounded, and held within the coordinate range (a
 /// pointer dragged far outside the window reports huge numbers).
 #[must_use]
@@ -218,6 +233,23 @@ mod tests {
             [Some(Pointer::Up(p)), Some(Pointer::Leave)]
         );
         assert_eq!(touch(TouchPhase::Cancelled, p), touch(TouchPhase::Ended, p));
+    }
+
+    #[test]
+    fn a_desktop_window_says_what_it_is_and_a_narrow_one_is_a_phone_layout_not_a_watch() {
+        let d = device(false);
+        assert_eq!(d.form_factor(), fusuma::FormFactor::Desktop);
+        assert!(d.inputs.has(fusuma::Inputs::POINTER) && d.inputs.has(fusuma::Inputs::KEYS));
+        assert!(!d.inputs.has(fusuma::Inputs::TOUCH));
+        assert!(device(true).inputs.has(fusuma::Inputs::TOUCH));
+        // A 300 px wide window: by width a watch, declared a desktop it is a phone layout.
+        let narrow = fusuma::Screen {
+            width: 300,
+            height: 600,
+            ..d
+        };
+        assert_eq!(narrow.class(), fusuma::Class::Phone);
+        assert!(!narrow.is_reflective());
     }
 
     #[test]

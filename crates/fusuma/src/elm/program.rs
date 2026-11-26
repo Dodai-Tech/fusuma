@@ -36,6 +36,15 @@ pub trait Program {
         &[]
     }
 
+    /// A message for a change of the screen, or `None` (the default). It is asked when the device or its window changes in a way a
+    /// layout cares about: the form factor, the layout class, the size class or the orientation (a rotation, a window dragged
+    /// narrow, a monitor with another scale). Not for every pixel of a resize. The first screen the platform sends counts as a
+    /// change from the one the program started with.
+    fn on_screen(screen: &Screen) -> Option<Self::Msg> {
+        let _ = screen;
+        None
+    }
+
     /// What the program wants to hear while its state is this. Nothing by default: the program sleeps until an input
     /// comes.
     fn subscription(state: &Self::State) -> Sub<Self::Msg> {
@@ -212,6 +221,20 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> Runner<P, N, K,
         }
     }
 
+    /// Tells the program about a change that a layout cares about (see [`Program::on_screen`]).
+    fn screen_changed(&mut self, before: &Screen) {
+        let now = &self.screen;
+        let same = before.form_factor() == now.form_factor()
+            && before.class() == now.class()
+            && before.size_class() == now.size_class()
+            && before.is_reflective() == now.is_reflective()
+            && (before.width >= before.height) == (now.width >= now.height);
+        if !same && let Some(m) = P::on_screen(now) {
+            self.push(m);
+            self.drain();
+        }
+    }
+
     fn record(&mut self, msg: P::Msg) {
         if L == 0 {
             return;
@@ -374,6 +397,7 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
 
     fn screen(&mut self, screen: Screen) {
         // What the device is; the area and the scale are the ones the program already has.
+        let before = self.screen;
         self.screen = Screen {
             width: self.screen.width,
             height: self.screen.height,
@@ -383,9 +407,11 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.theme = self.screen.theme(&self.theme);
         self.tree.invalidate();
         self.dirty = true;
+        self.screen_changed(&before);
     }
 
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
+        let before = self.screen;
         self.screen = Screen {
             width,
             height,
@@ -396,6 +422,7 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.tree.invalidate();
         // The view can choose its layout by the screen.
         self.dirty = true;
+        self.screen_changed(&before);
     }
 
     fn tick(&mut self, dt_ms: u32) -> bool {
