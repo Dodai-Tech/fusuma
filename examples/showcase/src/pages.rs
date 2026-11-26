@@ -97,6 +97,8 @@ pub struct Look {
     pub compact: bool,
     /// A watch leaves out the title and the extras.
     pub lite: bool,
+    /// A tiny panel (128 px wide): what sits side by side is stacked, and the words are short.
+    pub micro: bool,
     /// The spacings.
     pub xs: u32,
     /// Small.
@@ -239,25 +241,43 @@ fn seats_text(n: u32) -> fusuma::SmallText {
     t
 }
 
+/// `children` in a row, or one under the other on a tiny panel.
+fn side_by_side<'a, C: Children<PageMsg> + 'a>(
+    look: Look,
+    children: C,
+) -> impl fusuma::View<PageMsg> + 'a {
+    if look.micro {
+        column(children).gap(look.sm)
+    } else {
+        row(children).gap(look.md)
+    }
+}
+
 /// The Buttons page.
 pub fn buttons<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
     (
         (!look.lite).then(|| text("Buttons").title()),
-        row((
-            named(
-                wid::CLICK_ME,
-                button("Click me").primary().on_press(PageMsg::Click),
+        side_by_side(
+            look,
+            (
+                named(
+                    wid::CLICK_ME,
+                    button("Click me").primary().on_press(PageMsg::Click),
+                ),
+                named(
+                    wid::DELETE,
+                    button("Delete...").on_press(PageMsg::AskDelete),
+                ),
+                (!look.lite).then(|| button("Disabled").primary().enabled(false)),
             ),
-            named(
-                wid::DELETE,
-                button("Delete...").on_press(PageMsg::AskDelete),
-            ),
-            (!look.lite).then(|| button("Disabled").primary().enabled(false)),
-        ))
-        .gap(look.md),
+        ),
         named(
             wid::COUNTER,
-            text_fmt(format_args!("Clicked {} times", s.clicks)),
+            if look.micro {
+                text_fmt(format_args!("Clicked {}", s.clicks))
+            } else {
+                text_fmt(format_args!("Clicked {} times", s.clicks))
+            },
         ),
         (!look.lite)
             .then(|| text("Hover or press to see the fade. Tab and Enter work too.").caption()),
@@ -374,16 +394,18 @@ pub fn progress_page<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + '
             wid::BAR_LABEL,
             text_fmt(format_args!("{}%", s.permille / 10)),
         ),
-        row((
-            named(
-                wid::START,
-                button(if s.running { "Pause" } else { "Start" })
-                    .primary()
-                    .on_press(PageMsg::StartStop),
+        side_by_side(
+            look,
+            (
+                named(
+                    wid::START,
+                    button(if s.running { "Pause" } else { "Start" })
+                        .primary()
+                        .on_press(PageMsg::StartStop),
+                ),
+                named(wid::RESET, button("Reset").on_press(PageMsg::Reset)),
             ),
-            named(wid::RESET, button("Reset").on_press(PageMsg::Reset)),
-        ))
-        .gap(look.md),
+        ),
     )
 }
 

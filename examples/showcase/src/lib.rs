@@ -557,9 +557,16 @@ impl Showcase {
 
     fn build_screen(&mut self) -> Result<(), fusuma::BuildError> {
         let side_w = self.wide(240);
+        let micro = self.micro();
         let t = &mut self.tree;
+        // A tiny panel has no pixels to spend on margins.
+        let pad = if micro {
+            self.theme.spacing.xs
+        } else {
+            self.theme.spacing.md
+        };
         let content = Style::new()
-            .padding(self.theme.spacing.md)
+            .padding(pad)
             .gap(self.theme.spacing.md)
             .align(CrossAlign::Stretch)
             .background(Surface::Background);
@@ -598,7 +605,15 @@ impl Showcase {
         let compact = class.is_compact();
         if class == Class::Watch && self.open {
             self.back = Some(t.button(Some(header), "<", ButtonVariant::Secondary)?);
-            t.label(Some(header), self.page.name(), TextRole::Title)?;
+            t.label(
+                Some(header),
+                self.page.name(),
+                if micro {
+                    TextRole::Body
+                } else {
+                    TextRole::Title
+                },
+            )?;
         } else {
             t.label(
                 Some(header),
@@ -624,28 +639,35 @@ impl Showcase {
         // On a watch the header has no room for the palette: it is a tile of the home screen instead (see below).
         self.palette_button = None;
         let watch = class == Class::Watch;
+        self.theme_button = None;
+        self.theme_menu = None;
+        self.theme_rows = [None; 2];
         let label = theme_button_text(&self.palette, self.dark, watch);
-        self.theme_button = Some(dropdown(t, header, label.text())?);
+        if !micro {
+            self.theme_button = Some(dropdown(t, header, label.text())?);
+        }
         // One dropdown for the whole look, a menu out of the flow that opens under its button: the mode (Dark and
         // Light side by side) and, except on a watch whose menu would not fit, every palette.
         let sp = self.theme.spacing;
-        let menu = t.menu(Some(root), Style::new().padding(sp.xs).gap(sp.xs))?;
-        let modes = t.row(Some(menu), Style::new().gap(sp.xs))?;
-        for (i, name) in ["Dark", "Light"].into_iter().enumerate() {
-            let id = t.list_item(Some(modes), name, (i == 0) == self.dark)?;
-            t.set_style(id, Style::new().width(Length::Fill(1)));
-            self.theme_rows[i] = Some(id);
-        }
-        if !watch {
-            for (i, name) in PALETTE_NAMES.into_iter().enumerate() {
-                self.palette_rows[i] = Some(t.list_item(
-                    Some(menu),
-                    name,
-                    Palette::ALL[i].name == self.palette.name,
-                )?);
+        if !micro {
+            let menu = t.menu(Some(root), Style::new().padding(sp.xs).gap(sp.xs))?;
+            let modes = t.row(Some(menu), Style::new().gap(sp.xs))?;
+            for (i, name) in ["Dark", "Light"].into_iter().enumerate() {
+                let id = t.list_item(Some(modes), name, (i == 0) == self.dark)?;
+                t.set_style(id, Style::new().width(Length::Fill(1)));
+                self.theme_rows[i] = Some(id);
             }
+            if !watch {
+                for (i, name) in PALETTE_NAMES.into_iter().enumerate() {
+                    self.palette_rows[i] = Some(t.list_item(
+                        Some(menu),
+                        name,
+                        Palette::ALL[i].name == self.palette.name,
+                    )?);
+                }
+            }
+            self.theme_menu = Some(menu);
         }
-        self.theme_menu = Some(menu);
         let body_style = Style::new()
             .height(Length::Fill(1))
             .gap(self.theme.spacing.md)
@@ -668,6 +690,20 @@ impl Showcase {
             )?;
             self.content = Some(grid);
             let tile_h = self.theme.control_height.saturating_mul(3) / 2;
+            if micro {
+                // A tiny panel: one tile to a row, a list the keys walk through, and no palette (the glass has none).
+                for (i, page) in Page::ALL.iter().enumerate() {
+                    let id = t.button(Some(grid), page.name(), ButtonVariant::Secondary)?;
+                    t.set_style(
+                        id,
+                        Style::new()
+                            .width(Length::Fill(1))
+                            .height(Length::Fixed(self.theme.control_height)),
+                    );
+                    self.tiles[i] = Some(id);
+                }
+                return Ok(());
+            }
             for (r, pair) in Page::ALL.chunks(2).enumerate() {
                 let row = t.row(
                     Some(grid),
@@ -765,6 +801,7 @@ impl Showcase {
         }
         self.live = Live::default();
         let sp = self.theme.spacing;
+        let micro = self.micro();
         let body = self.body;
         let permille = self.permille();
         let scale = self.scale;
@@ -777,7 +814,7 @@ impl Showcase {
         let style = Style::new()
             .width(Length::Fill(1))
             .height(Length::Fill(1))
-            .padding(sp.md)
+            .padding(if micro { sp.xs } else { sp.md })
             .gap(sp.md)
             .align(CrossAlign::Stretch)
             .background(Surface::Surface)
@@ -814,6 +851,7 @@ impl Showcase {
         pages::Look {
             compact: self.class.is_compact(),
             lite,
+            micro: self.micro(),
             xs: sp.xs,
             sm: sp.sm,
             md: sp.md,
@@ -1040,6 +1078,19 @@ impl Showcase {
         self.back = None;
         self.content = None;
         let _ = self.build();
+    }
+
+    /// Whether this is a tiny board (a 128 px panel, a Micro form factor): a list and the keys, no palette switcher.
+    #[must_use]
+    pub fn micro(&self) -> bool {
+        fusuma::Screen {
+            width: self.bounds.w,
+            height: self.bounds.h,
+            ..self.device
+        }
+        .with_scale(self.scale)
+        .form_factor()
+            == fusuma::FormFactor::Micro
     }
 
     /// What the platform said the device is (a plain screen until it says).
@@ -2150,6 +2201,60 @@ mod tests {
         let mut r = fusuma::renderers::vello_cpu::new(410, 502).unwrap();
         s.frame(&mut r).unwrap();
         (s, r)
+    }
+
+    #[test]
+    fn a_tiny_panel_is_a_list_with_no_palette_and_its_pages_stack_what_sat_side_by_side() {
+        let micro = |w, h| {
+            let mut s = Showcase::new(w, h);
+            s.slide = false;
+            let mut r = fusuma::renderers::vello_cpu::new(w, h).unwrap();
+            s.frame(&mut r).unwrap();
+            (s, r)
+        };
+        let (mut s, mut r) = micro(128, 296);
+        assert!(s.micro());
+        assert_eq!(
+            s.theme_button(),
+            None,
+            "no palette switcher on a panel with no colours"
+        );
+        assert!(s.palette_button.is_none() && s.theme_menu.is_none());
+        // One tile to a row, all the same width, one under the other.
+        let rects: std::vec::Vec<_> = Page::ALL
+            .iter()
+            .filter_map(|p| s.tile(*p))
+            .filter_map(|id| s.rect_of(id))
+            .collect();
+        assert!(rects.len() >= 4, "{rects:?}");
+        assert!(
+            rects
+                .windows(2)
+                .all(|w| w[0].x == w[1].x && w[0].w == w[1].w && w[1].y > w[0].y)
+        );
+        assert!(rects[0].right() <= 128, "inside the 128 px: {:?}", rects[0]);
+        // A page: the two buttons are one under the other, both inside the screen.
+        let id = s.tile(Page::Buttons).unwrap();
+        s.tree.focus(id);
+        tap(&mut s, id);
+        s.frame(&mut r).unwrap();
+        let (a, b) = (
+            s.rect_of(s.tree().find(pages::wid::CLICK_ME).unwrap())
+                .unwrap(),
+            s.rect_of(s.tree().find(pages::wid::DELETE).unwrap())
+                .unwrap(),
+        );
+        assert!(b.y >= a.bottom() && a.x == b.x, "{a:?} {b:?}");
+        assert!(a.right() <= 128 && b.right() <= 128, "{a:?} {b:?}");
+        // A declared Panel (a touch board, not a watch) with the same pixels is not a micro board.
+        let mut p = Showcase::new(128, 296);
+        App::screen(
+            &mut p,
+            fusuma::Screen::new(128, 296).with_form_factor(fusuma::FormFactor::Panel),
+        );
+        assert!(!p.micro() && p.class == Class::Watch);
+        // And the watch and the phone are not.
+        assert!(!Showcase::new(410, 502).micro() && !Showcase::new(800, 480).micro());
     }
 
     fn open(s: &mut Showcase, p: Page) {
