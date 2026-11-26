@@ -1608,10 +1608,10 @@ fn a_text_area_view_keeps_line_breaks_through_the_apps_state_and_a_field_stays_o
         .id;
     assert!(tree.focus(field));
     // Typing and Enter come back as the new text, and the view gives it back: the break survives the round trip.
-    let mut feed = |tree: &mut Tree<16>,
-                    host: &mut Host<T, 8>,
-                    value: &mut String,
-                    f: &dyn Fn(&mut Tree<16>)| {
+    let feed = |tree: &mut Tree<16>,
+                host: &mut Host<T, 8>,
+                value: &mut String,
+                f: &dyn Fn(&mut Tree<16>)| {
         f(tree);
         while let Some(a) = tree.pop_action() {
             if let Some(T::Typed(t)) = host.message(tree, a) {

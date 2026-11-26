@@ -1470,7 +1470,7 @@ mod tests {
             (t.spacing, t.radii, t.colors)
         );
         let small = t.with_text_scale(50);
-        assert_eq!(small.text.body, (t.text.body + 1) / 2);
+        assert_eq!(small.text.body, t.text.body.div_ceil(2));
         assert_eq!(
             small.control_height, t.control_height,
             "a touch target is not made smaller"
