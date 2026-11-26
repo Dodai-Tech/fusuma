@@ -32,6 +32,61 @@ pub struct Colors {
     pub on_primary: Color,
     /// Destructive or erroneous.
     pub danger: Color,
+    /// Done, good, allowed.
+    pub success: Color,
+    /// Careful: something may go wrong.
+    pub warning: Color,
+    /// Neutral news.
+    pub info: Color,
+}
+
+/// What a message is about, which gives it a colour (an alert, a tag, a banner): the same four on every theme.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Tone {
+    /// Neutral news.
+    #[default]
+    Info,
+    /// Done, good.
+    Success,
+    /// Careful.
+    Warning,
+    /// Wrong or destructive.
+    Danger,
+}
+
+impl Tone {
+    /// All four, in order of urgency.
+    pub const ALL: [Self; 4] = [Self::Info, Self::Success, Self::Warning, Self::Danger];
+}
+
+impl Colors {
+    /// The colour of a [`Tone`].
+    #[must_use]
+    pub const fn tone(&self, tone: Tone) -> Color {
+        match tone {
+            Tone::Info => self.info,
+            Tone::Success => self.success,
+            Tone::Warning => self.warning,
+            Tone::Danger => self.danger,
+        }
+    }
+
+    /// Black or white, whichever reads better on `fill` (for text on a colour that is not one of the theme's own).
+    #[must_use]
+    pub const fn on(fill: Color) -> Color {
+        // Relative luminance, with sRGB's curve approximated as x^2.2 = x^2 * (0.7 + 0.3 x) in integers: black reads better
+        // above 0.179, where the contrasts with black and with white are equal.
+        const fn lin(c: u8) -> u64 {
+            let c = c as u64;
+            c * c * (178_500 + 300 * c)
+        }
+        let l = 2126 * lin(fill.r) + 7152 * lin(fill.g) + 722 * lin(fill.b);
+        if l > 29_680_000_000_000 {
+            Color::BLACK
+        } else {
+            Color::WHITE
+        }
+    }
 }
 
 /// Distances in pixels.
@@ -398,6 +453,9 @@ impl Palette {
             primary_active: Color::rgb(255, 255, 255),
             on_primary: Color::rgb(0, 0, 0),
             danger: Color::rgb(255, 255, 255),
+            success: Color::rgb(255, 255, 255),
+            warning: Color::rgb(255, 255, 255),
+            info: Color::rgb(255, 255, 255),
         },
         light: Colors {
             background: Color::rgb(255, 255, 255),
@@ -413,6 +471,9 @@ impl Palette {
             primary_active: Color::rgb(0, 0, 0),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(0, 0, 0),
+            success: Color::rgb(0, 0, 0),
+            warning: Color::rgb(0, 0, 0),
+            info: Color::rgb(0, 0, 0),
         },
     };
 
@@ -433,6 +494,9 @@ impl Palette {
             primary_active: Color::rgb(122, 156, 110),
             on_primary: Color::rgb(15, 36, 15),
             danger: Color::rgb(240, 122, 110),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         light: Colors {
             background: Color::rgb(250, 248, 245),
@@ -448,6 +512,9 @@ impl Palette {
             primary_active: Color::rgb(26, 61, 26),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(179, 38, 30),
+            success: Color::rgb(2, 126, 56),
+            warning: Color::rgb(143, 102, 5),
+            info: Color::rgb(3, 111, 191),
         },
     };
     /// A bright, clear blue on blue-tinted surfaces.
@@ -467,6 +534,9 @@ impl Palette {
             primary_active: Color::rgb(47, 140, 240),
             on_primary: Color::rgb(4, 16, 31),
             danger: Color::rgb(255, 122, 122),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         light: Colors {
             background: Color::rgb(244, 248, 252),
@@ -482,6 +552,9 @@ impl Palette {
             primary_active: Color::rgb(8, 72, 168),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(192, 38, 45),
+            success: Color::rgb(0, 125, 55),
+            warning: Color::rgb(142, 100, 2),
+            info: Color::rgb(0, 110, 190),
         },
     };
     /// Deep teal, between blue and green.
@@ -501,6 +574,9 @@ impl Palette {
             primary_active: Color::rgb(42, 162, 169),
             on_primary: Color::rgb(3, 24, 26),
             danger: Color::rgb(242, 120, 111),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         light: Colors {
             background: Color::rgb(243, 248, 248),
@@ -516,6 +592,9 @@ impl Palette {
             primary_active: Color::rgb(7, 85, 90),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(184, 50, 43),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(141, 99, 0),
+            info: Color::rgb(2, 109, 188),
         },
     };
     /// Purple, from deep plum to lavender.
@@ -535,6 +614,9 @@ impl Palette {
             primary_active: Color::rgb(157, 128, 245),
             on_primary: Color::rgb(23, 13, 46),
             danger: Color::rgb(255, 122, 138),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         light: Colors {
             background: Color::rgb(248, 246, 252),
@@ -550,6 +632,9 @@ impl Palette {
             primary_active: Color::rgb(85, 48, 173),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(184, 38, 58),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(141, 99, 0),
+            info: Color::rgb(2, 109, 188),
         },
     };
 
@@ -570,6 +655,9 @@ impl Palette {
             primary_active: Color::rgb(240, 138, 48),
             on_primary: Color::rgb(36, 18, 4),
             danger: Color::rgb(255, 118, 112),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         light: Colors {
             background: Color::rgb(253, 247, 240),
@@ -585,6 +673,9 @@ impl Palette {
             primary_active: Color::rgb(138, 52, 4),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(176, 30, 40),
+            success: Color::rgb(0, 125, 55),
+            warning: Color::rgb(142, 100, 2),
+            info: Color::rgb(0, 110, 190),
         },
     };
     /// Neutral greys with a soft white main action: no hue, for a design that brings its own accent.
@@ -604,6 +695,9 @@ impl Palette {
             primary_active: Color::rgb(198, 198, 206),
             on_primary: Color::rgb(18, 18, 20),
             danger: Color::rgb(255, 120, 120),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         light: Colors {
             background: Color::rgb(246, 246, 248),
@@ -619,6 +713,9 @@ impl Palette {
             primary_active: Color::rgb(18, 18, 22),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(184, 32, 40),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(141, 99, 0),
+            info: Color::rgb(2, 109, 188),
         },
     };
 
@@ -787,6 +884,16 @@ pub enum TextRole {
     Icon,
 }
 
+/// `a` with `b` mixed in, `permille` thousandths of it (0 gives `a`, 1000 gives `b`); opaque.
+#[must_use]
+pub const fn mix(a: Color, b: Color, permille: u32) -> Color {
+    let p = if permille > 1000 { 1000 } else { permille };
+    const fn ch(x: u8, y: u8, p: u32) -> u8 {
+        ((x as u32 * (1000 - p) + y as u32 * p + 500) / 1000) as u8
+    }
+    Color::rgb(ch(a.r, b.r, p), ch(a.g, b.g, p), ch(a.b, b.b, p))
+}
+
 /// The background of a container.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Surface {
@@ -803,6 +910,10 @@ pub enum Surface {
     Border,
     /// The main action's colour, for a badge or an avatar (put text on it in `on_primary`).
     Primary,
+    /// A tone's colour, solid (text on it is black or white, whichever reads: see [`Theme::text_on`]).
+    Tone(Tone),
+    /// A tone's colour thinned out into a card: a tinted background for a message, with ordinary text on it.
+    ToneSoft(Tone),
 }
 
 /// How round a container's corners are.
@@ -874,6 +985,9 @@ impl Theme {
             primary_active: Color::rgb(70, 140, 235),
             on_primary: Color::rgb(8, 12, 24),
             danger: Color::rgb(240, 90, 90),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
         },
         spacing: Spacing {
             xs: 2,
@@ -967,6 +1081,9 @@ impl Theme {
             primary_active: Color::rgb(22, 80, 190),
             on_primary: Color::rgb(255, 255, 255),
             danger: Color::rgb(190, 40, 40),
+            success: Color::rgb(0, 125, 55),
+            warning: Color::rgb(142, 100, 2),
+            info: Color::rgb(0, 110, 190),
         },
         ..Self::DARK
     };
@@ -1002,6 +1119,19 @@ impl Theme {
             Surface::Raised => Some(self.colors.surface_raised),
             Surface::Border => Some(self.colors.border),
             Surface::Primary => Some(self.colors.primary),
+            Surface::Tone(t) => Some(self.colors.tone(t)),
+            Surface::ToneSoft(t) => Some(mix(self.colors.surface, self.colors.tone(t), 160)),
+        }
+    }
+
+    /// The colour of text that sits directly on `surface`, when that is not the ordinary text colour: `on_primary` on
+    /// the main action's colour, black or white on a solid tone.
+    #[must_use]
+    pub const fn text_on(&self, surface: Surface) -> Option<Color> {
+        match surface {
+            Surface::Primary => Some(self.colors.on_primary),
+            Surface::Tone(t) => Some(Colors::on(self.colors.tone(t))),
+            _ => None,
         }
     }
 
@@ -1218,6 +1348,66 @@ mod tests {
             }
         };
         0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+
+    #[test]
+    fn every_tone_of_every_palette_stands_out_of_its_pages_and_text_on_it_reads() {
+        for (name, c) in every_palette() {
+            for t in Tone::ALL {
+                let fill = c.tone(t);
+                for (what, page) in [
+                    ("page", c.background),
+                    ("surface", c.surface),
+                    ("raised", c.surface_raised),
+                ] {
+                    assert!(
+                        contrast(fill, page) >= 3.0,
+                        "{name}: {t:?} on {what} {:.2}",
+                        contrast(fill, page)
+                    );
+                }
+                let ink = Colors::on(fill);
+                assert!(
+                    contrast(ink, fill) >= 4.5,
+                    "{name}: text on {t:?} {:.2}",
+                    contrast(ink, fill)
+                );
+            }
+            // The four are four colours (not the paper palette, which is ink).
+            if !name.starts_with("paper") {
+                for (i, a) in Tone::ALL.iter().enumerate() {
+                    for b in &Tone::ALL[i + 1..] {
+                        assert_ne!(c.tone(*a), c.tone(*b), "{name}: {a:?} and {b:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_tone_has_a_solid_surface_with_readable_text_and_a_soft_one_that_keeps_ordinary_text() {
+        let t = Theme::DARK;
+        for tone in Tone::ALL {
+            assert_eq!(
+                t.default_surface(Surface::Tone(tone)),
+                Some(t.colors.tone(tone))
+            );
+            let soft = t.default_surface(Surface::ToneSoft(tone)).unwrap();
+            assert!(contrast(t.colors.text, soft) >= 7.0, "{tone:?}");
+            assert_ne!(soft, t.colors.surface, "{tone:?} tints the card");
+            assert!(t.text_on(Surface::Tone(tone)).is_some());
+            assert_eq!(t.text_on(Surface::ToneSoft(tone)), None, "ordinary text");
+        }
+        assert_eq!(t.text_on(Surface::Primary), Some(t.colors.on_primary));
+        assert_eq!(t.text_on(Surface::Raised), None);
+        // Mixing: the ends, the middle and an over-large share.
+        let (a, b) = (Color::rgb(0, 0, 0), Color::rgb(200, 100, 50));
+        assert_eq!(mix(a, b, 0), a);
+        assert_eq!(mix(a, b, 1000), b);
+        assert_eq!(mix(a, b, 500), Color::rgb(100, 50, 25));
+        assert_eq!(mix(a, b, 5000), b, "held to 1000");
+        assert_eq!(Colors::on(Color::rgb(255, 230, 100)), Color::BLACK);
+        assert_eq!(Colors::on(Color::rgb(20, 60, 160)), Color::WHITE);
     }
 
     #[test]

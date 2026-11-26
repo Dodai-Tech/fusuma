@@ -1,10 +1,12 @@
 //! The showcase's pages as views: each is a function of the app's state, built from the same widgets as before, and the
 //! messages they send are the one place the app's state changes (`Showcase::page_message`).
 
+use fusuma::Tone;
 use fusuma::{
-    Children, avatar, badge, button, card, checkbox, column, divider, each, gestures, icon, item,
-    menu, named, paragraph, progress, radio, row, scroll, section, slider, stepper, switch, tab,
-    tab_bar, text, text_field, text_fmt, toast,
+    Children, alert, avatar, badge, banner, breadcrumbs, button, card, checkbox, chip, column,
+    divider, each, gestures, icon, item, menu, named, pagination, paragraph, progress, radio, row,
+    scroll, section, segmented, slider, snackbar, stat_card, stepper, steps, switch, tab, tab_bar,
+    tag, text, text_field, text_fmt, toast,
 };
 use fusuma::{CrossAlign, Id, Length, Swipe, SwipeDir};
 
@@ -88,6 +90,18 @@ pub enum PageMsg {
     Fewer,
     /// More seats.
     More,
+    /// A segment of the segmented control.
+    Segment(u8),
+    /// A page of the pagination.
+    PageTo(u32),
+    /// A chip.
+    Chip(u8),
+    /// A step is chosen (the Components page moves on to it).
+    StepTo(u8),
+    /// A part of the breadcrumbs.
+    Crumb(u8),
+    /// The snackbar's action.
+    Undo,
 }
 
 /// How a page is laid out on the screen it is on.
@@ -117,6 +131,13 @@ pub struct Look {
     pub reading_h: u32,
 }
 
+/// The segments, the chips, the breadcrumbs and the steps of the Components page, and how many pages it pretends to have.
+pub const SEGMENT_NAMES: [&str; 3] = ["Day", "Week", "Month"];
+pub const CHIP_NAMES: [&str; 3] = ["Wi-Fi", "Bluetooth", "GPS"];
+pub const CRUMB_NAMES: [&str; 3] = ["Home", "Settings", "Display"];
+pub const STEP_NAMES: [&str; 3] = ["Account", "Details", "Done"];
+pub const PAGES: u32 = 24;
+
 /// What the pages show: the app's state, borrowed.
 #[derive(Clone, Copy, Debug)]
 pub struct State<'a> {
@@ -135,6 +156,10 @@ pub struct State<'a> {
     pub swipes: u32,
     pub swiped: Option<SwipeDir>,
     pub quantity: u32,
+    pub segment: u8,
+    pub page_no: u32,
+    pub step: u8,
+    pub chips: [bool; 3],
     pub icons: Icons,
 }
 
@@ -251,6 +276,35 @@ fn side_by_side<'a, C: Children<PageMsg> + 'a>(
     } else {
         row(children).gap(look.md)
     }
+}
+
+/// The Components page: messages, a segmented control, chips, breadcrumbs, pagination and steps. A tiny panel gets the
+/// few that fit.
+pub fn components<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
+    let chips = side_by_side(
+        look,
+        (
+            chip(CHIP_NAMES[0], s.chips[0]).on_press(PageMsg::Chip(0)),
+            chip(CHIP_NAMES[1], s.chips[1]).on_press(PageMsg::Chip(1)),
+            chip(CHIP_NAMES[2], s.chips[2]).on_press(PageMsg::Chip(2)),
+        ),
+    );
+    (
+        (!look.lite).then(|| text("Components").title()),
+        alert(Tone::Warning, "Low battery", "12 percent left"),
+        banner(Tone::Success, "Saved"),
+        row((tag(Tone::Info, "New"), tag(Tone::Danger, "Offline"))).gap(look.sm),
+        segmented(&SEGMENT_NAMES, usize::from(s.segment), |i| {
+            PageMsg::Segment(i as u8)
+        }),
+        chips,
+        (!look.lite).then(|| breadcrumbs(&CRUMB_NAMES, |i| PageMsg::Crumb(i as u8))),
+        (!look.lite).then(|| pagination(s.page_no, PAGES, PageMsg::PageTo)),
+        steps(&STEP_NAMES, usize::from(s.step)),
+        button("Next step").on_press(PageMsg::StepTo((s.step + 1) % 3)),
+        (!look.lite).then(|| stat_card("Steps today", "8,412", "+12%", Tone::Success)),
+        snackbar("Message deleted", "Undo", PageMsg::Undo),
+    )
 }
 
 /// The Buttons page.

@@ -134,11 +134,13 @@ pub enum Page {
     Navigation,
     /// Wrapped text in a scrolling view.
     Reading,
+    /// Alerts, tags, a segmented control, chips, breadcrumbs, pagination, steps, a stat card, a snackbar.
+    Components,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Overview,
         Self::Buttons,
         Self::Selection,
@@ -149,6 +151,7 @@ impl Page {
         Self::Typography,
         Self::Navigation,
         Self::Reading,
+        Self::Components,
     ];
 
     /// The name in the sidebar.
@@ -165,6 +168,7 @@ impl Page {
             Self::Typography => "Typography",
             Self::Navigation => "Navigation",
             Self::Reading => "Reading",
+            Self::Components => "Components",
         }
     }
 }
@@ -236,7 +240,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 10],
+    sidebar: [Option<NodeId>; 11],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
@@ -252,7 +256,7 @@ pub struct Showcase {
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
-    tiles: [Option<NodeId>; 10],
+    tiles: [Option<NodeId>; 11],
     back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
@@ -276,8 +280,13 @@ pub struct Showcase {
     swipes: u32,
     /// The Overview page's stepper value.
     quantity: u32,
+    /// The Components page: the segment, the page number, the step and the chips.
+    segment: u8,
+    page_no: u32,
+    step: u8,
+    chips: [bool; 3],
     /// The Overview page's view, kept in step with its part of the tree.
-    pages: fusuma::Host<pages::PageMsg, 24>,
+    pages: fusuma::Host<pages::PageMsg, 40>,
     /// The icon characters, looked up once (a lookup by name is not free on a chip).
     icons: Option<pages::Icons>,
     /// The state the pages show, besides the ones above.
@@ -306,7 +315,7 @@ impl Showcase {
             palette: Palette::FUSUMA,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Overview,
-            sidebar: [None; 10],
+            sidebar: [None; 11],
             nav: [None; 3],
             class: Class::of(width),
             dialog: [None; 3],
@@ -314,7 +323,7 @@ impl Showcase {
             shape: fusuma::Shape::Rect,
             device: fusuma::Screen::new(0, 0),
             open: false,
-            tiles: [None; 10],
+            tiles: [None; 11],
             back: None,
             body: None,
             content: None,
@@ -333,6 +342,10 @@ impl Showcase {
             tab: 0,
             swipes: 0,
             quantity: 2,
+            segment: 0,
+            page_no: 3,
+            step: 1,
+            chips: [true, false, false],
             pages: fusuma::Host::new(),
             icons: None,
             notify: true,
@@ -360,9 +373,9 @@ impl Showcase {
         s.class = Class::of(cols.saturating_mul(CELL_PX));
         s.theme = s.make_theme();
         s.tree.clear();
-        s.sidebar = [None; 10];
+        s.sidebar = [None; 11];
         s.nav = [None; 3];
-        s.tiles = [None; 10];
+        s.tiles = [None; 11];
         s.back = None;
         s.content = None;
         let _ = s.build();
@@ -802,6 +815,7 @@ impl Showcase {
         self.live = Live::default();
         let sp = self.theme.spacing;
         let micro = self.micro();
+        let page = self.page;
         let body = self.body;
         let permille = self.permille();
         let scale = self.scale;
@@ -820,14 +834,16 @@ impl Showcase {
             .background(Surface::Surface)
             .round(Round::Medium);
         // A small screen shows a window onto the page, which scrolls: the pages are taller than a watch.
-        let c = if compact {
+        let c = if compact || page == Page::Components {
             t.scroll(body, style)?
         } else {
             t.column(body, style)?
         };
         self.content = Some(c);
         // Every page is a view of the app's state, built into the container above (see `sync_pages`).
-        let _ = (t, sp, body, permille, scale, cells, class, compact, lite);
+        let _ = (
+            t, sp, body, permille, scale, cells, class, compact, lite, page,
+        );
         self.live = Live::default();
         self.pages.forget();
         self.sync_pages();
@@ -918,6 +934,10 @@ impl Showcase {
             swipes: self.swipes,
             swiped: self.swiped,
             quantity: self.quantity,
+            segment: self.segment,
+            page_no: self.page_no,
+            step: self.step,
+            chips: self.chips,
             icons,
         };
         // The tree has room for the page (the whole app is checked to fit), so a failure leaves a smaller page.
@@ -933,6 +953,7 @@ impl Showcase {
             Page::Typography => host.sync_children(tree, c, &pages::typography(look, state)),
             Page::Navigation => host.sync_children(tree, c, &pages::navigation(look, state)),
             Page::Reading => host.sync_children(tree, c, &pages::reading(look, state)),
+            Page::Components => host.sync_children(tree, c, &pages::components(look, state)),
         };
         self.refresh_live();
     }
@@ -1040,6 +1061,29 @@ impl Showcase {
                 self.show_toast(m.text());
             }
             P::MenuDismiss => self.menu_open = false,
+            P::Segment(i) => {
+                self.segment = i.min(2);
+                let _ = write!(say, "{}", pages::SEGMENT_NAMES[usize::from(self.segment)]);
+            }
+            P::PageTo(p) => {
+                self.page_no = p.clamp(1, pages::PAGES);
+                let _ = write!(say, "Page {}", self.page_no);
+            }
+            P::Chip(i) => {
+                let i = usize::from(i).min(2);
+                self.chips[i] ^= true;
+                let _ = write!(say, "{} {}", pages::CHIP_NAMES[i], on_off(self.chips[i]));
+            }
+            P::StepTo(i) => {
+                self.step = i.min(2);
+                let _ = write!(say, "Step {}", self.step + 1);
+            }
+            P::Crumb(i) => {
+                let _ = write!(say, "Back to {}", pages::CRUMB_NAMES[usize::from(i).min(2)]);
+            }
+            P::Undo => {
+                let _ = write!(say, "Undone");
+            }
             P::Swiped(dir) => {
                 self.swipes += 1;
                 self.swiped = Some(dir);
@@ -1072,9 +1116,9 @@ impl Showcase {
     fn rebuild(&mut self) {
         self.tree.clear();
         self.pages.forget();
-        self.sidebar = [None; 10];
+        self.sidebar = [None; 11];
         self.nav = [None; 3];
-        self.tiles = [None; 10];
+        self.tiles = [None; 11];
         self.back = None;
         self.content = None;
         let _ = self.build();
@@ -1083,6 +1127,10 @@ impl Showcase {
     /// Whether this is a tiny board (a 128 px panel, a Micro form factor): a list and the keys, no palette switcher.
     #[must_use]
     pub fn micro(&self) -> bool {
+        // A grid of text cells is counted in cells, not pixels: 40 of them is not a 40 px panel.
+        if self.cells {
+            return false;
+        }
         fusuma::Screen {
             width: self.bounds.w,
             height: self.bounds.h,
@@ -1533,9 +1581,9 @@ impl App for Showcase {
             self.bounds = bounds;
             self.tree.clear();
             self.pages.forget();
-            self.sidebar = [None; 10];
+            self.sidebar = [None; 11];
             self.nav = [None; 3];
-            self.tiles = [None; 10];
+            self.tiles = [None; 11];
             self.back = None;
             self.content = None;
             let _ = self.build();
@@ -1815,19 +1863,17 @@ mod tests {
     #[test]
     fn on_a_watch_the_palette_switcher_is_a_tile_of_the_home_screen() {
         let (mut s, mut r) = watch();
-        // Nine tiles are more than the grid shows at once: scroll to the last row.
+        // Eleven tiles are more than the grid shows at once: scroll to the last row.
         let grid = s.content.unwrap();
         s.tree.scroll_to(grid, 10_000);
         s.frame(&mut r).unwrap();
         let tile = s.palette_button().unwrap();
         let last = s.tile(*Page::ALL.last().unwrap()).unwrap();
         let (a, b) = (s.rect_of(tile).unwrap(), s.rect_of(last).unwrap());
-        assert_eq!(
-            (a.h, a.w),
-            (b.h, b.w),
-            "as big as a page tile, in a row of its own"
-        );
-        assert!(a.y > b.y);
+        assert_eq!((a.h, a.w), (b.h, b.w), "as big as a page tile");
+        // An odd number of pages leaves the last row half empty: the palette tile fills it, beside the last page.
+        assert_eq!(a.y, b.y, "{a:?} {b:?}");
+        assert!(a.x > b.x);
         tap(&mut s, tile);
         assert_eq!(s.palette().name, "forest");
         assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Forest"));
@@ -2803,6 +2849,69 @@ mod tests {
     }
 
     #[test]
+    fn the_components_page_answers_every_part_and_says_what_happened() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Components);
+        settle(&mut s);
+        s.frame(&mut r).unwrap();
+        let by = |s: &Showcase, name: &str| {
+            s.tree()
+                .semantics()
+                .find(|n| n.name == name)
+                .map(|n| n.id)
+                .unwrap_or_else(|| panic!("no '{name}' on the page"))
+        };
+        // The page scrolls: a part below the window is focused (which scrolls to it) before it is pressed.
+        let press = |s: &mut Showcase, r: &mut _, id| {
+            s.tree.focus(id);
+            s.frame(r).unwrap();
+            tap(s, id);
+        };
+        let status = |s: &Showcase| {
+            s.status
+                .and_then(|id| s.tree().text(id))
+                .map(std::string::ToString::to_string)
+        };
+        // The segmented control.
+        let week = by(&s, "Week");
+        press(&mut s, &mut r, week);
+        assert_eq!(s.segment, 1);
+        assert_eq!(status(&s).as_deref(), Some("Week"));
+        // A chip toggles, and several can be on.
+        let bt = by(&s, "Bluetooth");
+        press(&mut s, &mut r, bt);
+        assert_eq!(s.chips, [true, true, false]);
+        assert_eq!(status(&s).as_deref(), Some("Bluetooth on"));
+        let wifi = by(&s, "Wi-Fi");
+        press(&mut s, &mut r, wifi);
+        assert_eq!(s.chips, [false, true, false]);
+        // Pagination: page 3 is current, the next arrow goes to 4, a number goes there.
+        assert_eq!(s.page_no, 3);
+        let next = by(&s, ">");
+        press(&mut s, &mut r, next);
+        assert_eq!(s.page_no, 4);
+        assert_eq!(status(&s).as_deref(), Some("Page 4"));
+        let last = by(&s, "24");
+        press(&mut s, &mut r, last);
+        assert_eq!(s.page_no, 24);
+        s.frame(&mut r).unwrap();
+        assert!(s.tree().is_disabled(by(&s, ">")), "no page after the last");
+        // The steps move on, and come round to the first again.
+        let more = by(&s, "Next step");
+        press(&mut s, &mut r, more);
+        assert_eq!((s.step, status(&s).as_deref()), (2, Some("Step 3")));
+        press(&mut s, &mut r, more);
+        assert_eq!(s.step, 0);
+        // The snackbar and a breadcrumb.
+        let undo = by(&s, "Undo");
+        press(&mut s, &mut r, undo);
+        assert_eq!(status(&s).as_deref(), Some("Undone"));
+        let home = by(&s, "Home");
+        press(&mut s, &mut r, home);
+        assert_eq!(status(&s).as_deref(), Some("Back to Home"));
+    }
+
+    #[test]
     fn the_reading_page_wraps_its_text_and_scrolls_it() {
         let (mut s, mut r) = app();
         go(&mut s, Page::Reading);
@@ -2819,6 +2928,7 @@ mod tests {
             .iter()
             .skip_while(|p| **p != Page::Buttons)
             .skip(1)
+            .take_while(|p| **p != Page::Components)
         {
             tap(&mut ph, next);
         }

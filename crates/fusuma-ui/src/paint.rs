@@ -271,11 +271,13 @@ impl<const N: usize> Tree<N> {
             | Kind::TextInput { .. } => self.paint_widget(i, r, theme),
             Kind::Label { text, role } => {
                 let mut style = theme.text_style(role);
-                // On the main action's colour (a badge, an avatar) text is in the colour made to read on it.
-                if n.parent.is_some_and(|p| {
-                    self.nodes[usize::from(p)].style.background == crate::theme::Surface::Primary
-                }) {
-                    style.color = theme.colors.on_primary;
+                // On the main action's colour (a badge, an avatar) or a solid tone (an alert, a tag) text is in the colour
+                // made to read on it.
+                if let Some(c) = n
+                    .parent
+                    .and_then(|p| theme.text_on(self.nodes[usize::from(p)].style.background))
+                {
+                    style.color = c;
                 }
                 let size = r.measure_text(text.as_str(), &style);
                 let at = Point::new(rect.inset(n.style.padding).x, centred(rect, size).y);

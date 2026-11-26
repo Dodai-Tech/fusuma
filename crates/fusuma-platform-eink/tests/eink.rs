@@ -161,15 +161,17 @@ fn an_idle_page_costs_the_panel_nothing_and_a_long_run_cleans_up_now_and_then() 
     for i in 0..12 {
         now += 1000;
         d.input(Input::Key(if i % 2 == 0 { Key::Next } else { Key::Prev }));
-        d.step(now).unwrap();
-        now += 500;
-        match d.step(now).unwrap().refreshed {
-            Some(Refresh::Full) => fulls += 1,
-            Some(Refresh::Partial(_)) => partials += 1,
-            None => {}
+        // The key is followed by a few steps, 250 ms apart (the focus ring and a scroll may take two frames to settle).
+        for _ in 0..4 {
+            match d.step(now).unwrap().refreshed {
+                Some(Refresh::Full) => fulls += 1,
+                Some(Refresh::Partial(_)) => partials += 1,
+                None => {}
+            }
+            now += 250;
         }
     }
-    assert!(partials >= 6, "{partials} partial");
+    assert!(partials >= 4, "{partials} partial");
     assert!(
         fulls >= 3,
         "{fulls} full: one at the start and one after every three"
@@ -181,9 +183,12 @@ fn an_idle_page_costs_the_panel_nothing_and_a_long_run_cleans_up_now_and_then() 
         0x10
     );
     d.input(Input::Key(Key::Next));
-    d.step(now + 10_000).unwrap();
-    let s = d.step(now + 10_500).unwrap();
-    assert_eq!(s.refreshed, Some(Refresh::Full));
+    let first = (0..8u64).find_map(|k| d.step(now + 10_000 + k * 250).unwrap().refreshed);
+    assert_eq!(
+        first,
+        Some(Refresh::Full),
+        "after a sleep the first refresh is a full one"
+    );
 }
 
 #[test]

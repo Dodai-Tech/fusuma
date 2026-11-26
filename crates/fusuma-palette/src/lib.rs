@@ -145,6 +145,22 @@ fn at(l: f64, c: f64, h: f64) -> Color {
     Oklch { l, c, h }.to_color()
 }
 
+/// The success, warning and info colours for a page of `pages` (its background, surface and raised colours): a green, an
+/// amber and a blue, each as near the usual lightness as the contrast of 4.5 on every one of the pages allows.
+#[must_use]
+pub fn tones(pages: &[Color], dark: bool) -> (Color, Color, Color) {
+    let (start, toward) = if dark {
+        (0.74, Toward::Lighter)
+    } else {
+        (0.55, Toward::Darker)
+    };
+    (
+        readable(start, 150.0, 0.15, 4.5, pages, toward),
+        readable(start + 0.06, 80.0, 0.15, 4.5, pages, toward),
+        readable(start, 250.0, 0.15, 4.5, pages, toward),
+    )
+}
+
 /// A dark and a light `Colors` from one seed colour. The seed's hue tints the neutrals (by `tint`, a chroma: 0.012 is a
 /// whisper, 0 is a pure grey) and colours the main action, at no more chroma than the seed has.
 #[must_use]
@@ -207,6 +223,9 @@ pub fn generate(seed: Color, tint: f64) -> (Colors, Colors) {
         primary_active: active,
         on_primary,
         danger: readable(0.72, 25.0, 0.17, 4.5, &[surface, raised], Toward::Lighter),
+        success: tones(&pages, true).0,
+        warning: tones(&pages, true).1,
+        info: tones(&pages, true).2,
     };
 
     // Light.
@@ -261,6 +280,9 @@ pub fn generate(seed: Color, tint: f64) -> (Colors, Colors) {
             &[bg, surface, raised],
             Toward::Darker,
         ),
+        success: tones(&pages, false).0,
+        warning: tones(&pages, false).1,
+        info: tones(&pages, false).2,
     };
     (dark, light)
 }
@@ -291,6 +313,9 @@ fn colors_source(c: &Colors, indent: &str) -> String {
         ("primary_active", c.primary_active),
         ("on_primary", c.on_primary),
         ("danger", c.danger),
+        ("success", c.success),
+        ("warning", c.warning),
+        ("info", c.info),
     ];
     rows.iter()
         .map(|(n, v)| format!("{indent}{n}: {},\n", rgb(*v)))
