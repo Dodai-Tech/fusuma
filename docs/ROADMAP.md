@@ -240,7 +240,7 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
 - [x] **Building blocks** (`card`, `divider`, `section`, `badge`, `avatar`, `stepper`, in `blocks.rs`): arrangements of
   the basic widgets, no new node kinds; new `Surface::Border`, `Surface::Primary` (text on it is drawn in `on_primary`)
   and `Round::Full` (pill or circle). The showcase opens on a new **Overview** page made of them, and the palette tile
-  on the watch gets a row of its own now that there are ten pages
+  on the watch gets a row of its own now that there are many pages
 - [x] **Style hooks** on the theme (`Hooks`: button, surface, item, tab, panel), each a function that takes the place
   of the default; a test draws with all five
 - [ ] Accessibility with `AccessKit` (the semantic tree exists; nothing is bridged to a platform yet)
@@ -252,7 +252,7 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   each builds, which message each part sends, 0 allocations when nothing changed): `alert`, `banner`, `tag`, `stat_card`,
   `empty_state`, `skeleton`, `snackbar` (with an action), `chip` (a toggle button: any number on), `segmented`, `breadcrumbs`,
   `pagination` (`page_window` for every page of every size, checked against the rules), `steps`, `accordion` (the body is kept and
-  hidden, so it keeps its state). The showcase has a **Components** page (the 11th) that uses all but the accordion and answers each (a test presses every part)
+  hidden, so it keeps its state). The showcase has a **Components** page that uses all but the accordion and answers each (a test presses every part)
 - [x] **Gauge** (`Kind::Gauge`, `Tree::gauge`, `gauge()` view): an arc of 270 degrees with a number, stroked from a sine table in
   integers (no float, no allocation); 19 points, because the integer renderer holds about 20 segments of a stroked path
 - [x] **Layout:** a wrapping row (`Kind::Flow`, `wrap()`), a grid of equal columns (`grid(cols, ..)`, `Tree::grid`; each row as tall as its
@@ -290,7 +290,7 @@ the same pixels as the hand-built page, a message log that replays to the same s
   that sends them (no closures, no id paths). Views for every widget: text, buttons, checkbox, radio, switch, slider,
   text field (controlled), list rows, tabs, paragraph, scroll, dialog, menu, toast, gestures, card, badge, avatar,
   stepper, divider. Builds `no_std` for RISC-V and Cortex-M0
-- [x] **Every showcase page is a view** (`examples/showcase/src/pages.rs`): ten pages, one `PageMsg`, one `Host`; the
+- [x] **Every showcase page is a view** (`examples/showcase/src/pages.rs`): ten pages, one `PageMsg`, one `Host` (ten pages then, thirteen now); the
   45 screenshots (desktop dark and light, phone, watch, dialogs) are **pixel-identical** to the hand-built pages, the 46
   showcase tests pass, a running showcase makes **0 allocations** on every page. On the S3 watch a pass of a page's view
   takes **129 to 312 us** (22 nodes 135 us, 32 nodes 205 to 278 us, 40 nodes about 190 us; about 6 to 9 us a node, nothing
@@ -325,7 +325,7 @@ the same pixels as the hand-built page, a message log that replays to the same s
   wakes the loop (the GT911 and FT3168 have one)
 - [ ] The showcase itself is not a `Program` (its header, tiles and dialog are imperative around the page views); a
   `Program`-based showcase would use `Runner` and the simulator end to end
-- [ ] Node at 128 bytes: needs the text out of the node (a shared arena with compaction); about 7 KB on a 112-node tree
+- [ ] Node at 128 bytes: needs the text out of the node (a shared arena with compaction); about 7 KB on a 112-node tree (the showcase has room for 256 nodes now: roughly double, not measured)
 - [ ] A flash-per-added-page report, and a `riscv32imc` size report (no C3 board here: Tier 0 is proven by the allocation
   test and the `no_std` builds until there is one)
 - [ ] Scoped effects (`auto_dismiss`, `every` as view modifiers that stop on teardown); `Task::perform` with futures as an
@@ -383,7 +383,7 @@ the same pixels as the hand-built page, a message log that replays to the same s
 
 ### Mobile
 
-- [x] **Scaffolds** (`fusuma-platform-mobile` and the three hosts above): the system-specific values translated and tested on
+- [x] **Scaffolds** (`fusuma-platform-mobile` and its `android`, `ios` and `linux` features): the system-specific values translated and tested on
   the desktop (a random run of 200 lifecycle sequences never draws without a surface or in the background; mutated, 3 of the
   checks fail), `no_std` builds for RISC-V and Cortex-M0
 - [ ] **Android:** an activity (`android-activity` through `winit`), Vulkan by `wgpu` with Vello CPU as the fallback, the IME
