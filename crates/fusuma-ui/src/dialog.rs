@@ -40,6 +40,31 @@ impl<const N: usize> Tree<N> {
                 prev: None,
                 popover: None,
                 shown: 0,
+                sheet: false,
+            },
+            style,
+        )
+    }
+
+    /// Adds a bottom sheet: a dialog that rises from the bottom edge, as wide as the screen and as tall as its content (at most
+    /// three quarters of the screen). It is modal like [`dialog`](Self::dialog): the screen is dimmed behind it, a press outside
+    /// dismisses it, and it is shown with [`open_dialog`](Self::open_dialog).
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn bottom_sheet(
+        &mut self,
+        parent: Option<NodeId>,
+        style: Style,
+    ) -> Result<NodeId, BuildError> {
+        self.add(
+            parent,
+            Kind::Dialog {
+                open: false,
+                prev: None,
+                popover: None,
+                shown: 0,
+                sheet: true,
             },
             style,
         )
@@ -463,6 +488,61 @@ mod tests {
         // Fully in: the entrance animation has its own tests.
         u.t.advance(&THEME, 1000);
         relayout(u);
+    }
+
+    #[test]
+    fn a_bottom_sheet_sits_on_the_bottom_edge_as_wide_as_the_screen_and_is_modal() {
+        let mut t = Tree::<16>::new();
+        let root = t.column(None, Style::new().gap(4)).unwrap();
+        let behind = t
+            .button(Some(root), "Behind", ButtonVariant::Primary)
+            .unwrap();
+        let sheet = t
+            .bottom_sheet(Some(root), Style::new().padding(10).gap(6))
+            .unwrap();
+        let ok = t.button(Some(sheet), "Ok", ButtonVariant::Primary).unwrap();
+        let scr = screen();
+        let bounds = Rect::new(0, 0, W, H);
+        t.update(&scr, &THEME, bounds);
+        assert_eq!(
+            t.rect(sheet).map(|r| (r.w, r.h)),
+            Some((0, 0)),
+            "closed: no room"
+        );
+        t.open_dialog(sheet);
+        t.advance(&THEME, 1000);
+        t.update(&scr, &THEME, bounds);
+        let r = t.rect(sheet).unwrap();
+        assert_eq!((r.x, r.w), (0, W), "as wide as the screen");
+        assert_eq!(r.bottom(), H as i32, "on the bottom edge");
+        assert!(
+            r.h > 20 && r.h <= H / 4 * 3,
+            "as tall as its content, at most three quarters: {r:?}"
+        );
+        let ok_rect = t.rect(ok).unwrap();
+        assert!(
+            r.contains(Point::new(ok_rect.x + 2, ok_rect.y + 2)),
+            "its content is inside"
+        );
+        // Modal: a press on what is behind goes nowhere; one on the sheet's button answers.
+        let b = t.rect(behind).unwrap();
+        for e in [
+            Pointer::Down(Point::new(b.x + 3, b.y + 3)),
+            Pointer::Up(Point::new(b.x + 3, b.y + 3)),
+            Pointer::Leave,
+        ] {
+            t.pointer(e);
+        }
+        assert!(t.pop_action().is_none_or(|a| a.source != behind));
+        let p = Point::new(ok_rect.x + 3, ok_rect.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            t.pointer(e);
+        }
+        assert!(std::iter::from_fn(|| t.pop_action()).any(|a| a.source == ok));
+        // A tall one is cut to three quarters of the screen.
+        t.set_style(sheet, Style::new().padding(10).height(Length::Fixed(900)));
+        t.update(&scr, &THEME, bounds);
+        assert_eq!(t.rect(sheet).unwrap().h, H / 4 * 3);
     }
 
     #[test]

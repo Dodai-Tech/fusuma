@@ -785,6 +785,16 @@ impl<const N: usize> Tree<N> {
                     }
                 }
             }
+            Kind::Spinner { phase } => {
+                // One cell: the four bars go round with the phase.
+                let ch = ['|', '/', '-', '\\'][usize::from(phase / 900) % 4];
+                let on = look.style(
+                    if disabled { c.border } else { c.primary },
+                    None,
+                    Attrs::NONE,
+                );
+                pen.put(rect.x, row, ch, on);
+            }
             Kind::Gauge { permille, .. } => {
                 // A gauge in cells: the value as a short bar with its number after it, `[#### ] 40%`.
                 let inner = rect.w.saturating_sub(2) as i32;

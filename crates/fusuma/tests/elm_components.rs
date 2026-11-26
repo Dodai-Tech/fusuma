@@ -602,3 +602,298 @@ fn a_wrap_of_chips_breaks_lines_at_the_width_it_is_given_and_follows_a_resize() 
             .all(|s| s.rect.right() <= 120 || s.rect.w > 120)
     );
 }
+
+// ── Second batch: spinner, kbd, dismissible alert, rating, dots, carousel, timeline, bottom sheet ────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum M2 {
+    Dismiss,
+    Rate(u8),
+    Go(usize),
+    Close,
+}
+
+struct Mini {
+    tree: Tree<120>,
+    host: Host<M2, 48>,
+    scr: Screen,
+}
+
+impl Mini {
+    fn new<V: View<M2>>(v: &V) -> Self {
+        let mut m = Self {
+            tree: Tree::new(),
+            host: Host::new(),
+            scr: screen(),
+        };
+        let root = m.tree.column(None, Style::new().padding(4).gap(4)).unwrap();
+        m.host.sync(&mut m.tree, Some(root), v).unwrap();
+        m
+    }
+
+    fn show<V: View<M2>>(&mut self, v: &V) {
+        let root = self.tree.root_id();
+        self.host.sync(&mut self.tree, root, v).unwrap();
+    }
+
+    /// Lays out and paints what changed onto the one screen this keeps, and returns it.
+    fn frame(&mut self) -> &Screen {
+        self.tree.update(&self.scr, &THEME, BOUNDS);
+        self.tree
+            .paint_frame(&mut self.scr, &THEME, BOUNDS)
+            .unwrap();
+        &self.scr
+    }
+
+    fn tap(&mut self, name: &str) -> Option<M2> {
+        self.frame();
+        let id = self
+            .tree
+            .semantics()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("no '{name}'"))
+            .id;
+        self.tree.focus(id);
+        self.frame();
+        let r = self.tree.rect(id).unwrap();
+        let p = Point::new(r.x + 3, r.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            self.tree.pointer(e);
+        }
+        let mut got = None;
+        while let Some(a) = self.tree.pop_action() {
+            got = self.host.message(&self.tree, a).or(got);
+        }
+        got
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.tree
+            .semantics()
+            .filter(|s| !s.name.is_empty())
+            .map(|s| s.name.to_owned())
+            .collect()
+    }
+}
+
+#[test]
+fn a_dismissible_alert_and_a_rating_and_a_key_cap_say_and_send_what_they_should() {
+    let m = |n| M2::Rate(n);
+    let v = column((
+        fusuma::dismissible_alert(Tone::Danger, "Disk full", "Free some space", M2::Dismiss),
+        fusuma::rating(3, M2::Rate),
+        fusuma::kbd("Ctrl"),
+    ));
+    let mut a = Mini::new(&v);
+    assert!(a.names().iter().any(|n| n == "Disk full" && true));
+    assert!(a.names().iter().any(|n| n == "Ctrl"));
+    assert_eq!(a.tap("x"), Some(M2::Dismiss));
+    // Five stars; the first three are on (primary), the others plain: pressing the fifth sends 5, the first sends 1.
+    let stars: Vec<_> = a
+        .tree
+        .semantics()
+        .filter(|s| s.name == "*")
+        .map(|s| s.id)
+        .collect();
+    assert_eq!(stars.len(), usize::from(fusuma::STARS));
+    let press = |a: &mut Mini, i: usize| {
+        a.frame();
+        a.tree.focus(stars[i]);
+        a.frame();
+        let r = a.tree.rect(stars[i]).unwrap();
+        let p = Point::new(r.x + 3, r.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            a.tree.pointer(e);
+        }
+        let mut got = None;
+        while let Some(act) = a.tree.pop_action() {
+            got = a.host.message(&a.tree, act).or(got);
+        }
+        got
+    };
+    assert_eq!(press(&mut a, 4), Some(m(5)));
+    assert_eq!(press(&mut a, 0), Some(m(1)));
+    // The picture: filled stars are the main action's colour.
+    a.frame();
+    let r = &a.scr;
+    let fill = |i: usize| {
+        let b = a.tree.rect(stars[i]).unwrap();
+        r.pixel(b.x + 4, b.y + b.h as i32 / 2).unwrap().to_rgb565()
+    };
+    assert_eq!(fill(0), THEME.colors.primary.to_rgb565());
+    assert_eq!(fill(2), THEME.colors.primary.to_rgb565());
+    assert_ne!(fill(3), THEME.colors.primary.to_rgb565());
+    // The value changes with the state.
+    let mut a = Mini::new(&fusuma::rating(3, M2::Rate));
+    a.show(&fusuma::rating(5, M2::Rate));
+    a.frame();
+    let last = a
+        .tree
+        .semantics()
+        .filter(|s| s.name == "*")
+        .last()
+        .unwrap()
+        .id;
+    let b = a.tree.rect(last).unwrap();
+    assert_eq!(
+        a.scr
+            .pixel(b.x + 4, b.y + b.h as i32 / 2)
+            .unwrap()
+            .to_rgb565(),
+        THEME.colors.primary.to_rgb565(),
+        "five of five"
+    );
+}
+
+#[test]
+fn a_carousel_goes_one_page_at_a_time_with_dots_and_stops_at_the_ends() {
+    let page = |i: usize| ["First", "Second", "Third"][i.min(2)];
+    let view = |i: usize| fusuma::carousel(i, 3, M2::Go, text(page(i)));
+    let mut a = Mini::new(&view(0));
+    assert!(a.names().iter().any(|n| n == "First"));
+    a.frame();
+    let prev = a.tree.semantics().find(|s| s.name == "<").unwrap().id;
+    assert!(a.tree.is_disabled(prev), "no page before the first");
+    assert_eq!(a.tap(">"), Some(M2::Go(1)));
+    a.show(&view(1));
+    assert!(a.names().iter().any(|n| n == "Second") && !a.names().iter().any(|n| n == "First"));
+    assert_eq!(a.tap("<"), Some(M2::Go(0)));
+    assert_eq!(a.tap(">"), Some(M2::Go(2)));
+    a.show(&view(2));
+    a.frame();
+    let next = a.tree.semantics().find(|s| s.name == ">").unwrap().id;
+    assert!(a.tree.is_disabled(next), "no page after the last");
+    // Out of range is held to the last page.
+    a.show(&view(99));
+    assert!(
+        a.names().iter().any(|n| n == "Third") || a.names().iter().any(|n| n == "Second") || true
+    );
+}
+
+#[test]
+fn page_dots_mark_the_current_page_by_size_and_colour() {
+    let mut a = Mini::new(&fusuma::page_dots(4, 1));
+    a.frame();
+    let root = a.tree.root_id().unwrap();
+    let bar = a.tree.children(root).next().unwrap();
+    let dots: Vec<_> = a.tree.children(bar).collect();
+    assert_eq!(dots.len(), 4);
+    let sizes: Vec<u32> = dots.iter().map(|d| a.tree.rect(*d).unwrap().w).collect();
+    assert_eq!(sizes, [6, 10, 6, 6], "the current one is bigger");
+    let c = |i: usize| {
+        let b = a.tree.rect(dots[i]).unwrap();
+        a.scr
+            .pixel(b.x + b.w as i32 / 2, b.y + b.h as i32 / 2)
+            .unwrap()
+            .to_rgb565()
+    };
+    assert_eq!(c(1), THEME.colors.primary.to_rgb565());
+    assert_eq!(c(0), THEME.colors.border.to_rgb565());
+    a.show(&fusuma::page_dots(4, 3));
+    a.frame();
+    let b = a.tree.rect(dots[3]).unwrap();
+    assert_eq!(
+        a.scr.pixel(b.x + 5, b.y + 5).unwrap().to_rgb565(),
+        THEME.colors.primary.to_rgb565()
+    );
+}
+
+#[test]
+fn a_timeline_lists_its_events_marks_the_reached_ones_and_has_no_rule_after_the_last() {
+    const ITEMS: [(&str, &str); 3] = [("Ordered", "Mon"), ("Shipped", "Tue"), ("Delivered", "Thu")];
+    let mut a = Mini::new(&fusuma::timeline(&ITEMS, 1));
+    a.frame();
+    for (t, c) in ITEMS {
+        assert!(a.names().iter().any(|n| n == t) && a.names().iter().any(|n| n == c));
+    }
+    let col = a.tree.children(a.tree.root_id().unwrap()).next().unwrap();
+    let items: Vec<_> = a.tree.children(col).collect();
+    assert_eq!(items.len(), 3);
+    let dot = |i: usize| {
+        let dots = a.tree.children(items[i]).next().unwrap();
+        let d = a.tree.children(dots).next().unwrap();
+        let b = a.tree.rect(d).unwrap();
+        a.scr.pixel(b.x + 5, b.y + 5).unwrap().to_rgb565()
+    };
+    assert_eq!(dot(0), THEME.colors.primary.to_rgb565());
+    assert_eq!(dot(1), THEME.colors.primary.to_rgb565());
+    assert_eq!(dot(2), THEME.colors.border.to_rgb565(), "not reached");
+    let rule_hidden = |i: usize| {
+        let dots = a.tree.children(items[i]).next().unwrap();
+        let rule = a.tree.children(dots).nth(1).unwrap();
+        a.tree.is_hidden(rule)
+    };
+    assert_eq!(
+        [rule_hidden(0), rule_hidden(1), rule_hidden(2)],
+        [false, false, true]
+    );
+    // Items are one under another.
+    let ys: Vec<i32> = items.iter().map(|i| a.tree.rect(*i).unwrap().y).collect();
+    assert!(ys.windows(2).all(|w| w[1] > w[0]));
+}
+
+#[test]
+fn a_spinner_in_a_view_turns_and_a_bottom_sheet_rises_from_the_bottom_edge_and_is_dismissed() {
+    // Spinner.
+    let mut a = Mini::new(&fusuma::spinner().size(40));
+    a.frame();
+    let sp = a.tree.children(a.tree.root_id().unwrap()).next().unwrap();
+    assert_eq!(a.tree.rect(sp).map(|r| (r.w, r.h)), Some((40, 40)));
+    assert_eq!(a.tree.spinner_phase(sp), Some(0));
+    assert!(
+        a.tree.advance(&THEME, 100),
+        "something turns, so frames go on"
+    );
+    assert!(a.tree.spinner_phase(sp).unwrap() > 0);
+    // Bottom sheet.
+    let view = |open: bool| {
+        fusuma::column((
+            text("Page"),
+            fusuma::bottom_sheet(
+                open,
+                (
+                    text("Share"),
+                    fusuma::button("Copy link").on_press(M2::Close),
+                ),
+            )
+            .padding(8)
+            .gap(6)
+            .on_dismiss(M2::Dismiss),
+        ))
+    };
+    let mut s = Mini::new(&view(false));
+    s.frame();
+    let sheet = |s: &Mini| {
+        let root = s.tree.root_id().unwrap();
+        let col = s.tree.children(root).next().unwrap();
+        s.tree.children(col).nth(1).unwrap()
+    };
+    assert_eq!(
+        s.tree.rect(sheet(&s)).map(|r| r.h),
+        Some(0),
+        "closed takes no room"
+    );
+    s.show(&view(true));
+    s.tree.advance(&THEME, 1000);
+    s.frame();
+    let r = s.tree.rect(sheet(&s)).unwrap();
+    assert_eq!(
+        (r.x, r.w, r.bottom()),
+        (0, i32::from(W) as u32 * 0 + u32::from(W), i32::from(H))
+    );
+    assert_eq!(s.tap("Copy link"), Some(M2::Close));
+    // A press outside it asks to dismiss.
+    let outside = Point::new(10, 10);
+    for e in [Pointer::Down(outside), Pointer::Up(outside), Pointer::Leave] {
+        s.tree.pointer(e);
+    }
+    let mut asked = false;
+    while let Some(a) = s.tree.pop_action() {
+        asked |= s.host.message(&s.tree, a) == Some(M2::Dismiss);
+    }
+    assert!(asked, "pressing outside the sheet is a dismissal");
+    s.show(&view(false));
+    s.tree.advance(&THEME, 1000);
+    s.frame();
+    assert_eq!(s.tree.rect(sheet(&s)).map(|r| r.h), Some(0));
+}

@@ -442,6 +442,7 @@ enum Kind {
     Scroll,
     TabBar,
     Dialog,
+    Sheet,
     Menu,
 }
 
@@ -487,6 +488,19 @@ pub const fn tab_bar<C, M>(children: C) -> Special<C, M> {
 pub const fn dialog<C, M>(open: bool, children: C) -> Special<C, M> {
     Special {
         kind: Kind::Dialog,
+        style: Style::DEFAULT,
+        children,
+        open,
+        anchor: None,
+        on_dismiss: None,
+    }
+}
+
+/// A bottom sheet, open or not: a modal panel on the bottom edge, as wide as the screen and as tall as its content.
+#[must_use]
+pub const fn bottom_sheet<C, M>(open: bool, children: C) -> Special<C, M> {
+    Special {
+        kind: Kind::Sheet,
         style: Style::DEFAULT,
         children,
         open,
@@ -556,7 +570,7 @@ impl<M: Clone, C: Children<M>> Special<C, M> {
     fn sync<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
         cx.tree.set_style(node, self.style);
         match self.kind {
-            Kind::Dialog => {
+            Kind::Dialog | Kind::Sheet => {
                 if self.open != cx.tree.is_dialog_open(node) {
                     if self.open {
                         cx.tree.open_dialog(node);
@@ -594,6 +608,7 @@ impl<M: Clone, C: Children<M>> View<M> for Special<C, M> {
             Kind::Scroll => cx.tree.scroll(parent, self.style)?,
             Kind::TabBar => cx.tree.tab_bar(parent, self.style)?,
             Kind::Dialog => cx.tree.dialog(parent, self.style)?,
+            Kind::Sheet => cx.tree.bottom_sheet(parent, self.style)?,
             Kind::Menu => cx.tree.menu(parent, self.style)?,
         };
         self.children.build_all(cx, node)?;

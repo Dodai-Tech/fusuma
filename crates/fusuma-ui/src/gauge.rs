@@ -71,7 +71,36 @@ pub fn stroke_arc<R: Renderer>(
     sweep: i32,
     color: Color,
 ) -> Result<(), R::Error> {
-    let sweep = sweep.clamp(0, SWEEP);
+    stroke_arc_from(r, rect, width, START, sweep.clamp(0, SWEEP), color)
+}
+
+/// A whole ring, as two half arcs (a path is one polyline, and 19 points go round a ring in 20 degree steps).
+///
+/// # Errors
+/// The renderer's.
+pub fn stroke_ring<R: Renderer>(
+    r: &mut R,
+    rect: Rect,
+    width: u32,
+    color: Color,
+) -> Result<(), R::Error> {
+    stroke_arc_from(r, rect, width, 0, 1800, color)?;
+    stroke_arc_from(r, rect, width, 1800, 1800, color)
+}
+
+/// Strokes `sweep` tenths of a degree (up to 3600) of a ring in `rect`, from `start` tenths, `width` pixels thick.
+///
+/// # Errors
+/// The renderer's.
+pub fn stroke_arc_from<R: Renderer>(
+    r: &mut R,
+    rect: Rect,
+    width: u32,
+    start: i32,
+    sweep: i32,
+    color: Color,
+) -> Result<(), R::Error> {
+    let sweep = sweep.clamp(0, 3600);
     if sweep == 0 {
         return Ok(());
     }
@@ -85,7 +114,7 @@ pub fn stroke_arc<R: Renderer>(
     let steps = ((sweep + STEP - 1) / STEP).clamp(1, (POINTS - 1) as i32);
     let mut n = 0;
     for k in 0..=steps {
-        let a = START + sweep * k / steps;
+        let a = start + sweep * k / steps;
         let p = at(c, radius, a);
         path[n] = if k == 0 {
             PathCmd::MoveTo(p)
@@ -244,5 +273,98 @@ mod tests {
         // A degenerate box draws nothing and does not fail.
         stroke_arc(&mut r, Rect::new(0, 0, 0, 0), 4, 1000, THEME.colors.primary).unwrap();
         stroke_arc(&mut r, Rect::new(5, 5, 3, 3), 8, 1000, THEME.colors.primary).unwrap();
+    }
+
+    #[test]
+    fn a_spinner_turns_while_shown_stands_still_without_motion_and_hidden_ones_do_not_spin() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let a = t.spinner(Some(root)).unwrap();
+        let b = t.spinner(Some(root)).unwrap();
+        let mut r = fusuma_render_vello_cpu::new(120, 120).unwrap();
+        let bounds = Rect::new(0, 0, 120, 120);
+        t.update(&r, &THEME, bounds);
+        t.paint_frame(&mut r, &THEME, bounds).unwrap();
+        assert_eq!(t.spinner_phase(a), Some(0));
+        // A quarter of a second is 90 degrees: the caller is told to go on drawing frames.
+        assert!(t.advance(&THEME, 250));
+        assert_eq!(t.spinner_phase(a), Some(900));
+        assert!(t.needs_frame() || t.paint_frame(&mut r, &THEME, bounds).unwrap().is_some());
+        // A full turn wraps, and a stalled frame (a long pause) turns at most a second's worth.
+        assert!(t.advance(&THEME, 800));
+        assert_eq!(t.spinner_phase(a), Some(3600 % 3600 + (900 + 2880) % 3600));
+        t.advance(&THEME, 60_000);
+        assert!(t.spinner_phase(a).unwrap() < 3600);
+        // Hidden: no turning, and so no frames asked for.
+        t.set_hidden(b, true);
+        t.set_hidden(a, true);
+        t.update(&r, &THEME, bounds);
+        let before = t.spinner_phase(b);
+        assert!(!t.advance(&THEME, 100), "nothing shown turns");
+        assert_eq!(t.spinner_phase(b), before);
+        t.set_hidden(a, false);
+        t.update(&r, &THEME, bounds);
+        assert!(t.advance(&THEME, 100));
+        // No motion (e-paper): it stands still and asks for nothing.
+        let still = THEME.with_motion(crate::theme::MotionBudget::Off);
+        let at = t.spinner_phase(a);
+        assert!(!t.advance(&still, 500));
+        assert_eq!(t.spinner_phase(a), at);
+    }
+
+    #[test]
+    fn a_spinner_paints_a_quarter_ring_that_moves_with_its_phase_inside_its_box() {
+        let c = THEME.colors;
+        let pic = |phase_ms: u32| {
+            let mut t = Tree::<4>::new();
+            let root = t.column(None, Style::new().padding(10)).unwrap();
+            let s = t.spinner(Some(root)).unwrap();
+            let mut r = fusuma_render_vello_cpu::new(120, 120).unwrap();
+            t.update(&r, &THEME, Rect::new(0, 0, 120, 120));
+            t.advance(&THEME, phase_ms);
+            t.update(&r, &THEME, Rect::new(0, 0, 120, 120));
+            r.clear(c.background).unwrap();
+            t.paint(&mut r, &THEME).unwrap();
+            let g = t.rect(s).unwrap();
+            let primary: std::vec::Vec<(i32, i32)> = (g.x..g.right())
+                .flat_map(|x| (g.y..g.bottom()).map(move |y| (x, y)))
+                .filter(|&(x, y)| r.pixel(x, y) == Some(c.primary))
+                .collect();
+            (g, primary)
+        };
+        let (g, a) = pic(0);
+        let (_, b) = pic(500);
+        assert!(!a.is_empty() && !b.is_empty());
+        // About a quarter of the ring is lit (the whole ring would be four times as many).
+        let (_, quarter) = pic(0);
+        assert!(
+            quarter.len() < (g.w * g.h) as usize / 4,
+            "{} of {}",
+            quarter.len(),
+            g.w * g.h
+        );
+        assert_ne!(a, b, "half a second later the lit part is somewhere else");
+        // The lit part is inside the box, and the centroid is on the other side after half a turn.
+        let centroid = |p: &[(i32, i32)]| {
+            let n = p.len() as i64;
+            (
+                p.iter().map(|q| i64::from(q.0)).sum::<i64>() / n,
+                p.iter().map(|q| i64::from(q.1)).sum::<i64>() / n,
+            )
+        };
+        let (ca, cb) = (centroid(&a), centroid(&b));
+        let mid = (
+            i64::from(g.x) + i64::from(g.w) / 2,
+            i64::from(g.y) + i64::from(g.h) / 2,
+        );
+        assert!(
+            ((ca.0 - mid.0) * (cb.0 - mid.0) + (ca.1 - mid.1) * (cb.1 - mid.1)) < 0,
+            "opposite sides: {ca:?} {cb:?} {mid:?}"
+        );
+        assert!(
+            a.iter()
+                .chain(&b)
+                .all(|&(x, y)| g.contains(fusuma_render::Point::new(x, y)))
+        );
     }
 }

@@ -317,6 +317,15 @@ impl<const N: usize> Tree<N> {
         }
     }
 
+    /// Where a spinner is in its turn, in tenths of a degree.
+    #[must_use]
+    pub fn spinner_phase(&self, id: NodeId) -> Option<u16> {
+        match self.nodes[self.slot(id)?].kind {
+            Kind::Spinner { phase } => Some(phase),
+            _ => None,
+        }
+    }
+
     /// How full a gauge is, in thousandths.
     #[must_use]
     pub fn gauge_value(&self, id: NodeId) -> Option<u16> {
@@ -403,6 +412,11 @@ impl<const N: usize> Tree<N> {
                 )
             }
             Kind::Progress { .. } => Size::new(0, theme.track_height),
+            Kind::Spinner { .. } if theme.cells => Size::new(1, 1),
+            Kind::Spinner { .. } => {
+                let side = theme.control_height;
+                Size::new(side, side)
+            }
             Kind::Gauge { .. } if theme.cells => Size::new(theme.indicator.saturating_mul(4), 1),
             Kind::Gauge { .. } => {
                 let side = theme.control_height.saturating_mul(2);
@@ -630,6 +644,20 @@ impl<const N: usize> Tree<N> {
                     r.fill_rect(Rect::new(track.x, track.y, w, h), (h / 2).min(w / 2), color)?;
                 }
                 Ok(())
+            }
+            Kind::Spinner { phase } => {
+                let side = rect.w.min(rect.h);
+                let stroke = (side / 8).clamp(2, theme.track_height.max(2) * 2);
+                let sq = Rect::new(
+                    rect.x + (rect.w.saturating_sub(side) / 2) as i32,
+                    rect.y + (rect.h.saturating_sub(side) / 2) as i32,
+                    side,
+                    side,
+                );
+                // The track, then a quarter of the ring that goes round.
+                crate::gauge::stroke_ring(r, sq, stroke, c.surface_raised)?;
+                let color = if n.disabled_eff { c.border } else { c.primary };
+                crate::gauge::stroke_arc_from(r, sq, stroke, i32::from(phase), 900, color)
             }
             Kind::Gauge { permille, text } => {
                 let side = rect.w.min(rect.h);

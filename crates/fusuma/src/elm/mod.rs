@@ -16,9 +16,10 @@ pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
 };
 pub use components::{
-    Breadcrumbs, Gauge, PAGE_SLOTS, PageSlot, Pagination, Segmented, StepState, Steps, accordion,
-    alert, banner, breadcrumbs, chip, empty_state, gauge, page_window, pagination, segmented,
-    skeleton, snackbar, stat_card, step_state, steps, tag,
+    Breadcrumbs, Gauge, Kbd, PAGE_SLOTS, PageDots, PageSlot, Pagination, STARS, Segmented, Spinner,
+    StepState, Steps, Timeline, accordion, alert, banner, breadcrumbs, carousel, chip,
+    dismissible_alert, empty_state, gauge, kbd, page_dots, page_window, pagination, rating,
+    segmented, skeleton, snackbar, spinner, stat_card, step_state, steps, tag, timeline,
 };
 pub use container::{
     Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, named,
@@ -34,9 +35,9 @@ pub use msgs::{Handler, Msgs};
 pub use program::{Preset, Program, QUEUE, Runner, TIMERS};
 pub use task::{Effect, Recipe, SUB_CAP, Sub, TASK_CAP, Task};
 pub use widgets::{
-    Gestures, Icon, Item, Paragraph, Radio, Slider, Special, Switch, Tab, TextField, dialog,
-    gestures, icon, item, menu, paragraph, radio, scroll, slider, switch, tab, tab_bar, text_field,
-    variant,
+    Gestures, Icon, Item, Paragraph, Radio, Slider, Special, Switch, Tab, TextField, bottom_sheet,
+    dialog, gestures, icon, item, menu, paragraph, radio, scroll, slider, switch, tab, tab_bar,
+    text_field, variant,
 };
 
 use fusuma_ui::{BuildError, NodeId, Tree};

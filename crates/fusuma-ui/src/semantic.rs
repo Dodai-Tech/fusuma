@@ -227,6 +227,7 @@ impl<const N: usize> Tree<N> {
                 None,
                 Some(i32::from(*permille)),
             ),
+            Kind::Spinner { .. } => (Role::Progress, "Loading", "", None, None, None, None),
             Kind::Slider { permille } => (
                 Role::Slider,
                 "",

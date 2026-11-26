@@ -601,3 +601,319 @@ impl<M: Clone> View<M> for Gauge {
 }
 
 impl ViewMarker for Gauge {}
+
+// ── Spinner, key cap, dismissible alert, rating ─────────────────────────────────────────────────────────────────
+
+/// A quarter ring that turns while it is shown: a load of unknown length. It stands still where the theme has no motion
+/// (e-paper), so it never makes a panel refresh for ever.
+#[derive(Clone, Copy, Debug)]
+pub struct Spinner {
+    size: Option<u32>,
+}
+
+/// A spinner of the theme's size.
+#[must_use]
+pub const fn spinner() -> Spinner {
+    Spinner { size: None }
+}
+
+impl Spinner {
+    /// `px` pixels across.
+    #[must_use]
+    pub const fn size(mut self, px: u32) -> Self {
+        self.size = Some(px);
+        self
+    }
+
+    fn style(&self) -> Style {
+        match self.size {
+            Some(px) => Style::new()
+                .width(Length::Fixed(px))
+                .height(Length::Fixed(px)),
+            None => Style::new(),
+        }
+    }
+}
+
+impl<M: Clone> View<M> for Spinner {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = cx.tree.spinner(parent)?;
+        cx.tree.set_style(node, self.style());
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        cx.tree.set_style(node, self.style());
+    }
+}
+
+impl ViewMarker for Spinner {}
+
+/// A key cap: a short label in a small raised box, for shortcuts (`Ctrl`, `Esc`, `OK`).
+#[derive(Clone, Copy, Debug)]
+pub struct Kbd<'a>(&'a str);
+
+/// A key cap labelled `label`.
+#[must_use]
+pub const fn kbd(label: &str) -> Kbd<'_> {
+    Kbd(label)
+}
+
+impl<M: Clone> View<M> for Kbd<'_> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let cap = cx.tree.row(parent, Self::style())?;
+        cx.tree.label(Some(cap), self.0, TextRole::Caption)?;
+        Ok(cap)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        cx.tree.set_style(node, Self::style());
+        if let Some(l) = cx.tree.first_child(node) {
+            cx.tree.set_text(l, self.0);
+        }
+    }
+}
+
+impl Kbd<'_> {
+    fn style() -> Style {
+        Style::new()
+            .padding(4)
+            .align(CrossAlign::Center)
+            .background(Surface::Raised)
+            .round(Round::Small)
+    }
+}
+
+impl ViewMarker for Kbd<'_> {}
+
+/// An [`alert`] with a close button: pressing it sends `on_dismiss`, and the app stops showing the alert (the view for it
+/// is left out, or wrapped in [`show`]).
+#[must_use]
+pub fn dismissible_alert<'a, M: Clone + 'a>(
+    tone: Tone,
+    title: &'a str,
+    body: &'a str,
+    on_dismiss: M,
+) -> impl View<M> + 'a {
+    row((
+        column((text(title), text(body).caption()))
+            .gap(2)
+            .width(Length::Fill(1)),
+        button("x").on_press(on_dismiss),
+    ))
+    .padding(8)
+    .gap(8)
+    .align(CrossAlign::Center)
+    .width(Length::Fill(1))
+    .background(Surface::ToneSoft(tone))
+    .round(Round::Medium)
+}
+
+/// How many stars a [`rating`] has.
+pub const STARS: u8 = 5;
+
+/// Five stars, the first `value` of them filled; pressing the n-th sends `on_rate(n)` (pressing the one that is already the
+/// value is the app's to treat as clearing it).
+#[must_use]
+pub fn rating<'a, M: Clone + 'a>(value: u8, on_rate: fn(u8) -> M) -> impl View<M> + 'a {
+    let star = move |n: u8| chip("*", value >= n).on_press(on_rate(n));
+    row((star(1), star(2), star(3), star(4), star(5))).gap(2)
+}
+
+// ── Page dots and carousel ──────────────────────────────────────────────────────────────────────────────────────
+
+/// Small dots, one for each of `count` pages, the current one filled.
+#[derive(Clone, Copy, Debug)]
+pub struct PageDots {
+    count: usize,
+    current: usize,
+}
+
+/// Dots for `count` pages with `current` marked.
+#[must_use]
+pub const fn page_dots(count: usize, current: usize) -> PageDots {
+    PageDots { count, current }
+}
+
+impl PageDots {
+    fn sync<const N: usize, const K: usize, M: Clone>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        node: NodeId,
+    ) {
+        let mut at = cx.tree.first_child(node);
+        for i in 0..self.count {
+            let Some(id) = at else { break };
+            let on = i == self.current;
+            cx.tree.set_style(
+                id,
+                Style::new()
+                    .width(Length::Fixed(if on { 10 } else { 6 }))
+                    .height(Length::Fixed(if on { 10 } else { 6 }))
+                    .background(if on {
+                        Surface::Primary
+                    } else {
+                        Surface::Border
+                    })
+                    .round(Round::Full),
+            );
+            at = cx.tree.next_sibling(id);
+        }
+    }
+}
+
+impl<M: Clone> View<M> for PageDots {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let bar = cx
+            .tree
+            .row(parent, Style::new().gap(6).align(CrossAlign::Center))?;
+        for _ in 0..self.count {
+            cx.tree.row(Some(bar), Style::new())?;
+        }
+        self.sync(cx, bar);
+        Ok(bar)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.sync(cx, node);
+    }
+}
+
+impl ViewMarker for PageDots {}
+
+/// One page of `total` at a time, with arrows and dots under it: `content` is the current page's view, `on_page` what an
+/// arrow sends (the page it goes to, held to the ends).
+#[must_use]
+pub fn carousel<'a, M: Clone + 'a, V: View<M> + 'a>(
+    index: usize,
+    total: usize,
+    on_page: fn(usize) -> M,
+    content: V,
+) -> impl View<M> + 'a {
+    let last = total.saturating_sub(1);
+    let i = index.min(last);
+    column((
+        content,
+        row((
+            button("<")
+                .on_press(on_page(i.saturating_sub(1)))
+                .enabled(i > 0),
+            page_dots(total, i),
+            button(">")
+                .on_press(on_page((i + 1).min(last)))
+                .enabled(i < last),
+        ))
+        .gap(8)
+        .align(CrossAlign::Center),
+    ))
+    .gap(8)
+    .align(CrossAlign::Center)
+}
+
+// ── Timeline ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// Events one under another along a line: a dot, a title and a caption for each, the ones up to `current` filled.
+#[derive(Clone, Copy, Debug)]
+pub struct Timeline<'a> {
+    items: &'a [(&'a str, &'a str)],
+    current: usize,
+}
+
+/// A timeline of `(title, caption)` items, the first `current + 1` marked as reached.
+#[must_use]
+pub const fn timeline<'a>(items: &'a [(&'a str, &'a str)], current: usize) -> Timeline<'a> {
+    Timeline { items, current }
+}
+
+impl Timeline<'_> {
+    fn sync<const N: usize, const K: usize, M: Clone>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        node: NodeId,
+    ) {
+        let mut at = cx.tree.first_child(node);
+        for (i, (title, caption)) in self.items.iter().enumerate() {
+            let Some(item) = at else { break };
+            // Row: [dot column (dot, rule)] [text column (title, caption)].
+            if let Some(dots) = cx.tree.first_child(item)
+                && let Some(dot) = cx.tree.first_child(dots)
+            {
+                let reached = i <= self.current;
+                cx.tree.set_style(
+                    dot,
+                    Style::new()
+                        .width(Length::Fixed(10))
+                        .height(Length::Fixed(10))
+                        .background(if reached {
+                            Surface::Primary
+                        } else {
+                            Surface::Border
+                        })
+                        .round(Round::Full),
+                );
+                if let Some(rule) = cx.tree.next_sibling(dot) {
+                    cx.tree.set_hidden(rule, i + 1 == self.items.len());
+                }
+            }
+            if let Some(texts) = cx
+                .tree
+                .first_child(item)
+                .and_then(|d| cx.tree.next_sibling(d))
+                && let Some(t) = cx.tree.first_child(texts)
+            {
+                cx.tree.set_text(t, title);
+                if let Some(c) = cx.tree.next_sibling(t) {
+                    cx.tree.set_text(c, caption);
+                }
+            }
+            at = cx.tree.next_sibling(item);
+        }
+    }
+}
+
+impl<M: Clone> View<M> for Timeline<'_> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let col = cx.tree.column(parent, Style::new())?;
+        for _ in self.items {
+            let item = cx.tree.row(Some(col), Style::new().gap(8))?;
+            let dots = cx
+                .tree
+                .column(Some(item), Style::new().align(CrossAlign::Center))?;
+            cx.tree.row(Some(dots), Style::new())?;
+            cx.tree.row(
+                Some(dots),
+                Style::new()
+                    .width(Length::Fixed(2))
+                    .height(Length::Fixed(20))
+                    .background(Surface::Border),
+            )?;
+            let texts = cx.tree.column(Some(item), Style::new().gap(2))?;
+            cx.tree.label(Some(texts), "", TextRole::Body)?;
+            cx.tree.label(Some(texts), "", TextRole::Caption)?;
+        }
+        self.sync(cx, col);
+        Ok(col)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.sync(cx, node);
+    }
+}
+
+impl ViewMarker for Timeline<'_> {}

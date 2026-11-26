@@ -21,10 +21,33 @@ impl<const N: usize> Tree<N> {
         // Before the buttons: their pass rebuilds the "something below is animated" flags from what is still running.
         let toasts = self.advance_toasts(theme, dt_ms) | self.advance_dialogs(theme, dt_ms);
         let fading = self.advance_buttons(theme, dt_ms);
+        let spinning = self.advance_spinners(theme, dt_ms);
         let held = self.advance_gesture(dt_ms)
             | self.advance_slides(theme, dt_ms)
             | self.advance_springs(theme, dt_ms);
-        scrolling || bars || fading || toasts || held
+        scrolling || bars || fading || toasts || held || spinning
+    }
+
+    /// Turns every spinner that is shown: a full turn a second, and not at all where the theme has no motion (an e-paper panel
+    /// would refresh for ever). True while one turns, so the caller keeps drawing frames.
+    fn advance_spinners(&mut self, theme: &Theme, dt_ms: u32) -> bool {
+        if theme.motion.normal_ms == 0 {
+            return false;
+        }
+        let mut any = false;
+        for i in 0..N {
+            let n = &self.nodes[i];
+            if !n.alive || n.hidden || n.rect.is_empty() {
+                continue;
+            }
+            if let Kind::Spinner { phase } = &mut self.nodes[i].kind {
+                let turn = (dt_ms.min(1000) * 36 / 10) as u16;
+                *phase = ((u32::from(*phase) + u32::from(turn)) % 3600) as u16;
+                self.request(i, Flags::PAINT);
+                any = true;
+            }
+        }
+        any
     }
 
     fn advance_buttons(&mut self, theme: &Theme, dt_ms: u32) -> bool {

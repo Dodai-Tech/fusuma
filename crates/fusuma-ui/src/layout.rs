@@ -237,7 +237,13 @@ impl<const N: usize> Tree<N> {
                 cur = self.after_subtree(i, top);
                 continue;
             }
-            if let Kind::Dialog { open, popover, .. } = self.nodes[i].kind {
+            if let Kind::Dialog {
+                open,
+                popover,
+                sheet,
+                ..
+            } = self.nodes[i].kind
+            {
                 // A dialog sits in the middle of the screen at its own size, kept `margin` from the edges; a closed
                 // one takes no room at all (one that is closing still has its place until it is gone). A menu hangs
                 // from its widget instead.
@@ -245,6 +251,10 @@ impl<const N: usize> Tree<N> {
                     Rect::new(bounds.x, bounds.y, 0, 0)
                 } else if let Some(p) = popover {
                     self.popover_rect(i, p, bounds, margin.min(4))
+                } else if sheet {
+                    let s = self.nodes[i].size;
+                    let h = s.h.min(bounds.h / 4 * 3);
+                    Rect::new(bounds.x, bounds.bottom() - h as i32, bounds.w, h)
                 } else {
                     let s = self.nodes[i].size;
                     let w = s.w.min(bounds.w.saturating_sub(margin.saturating_mul(2)));
@@ -308,6 +318,7 @@ impl<const N: usize> Tree<N> {
             | Kind::Tab { .. }
             | Kind::Progress { .. }
             | Kind::Gauge { .. }
+            | Kind::Spinner { .. }
             | Kind::Switch { .. }
             | Kind::Slider { .. }
             | Kind::Toast { .. }

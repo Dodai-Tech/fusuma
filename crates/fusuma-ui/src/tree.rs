@@ -267,6 +267,11 @@ pub(crate) enum Kind {
     Progress {
         permille: u16,
     },
+    /// A spinner: a quarter of a ring that goes round while something is happening (a load of unknown length). `phase` is
+    /// where it is, in tenths of a degree; it stands still where the theme has no motion (an e-paper panel).
+    Spinner {
+        phase: u16,
+    },
     /// A gauge: an arc that fills to `permille` thousandths, with `text` in the middle (a speed, a heart rate).
     Gauge {
         permille: u16,
@@ -301,6 +306,8 @@ pub(crate) enum Kind {
         /// How far in it is, in thousandths: it fades and slides in while it opens and out while it closes (the
         /// animation pass moves it). A menu has no animation.
         shown: u16,
+        /// A bottom sheet: as wide as the screen, sitting on its bottom edge, instead of centred.
+        sheet: bool,
     },
     /// A message that shows for a while at the bottom of the screen, out of the flow, drawn over everything: it
     /// fades and slides in, stays, then fades out ([`Tree::show_toast`]).
@@ -1124,6 +1131,15 @@ impl<const N: usize> Tree<N> {
             },
             Style::DEFAULT,
         )
+    }
+
+    /// Adds a spinner: a quarter ring that turns while it is shown. Its size is square and from the theme (give it a fixed width
+    /// and height in a style to change that).
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn spinner(&mut self, parent: Option<NodeId>) -> Result<NodeId, BuildError> {
+        self.add(parent, Kind::Spinner { phase: 0 }, Style::DEFAULT)
     }
 
     /// Adds a gauge: an arc of 270 degrees filled to `permille` thousandths with `text` in the middle. Its size is square

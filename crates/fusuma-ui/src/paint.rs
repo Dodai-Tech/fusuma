@@ -267,6 +267,7 @@ impl<const N: usize> Tree<N> {
             | Kind::ListItem { .. }
             | Kind::Progress { .. }
             | Kind::Gauge { .. }
+            | Kind::Spinner { .. }
             | Kind::Switch { .. }
             | Kind::Slider { .. }
             | Kind::TextInput { .. } => self.paint_widget(i, r, theme),
