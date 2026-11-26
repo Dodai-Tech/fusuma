@@ -2,7 +2,7 @@
 //! among them Waveshare's 1.54 inch (200x200), 2.13 inch (122x250) and 2.9 inch (128x296) modules, over SPI.
 //!
 //! The chip's HAL implements [`Bus`] (a command byte with the data/command pin low, data with it high, the reset and
-//! busy pins, a delay); [`Ssd1680`] then is a [`Panel`](super::Panel). The command sequences follow Waveshare's V2
+//! busy pins, a delay); [`Ssd1680`] then is a [`Panel`]. The command sequences follow Waveshare's V2
 //! and V4 drivers; the tests run them against a recording bus, they have **not** been checked on a panel yet.
 
 use fusuma::render::Rect;

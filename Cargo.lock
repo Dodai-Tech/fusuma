@@ -1074,7 +1074,6 @@ name = "fusuma-platform-linux-mobile"
 version = "0.2.0"
 dependencies = [
  "fusuma-platform-mobile",
- "fusuma-render",
  "fusuma-ui",
 ]
 

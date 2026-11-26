@@ -17,7 +17,6 @@ publish = false
 [dependencies]
 fusuma-platform-mobile.workspace = true
 fusuma-ui.workspace = true
-fusuma-render.workspace = true
 
 [lints]
 workspace = true
