@@ -7,11 +7,13 @@ allocator, on any [`embedded-graphics`](https://crates.io/crates/embedded-graphi
 with `Rgb565` pixels: an SPI or QSPI display driver, a framebuffer in PSRAM, or the `Frame` type
 of this crate.
 
-- Rounded rectangles, circles and rounded borders are drawn from their coverage in integer maths, with smooth
-  edges; plain rectangles, strokes along paths and images map to `embedded-graphics` primitives (hard edges, for
-  now). Everything is clipped to the current clip.
-- Paths (lines, quadratic and cubic curves) are flattened and filled with an integer even-odd
-  scanline fill. A path may have up to 160 edges; a bigger one is an `Error::TooComplex`.
+- Rounded rectangles, circles, rounded borders, filled paths and strokes (miter joins to Vello's limit of 4, round caps)
+  are drawn from their coverage in integer maths, with smooth edges; images with alpha are mixed pixel by pixel; plain
+  rectangles are exact. Everything is clipped to the current clip, and a scrolled area can be moved instead of redrawn
+  (`Blend::shift_rows`).
+- Paths (lines, quadratic and cubic curves) are flattened and filled by a four-samples-a-row scanline fill in integers,
+  with no allocation. A path may have up to 160 edges (about 20 stroked segments); a bigger one is an `Error::TooComplex`
+  and draws nothing. Coordinates anywhere in `i32` are fuzzed (with overflow checks on).
 - Text: with the `fonts` feature, the families `fusuma-fonts` links (and its icons) from glyph atlases made at build
   time, blended in; otherwise, and for the bitmap font, the built-in mono fonts (6x10, 9x15, 10x20, ASCII).
 - Fills and text blend with their alpha on a target that can (`Blend`; the `Frame` of this crate does), and

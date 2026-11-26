@@ -148,6 +148,15 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   pixels of their bounding box)
 - [x] The GPU backend drawing to a surface with no read-back (`GpuScene::present`, `from_device`): used by the web
   build; the desktop window still reads back
+- [x] **Audit of the renderer layer** (all five crates): line coverage 96.8 % (`cargo llvm-cov`: integer 96 to 99 %, vello-cpu 99 %,
+  vello-common 90 %, the rest is the GPU-only paths), 0 missing docs, no TODOs, the READMEs brought up to date, **the draw fuzz
+  target now also runs the one-bit frame** and found two real bugs, both fixed with a regression test that was seen to fail
+  without the fix: a picture read inside an open clip left the Vello CPU scene without its clip, so the `restore` panicked
+  (`open_clips`), and a path with points near the ends of `i32` overflowed the integer renderer's crossing maths (`crossing`, in
+  `i128` when needed). `MonoFrame` is checked against the colour frame (exact for hard edges, within 8 to 15 % of the inked
+  pixels for smooth ones), since the conformance suite compares colours and one bit has two
+- [ ] **Known gaps in the layer:** no gradients, shadows, blur, opacity layers or shaders (see *Effects and shaders*); the integer
+  renderer has no dashes, no image scaling and no clip other than a rectangle; the GPU backend is not fuzzed (no GPU in CI)
 - [ ] Vello multithreading on the desktop (`vello_cpu`'s `multithreading` feature; unknown whether the partial
   render path uses the threads)
 - [ ] Benchmarks of a complex scene (many paths, blurs) and of the GPU without read-back

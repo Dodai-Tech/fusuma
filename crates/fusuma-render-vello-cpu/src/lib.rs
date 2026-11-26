@@ -37,6 +37,10 @@ pub struct CpuScene {
     shifts: alloc::vec::Vec<((i32, i32, u32, u32), i32)>,
     /// The reused buffer a damaged region is rasterised through, in bands.
     scratch: alloc::vec::Vec<u8>,
+    /// The clips pushed and not yet popped, each with the transform it was pushed under: emptying the scene after a render
+    /// (`forget_drawn`) drops the context's own clip stack, and a clip still open (the picture was read between a `clip` and
+    /// its `restore`) has to be pushed again or the `restore` pops what is not there.
+    open_clips: alloc::vec::Vec<(KRect, Affine)>,
     /// Draw commands in the scene not yet in the picture; for the tests, which check the scene does not grow.
     #[cfg(test)]
     queued: u32,
@@ -60,6 +64,7 @@ impl CpuScene {
             damage: alloc::vec::Vec::new(),
             shifts: alloc::vec::Vec::new(),
             scratch: alloc::vec::Vec::new(),
+            open_clips: alloc::vec::Vec::new(),
             #[cfg(test)]
             queued: 0,
         })
@@ -123,6 +128,11 @@ impl CpuScene {
         #[cfg(test)]
         {
             self.queued = 0;
+        }
+        // The clips still open come back, each under the transform it had.
+        for (rect, at) in &self.open_clips {
+            self.ctx.set_transform(*at);
+            self.ctx.push_clip_rect(rect);
         }
         self.ctx.set_transform(transform);
         self.ctx.set_paint_transform(paint_transform);
@@ -253,6 +263,7 @@ impl Scene for CpuScene {
 
     fn reset(&mut self) {
         self.ctx.reset();
+        self.open_clips.clear();
         #[cfg(test)]
         {
             self.queued = 0;
@@ -325,10 +336,12 @@ impl Scene for CpuScene {
     }
 
     fn push_clip(&mut self, rect: &KRect) {
+        self.open_clips.push((*rect, *self.ctx.transform()));
         self.ctx.push_clip_rect(rect);
     }
 
     fn pop_clip(&mut self) {
+        self.open_clips.pop();
         self.ctx.pop_clip();
     }
 
@@ -1148,5 +1161,47 @@ mod tests {
             Some(Color::rgb(9, 9, 9)),
             "the middle was not rendered, so it is as it was"
         );
+    }
+
+    #[test]
+    fn reading_the_picture_inside_a_clip_keeps_the_clip_and_its_restore_balanced() {
+        // A render (a probe of a pixel) empties the scene; the clips still open must come back under the transform they had, or the
+        // restore pops a clip that is not there (found by the fuzzer) and what is drawn next escapes the clip.
+        use fusuma_render::{Color, Probe, Rect, Renderer};
+        let mut r = new(64, 64).unwrap();
+        r.clear(Color::WHITE).unwrap();
+        r.save().unwrap();
+        r.translate(10, 10).unwrap();
+        r.clip(Rect::new(0, 0, 20, 20)).unwrap();
+        r.save().unwrap();
+        r.translate(5, 5).unwrap();
+        r.clip(Rect::new(0, 0, 8, 8)).unwrap();
+        r.fill_rect(Rect::new(-50, -50, 200, 200), 0, Color::BLACK)
+            .unwrap();
+        // Read: renders, and forgets what was drawn.
+        assert_eq!(
+            r.pixel(17, 17),
+            Some(Color::BLACK),
+            "inside the inner clip (15..23)"
+        );
+        assert_eq!(r.pixel(12, 12), Some(Color::WHITE), "outside it");
+        // Draw on after the read: still inside both clips, at the same places.
+        r.fill_rect(Rect::new(-50, -50, 200, 200), 0, Color::rgb(255, 0, 0))
+            .unwrap();
+        assert_eq!(r.pixel(17, 17), Some(Color::rgb(255, 0, 0)));
+        assert_eq!(r.pixel(25, 25), Some(Color::WHITE), "the inner clip holds");
+        r.restore().unwrap();
+        // Back in the outer clip (10..30): it holds too, and painting there reaches 10..30 only.
+        r.fill_rect(Rect::new(-50, -50, 200, 200), 0, Color::rgb(0, 0, 255))
+            .unwrap();
+        assert_eq!(r.pixel(25, 25), Some(Color::rgb(0, 0, 255)));
+        assert_eq!(r.pixel(35, 35), Some(Color::WHITE), "the outer clip holds");
+        assert_eq!(r.pixel(5, 5), Some(Color::WHITE));
+        r.restore().unwrap();
+        // Out of every clip: the whole surface again, and nothing is left to pop.
+        r.fill_rect(Rect::new(0, 60, 64, 4), 0, Color::BLACK)
+            .unwrap();
+        assert_eq!(r.pixel(32, 62), Some(Color::BLACK));
+        assert!(r.restore().is_err(), "the stack is empty");
     }
 }

@@ -16,9 +16,9 @@ r.clear(Color::rgb(16, 18, 24)).unwrap();
 r.fill_rect(Rect::new(8, 8, 120, 64), 12, Color::rgb(40, 46, 60)).unwrap();
 ```
 
-This crate renders into a texture of its own and reads it back, which is what screenshots, tests and
-toolkits that composite on the CPU need. Rendering into a texture that stays on the GPU (a window
-surface, or another `wgpu` pipeline) is planned. Text is vector (Inter and friends through `fusuma-text`) when built with `inter` or another font feature, else the built-in bitmap fonts.
+`GpuScene` renders into a texture of its own and reads it back, which is what screenshots, tests and
+toolkits that composite on the CPU need. `GpuScene::present` and `from_device` draw to a surface or into another `wgpu`
+pipeline with no read-back (the web build does); the desktop window still reads back. Text is vector (Inter and friends through `fusuma-text`) when built with `inter` or another font feature, else the built-in bitmap fonts.
 
 It passes the shared `fusuma_render::conformance` suite on a real GPU; a machine without a GPU
 cannot run those tests, and they skip there.

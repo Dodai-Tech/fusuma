@@ -420,6 +420,29 @@ fn add_span(acc: &mut [u8; CHUNK], cx: i64, xa: i64, xb: i64) {
     }
 }
 
+/// The x where the edge from `(ax, ay)` to `(bx, by)` crosses the scanline `sy` (which is between `ay` and `by`), rounded to the
+/// nearest unit. Coordinates are in 1/16 pixels and may be anywhere in `i32` (a path with a point 2^27 pixels away is allowed), so
+/// the product of two differences can leave `i64`: it is then done in `i128`, and the result, which lies between `ax` and `bx`,
+/// fits again.
+fn crossing(ax: i64, ay: i64, bx: i64, by: i64, sy: i64) -> i64 {
+    let (dy, den) = if by > ay {
+        (sy - ay, by - ay)
+    } else {
+        (ay - sy, ay - by)
+    };
+    let dx = bx - ax;
+    if let Some(num) = dy.checked_mul(dx)
+        && let Some(top) = num.checked_mul(2).and_then(|n| n.checked_add(den))
+        && let Some(bottom) = den.checked_mul(2)
+    {
+        return ax + top.div_euclid(bottom);
+    }
+    let num = i128::from(dy) * i128::from(dx);
+    let step = (2 * num + i128::from(den)).div_euclid(2 * i128::from(den));
+    // Between ax and bx, so it fits; the clamp only keeps a wrong input from wrapping.
+    (i128::from(ax) + step).clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64
+}
+
 /// Fills `outline` inside `[cx0, cx1) x [cy0, cy1)` (device pixels): calls `emit(y, x, alpha)` for each run of
 /// pixels with some coverage, `alpha` 0 to 255 for each pixel from column `x`.
 ///
@@ -467,12 +490,7 @@ pub(crate) fn rasterize(
                         continue;
                     }
                     let (ax, bx) = (i64::from(e.ax), i64::from(e.bx));
-                    let (num, den) = if by > ay {
-                        ((sy - ay) * (bx - ax), by - ay)
-                    } else {
-                        ((ay - sy) * (bx - ax), ay - by)
-                    };
-                    let x = ax + (2 * num + den).div_euclid(2 * den);
+                    let x = crossing(ax, ay, bx, by, sy);
                     *xs.get_mut(n).ok_or(TooComplex)? = (x, if by > ay { 1 } else { -1 });
                     n += 1;
                 }
@@ -502,4 +520,53 @@ pub(crate) fn rasterize(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod crossing_tests {
+    use super::crossing;
+
+    #[test]
+    fn a_crossing_is_exact_for_small_and_enormous_coordinates_and_never_overflows() {
+        // Small: the same as the plain formula.
+        for (ax, ay, bx, by, sy) in [
+            (0, 0, 160, 160, 80),
+            (10, 0, -50, 48, 7),
+            (5, 20, 5, 0, 3),
+            (0, 0, 33, 7, 3),
+        ] {
+            let (dy, den): (i64, i64) = if by > ay {
+                (sy - ay, by - ay)
+            } else {
+                (ay - sy, ay - by)
+            };
+            let want = ax + (2 * dy * (bx - ax) + den).div_euclid(2 * den);
+            assert_eq!(crossing(ax, ay, bx, by, sy), want);
+        }
+        // Enormous: against the same sum in i128. The fuzzer found a product of two 32 bit differences leaving i64.
+        let m = i64::from(i32::MAX);
+        for (ax, ay, bx, by) in [
+            (-m, -m, m, m),
+            (m, -m, -m, m),
+            (-m, m, m, -m),
+            (0, -m, m, m),
+            (-m, 0, m, 1),
+        ] {
+            for sy in [ay.min(by), (ay + by) / 2, ay.max(by) - 1] {
+                let (dy, den) = if by > ay {
+                    (sy - ay, by - ay)
+                } else {
+                    (ay - sy, ay - by)
+                };
+                let num = i128::from(dy) * i128::from(bx - ax);
+                let want =
+                    i128::from(ax) + (2 * num + i128::from(den)).div_euclid(2 * i128::from(den));
+                assert_eq!(
+                    i128::from(crossing(ax, ay, bx, by, sy)),
+                    want,
+                    "{ax} {ay} {bx} {by} at {sy}"
+                );
+            }
+        }
+    }
 }

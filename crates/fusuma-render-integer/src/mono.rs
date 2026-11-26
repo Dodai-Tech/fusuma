@@ -546,3 +546,279 @@ mod tests {
         assert!(ink > 10, "the text left ink: {ink}");
     }
 }
+
+/// The one-bit frame against the colour frame: the same scenes drawn on both.
+#[cfg(test)]
+mod differential {
+    extern crate std;
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::*;
+
+    fn paper(w: u16, h: u16, d: Dither) -> MonoFrame<Vec<u8>> {
+        MonoFrame::new(
+            w,
+            h,
+            vec![0xFF; MonoFrame::<Vec<u8>>::stride_of(w) * usize::from(h)],
+            d,
+        )
+        .unwrap()
+    }
+
+    use fusuma_render::{Color, Image, PathCmd, Point as RPoint, Rect as RRect, TextStyle};
+
+    /// What a scene needs, object safe so one list of scenes serves both targets.
+    trait Draw {
+        fn clear(&mut self, c: Color);
+        fn fill_rect(&mut self, r: RRect, radius: u32, c: Color);
+        fn stroke_rect(&mut self, r: RRect, radius: u32, w: u32, c: Color);
+        fn fill_circle(&mut self, p: RPoint, radius: u32, c: Color);
+        fn fill_path(&mut self, p: &[PathCmd], c: Color);
+        fn stroke_path(&mut self, p: &[PathCmd], w: u32, c: Color);
+        fn text(&mut self, t: &str, at: RPoint, size: u32);
+        fn image(&mut self, img: &Image<'_>, at: RPoint);
+        fn clip(&mut self, r: RRect);
+        fn save(&mut self);
+        fn translate(&mut self, dx: i32, dy: i32);
+    }
+
+    impl<R: fusuma_render::Renderer> Draw for R {
+        fn clear(&mut self, c: Color) {
+            fusuma_render::Renderer::clear(self, c).unwrap();
+        }
+        fn fill_rect(&mut self, r: RRect, radius: u32, c: Color) {
+            fusuma_render::Renderer::fill_rect(self, r, radius, c).unwrap();
+        }
+        fn stroke_rect(&mut self, r: RRect, radius: u32, w: u32, c: Color) {
+            fusuma_render::Renderer::stroke_rect(self, r, radius, w, c).unwrap();
+        }
+        fn fill_circle(&mut self, p: RPoint, radius: u32, c: Color) {
+            fusuma_render::Renderer::fill_circle(self, p, radius, c).unwrap();
+        }
+        fn fill_path(&mut self, p: &[PathCmd], c: Color) {
+            fusuma_render::Renderer::fill_path(self, p, c).unwrap();
+        }
+        fn stroke_path(&mut self, p: &[PathCmd], w: u32, c: Color) {
+            fusuma_render::Renderer::stroke_path(self, p, w, c).unwrap();
+        }
+        fn text(&mut self, t: &str, at: RPoint, size: u32) {
+            let style = TextStyle::new(size, Color::BLACK);
+            fusuma_render::Renderer::draw_text(self, t, at, &style).unwrap();
+        }
+        fn image(&mut self, img: &Image<'_>, at: RPoint) {
+            fusuma_render::Renderer::draw_image(self, img, at).unwrap();
+        }
+        fn clip(&mut self, r: RRect) {
+            fusuma_render::Renderer::clip(self, r).unwrap();
+        }
+        fn save(&mut self) {
+            fusuma_render::Renderer::save(self).unwrap();
+        }
+        fn translate(&mut self, dx: i32, dy: i32) {
+            fusuma_render::Renderer::translate(self, dx, dy).unwrap();
+        }
+    }
+
+    const W: u16 = 96;
+    const H: u16 = 64;
+    type Scene = fn(&mut dyn Draw);
+
+    /// The scene on the colour frame, each pixel as "white" (bright enough) or not.
+    fn on_rgb(scene: Scene) -> Vec<bool> {
+        let mut r = crate::Embedded::new(crate::Frame::new(W, H, vec![0u16; 96 * 64]).unwrap());
+        scene(&mut r);
+        (0..i32::from(H))
+            .flat_map(|y| (0..i32::from(W)).map(move |x| (x, y)))
+            .map(|(x, y)| {
+                let c = fusuma_render::Probe::pixel(&r, x, y).unwrap();
+                let raw = ((u16::from(c.r) >> 3) << 11)
+                    | ((u16::from(c.g) >> 2) << 5)
+                    | (u16::from(c.b) >> 3);
+                luma565(raw) >= 128
+            })
+            .collect()
+    }
+
+    /// The same scene on the one-bit frame.
+    fn on_mono(scene: Scene) -> Vec<bool> {
+        let mut r = crate::Embedded::new(paper(W, H, Dither::Threshold(128)));
+        scene(&mut r);
+        (0..i32::from(H))
+            .flat_map(|y| (0..i32::from(W)).map(move |x| (x, y)))
+            .map(|(x, y)| r.target().white_at(x, y).unwrap())
+            .collect()
+    }
+
+    /// How many pixels differ, and how many pixels the colour picture inks.
+    fn differ(a: &[bool], b: &[bool]) -> (usize, usize) {
+        (
+            a.iter().zip(b).filter(|(x, y)| x != y).count(),
+            a.iter().filter(|w| !**w).count().max(1),
+        )
+    }
+
+    fn page(d: &mut dyn Draw) {
+        d.clear(Color::WHITE);
+    }
+
+    #[test]
+    fn hard_edged_drawing_is_exactly_the_threshold_of_the_colour_picture() {
+        // Plain rectangles, clips, translation and nested saves are not anti-aliased: every pixel must agree.
+        let scenes: [(&str, Scene); 3] = [
+            ("rects", |d| {
+                page(d);
+                d.fill_rect(RRect::new(3, 5, 40, 20), 0, Color::BLACK);
+                d.fill_rect(RRect::new(20, 10, 40, 30), 0, Color::WHITE);
+                d.fill_rect(RRect::new(-10, 50, 200, 4), 0, Color::BLACK);
+                d.fill_rect(RRect::new(70, -5, 6, 100), 0, Color::BLACK);
+            }),
+            ("clip and translate", |d| {
+                page(d);
+                d.save();
+                d.translate(10, 7);
+                d.clip(RRect::new(0, 0, 30, 20));
+                d.fill_rect(RRect::new(-5, -5, 100, 100), 0, Color::BLACK);
+                d.save();
+                d.translate(5, 5);
+                d.clip(RRect::new(0, 0, 10, 8));
+                d.fill_rect(RRect::new(-5, -5, 100, 100), 0, Color::WHITE);
+            }),
+            ("stroked boxes", |d| {
+                page(d);
+                d.stroke_rect(RRect::new(4, 4, 50, 30), 0, 3, Color::BLACK);
+                d.stroke_rect(RRect::new(30, 20, 60, 40), 0, 1, Color::BLACK);
+            }),
+        ];
+        for (name, scene) in scenes {
+            let (a, b) = (on_rgb(scene), on_mono(scene));
+            let (n, ink) = differ(&a, &b);
+            assert!(ink > 50, "{name}: the scene draws something");
+            assert_eq!(n, 0, "{name}: {n} pixels differ");
+        }
+    }
+
+    #[test]
+    fn smooth_drawing_agrees_with_the_colour_picture_except_on_the_edge_pixels() {
+        static IMG: [u8; 16] = [
+            0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 255,
+        ];
+        let scenes: [(&str, Scene, usize); 7] = [
+            (
+                "rounded",
+                |d| {
+                    page(d);
+                    d.fill_rect(RRect::new(6, 6, 80, 50), 12, Color::BLACK);
+                },
+                8,
+            ),
+            (
+                "circle",
+                |d| {
+                    page(d);
+                    d.fill_circle(RPoint::new(48, 32), 26, Color::BLACK);
+                },
+                8,
+            ),
+            (
+                "ring",
+                |d| {
+                    page(d);
+                    d.stroke_rect(RRect::new(6, 6, 80, 50), 14, 3, Color::BLACK);
+                },
+                12,
+            ),
+            (
+                "path",
+                |d| {
+                    page(d);
+                    d.fill_path(
+                        &[
+                            PathCmd::MoveTo(RPoint::new(10, 50)),
+                            PathCmd::LineTo(RPoint::new(48, 8)),
+                            PathCmd::LineTo(RPoint::new(86, 50)),
+                            PathCmd::Close,
+                        ],
+                        Color::BLACK,
+                    );
+                },
+                10,
+            ),
+            (
+                "stroke",
+                |d| {
+                    page(d);
+                    d.stroke_path(
+                        &[
+                            PathCmd::MoveTo(RPoint::new(10, 50)),
+                            PathCmd::LineTo(RPoint::new(48, 8)),
+                            PathCmd::LineTo(RPoint::new(86, 50)),
+                        ],
+                        4,
+                        Color::BLACK,
+                    );
+                },
+                15,
+            ),
+            (
+                "text",
+                |d| {
+                    page(d);
+                    d.text("Hi there", RPoint::new(4, 20), 12);
+                },
+                15,
+            ),
+            (
+                "image",
+                |d| {
+                    page(d);
+                    let img = Image::new(2, 2, &IMG).unwrap();
+                    d.image(&img, RPoint::new(30, 20));
+                },
+                0,
+            ),
+        ];
+        for (name, scene, percent) in scenes {
+            let (a, b) = (on_rgb(scene), on_mono(scene));
+            let (n, ink) = differ(&a, &b);
+            assert!(ink >= 2, "{name}: the scene draws something ({ink})");
+            assert!(
+                n * 100 <= ink * percent.max(1),
+                "{name}: {n} of {ink} inked pixels differ (allowed {percent} %)"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mono_frame_never_panics_on_wild_calls_and_leaves_the_padding_white() {
+        let mut r = crate::Embedded::new(paper(13, 9, Dither::Ordered));
+        for (x, y, w, h) in [
+            (-50, -50, 200, 200),
+            (i32::MAX - 2, 0, 100, 100),
+            (3, 3, 0, 5),
+            (2, 2, u32::MAX, u32::MAX),
+        ] {
+            fusuma_render::Renderer::fill_rect(&mut r, RRect::new(x, y, w, h), 5, Color::BLACK)
+                .unwrap();
+        }
+        fusuma_render::Renderer::fill_circle(&mut r, RPoint::new(6, 4), u32::MAX, Color::BLACK)
+            .unwrap();
+        fusuma_render::Renderer::stroke_rect(
+            &mut r,
+            RRect::new(0, 0, 13, 9),
+            100,
+            100,
+            Color::BLACK,
+        )
+        .unwrap();
+        // The three padding bits of each 13 wide row are still paper.
+        for y in 0..9usize {
+            let last = r.target().bytes()[y * 2 + 1];
+            assert_eq!(last & 0b0000_0111, 0b0000_0111, "row {y}");
+        }
+        assert!(
+            r.target().white_at(13, 0).is_none(),
+            "the padding is not a pixel"
+        );
+    }
+}

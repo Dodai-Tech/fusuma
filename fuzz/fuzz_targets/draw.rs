@@ -4,7 +4,7 @@
 
 use libfuzzer_sys::fuzz_target;
 use fusuma_render::{Align, Color, Image, PathCmd, Point, Probe, Rect, Renderer, TextStyle};
-use fusuma_render_integer::{Embedded, Frame};
+use fusuma_render_integer::{Dither, Embedded, Frame, MonoFrame};
 
 
 struct Bytes<'a>(&'a [u8]);
@@ -112,4 +112,13 @@ fuzz_target!(|data: &[u8]| {
     run(&mut e, data);
     let mut s = fusuma_render_vello_cpu::new(48, 40).unwrap();
     run(&mut s, data);
+    // The one-bit frame (e-paper), both ways of turning colours to black and white; 45 wide so the last byte of a row is partly
+    // padding, which must stay white.
+    for dither in [Dither::Threshold(170), Dither::Ordered] {
+        let mut m = Embedded::new(MonoFrame::new(45, 40, vec![0xFFu8; 6 * 40], dither).unwrap());
+        run(&mut m, data);
+        for y in 0..40 {
+            assert_eq!(m.target().bytes()[y * 6 + 5] & 0b0000_0111, 0b0000_0111, "padding row {y}");
+        }
+    }
 });
