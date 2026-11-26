@@ -269,6 +269,12 @@ pub(crate) enum Kind {
     Progress {
         permille: u16,
     },
+    /// A divider between two panes that the user drags: `permille` is where it is along its parent (a row: from the left; a
+    /// column: from the top), and a drag or the arrow keys change it and send [`ActionKind::Changed`]. It does not move the panes
+    /// itself: the app gives them `Length::Fill` weights from the value.
+    Splitter {
+        permille: u16,
+    },
     /// A spinner: a quarter of a ring that goes round while something is happening (a load of unknown length). `phase` is
     /// where it is, in tenths of a degree; it stands still where the theme has no motion (an e-paper panel).
     Spinner {
@@ -376,6 +382,7 @@ impl Kind {
                 | Self::Tab { .. }
                 | Self::Switch { .. }
                 | Self::Slider { .. }
+                | Self::Splitter { .. }
                 | Self::TextInput { .. }
         )
     }
@@ -1135,6 +1142,35 @@ impl<const N: usize> Tree<N> {
                 permille: permille.min(1000),
             },
             Style::DEFAULT,
+        )
+    }
+
+    /// Adds a splitter: the thin bar between two panes in a row (or a column), dragged to share the room between them.
+    /// Put it between the panes and give them `Length::Fill` weights of `permille` and `1000 - permille` thousandths; it takes
+    /// the full height of a row (width of a column) by itself.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn splitter(
+        &mut self,
+        parent: Option<NodeId>,
+        permille: u16,
+    ) -> Result<NodeId, BuildError> {
+        // It takes the whole of the other side: the height of a row, the width of a column.
+        let in_column = parent
+            .and_then(|p| self.slot(p))
+            .is_some_and(|i| matches!(self.nodes[i].kind, Kind::Stack(Axis::Column)));
+        let style = if in_column {
+            Style::DEFAULT.width(Length::Fill(1))
+        } else {
+            Style::DEFAULT.height(Length::Fill(1))
+        };
+        self.add(
+            parent,
+            Kind::Splitter {
+                permille: permille.min(1000),
+            },
+            style,
         )
     }
 

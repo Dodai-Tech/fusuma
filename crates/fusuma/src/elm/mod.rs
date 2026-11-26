@@ -17,9 +17,10 @@ pub use blocks::{
 };
 pub use components::{
     Breadcrumbs, Gauge, Kbd, PAGE_SLOTS, PageDots, PageSlot, Pagination, STARS, Segmented, Spinner,
-    StepState, Steps, Timeline, accordion, alert, banner, breadcrumbs, carousel, chip,
+    StepState, Steps, Table, Timeline, accordion, alert, banner, breadcrumbs, carousel, chip,
     dismissible_alert, empty_state, gauge, kbd, page_dots, page_window, pagination, rating,
-    segmented, skeleton, snackbar, spinner, stat_card, step_state, steps, tag, timeline,
+    segmented, skeleton, snackbar, spinner, split_view, split_view_vertical, splitter, stat_card,
+    step_state, steps, table, tag, timeline,
 };
 pub use container::{
     Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, grid,

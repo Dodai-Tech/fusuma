@@ -917,3 +917,175 @@ impl<M: Clone> View<M> for Timeline<'_> {
 }
 
 impl ViewMarker for Timeline<'_> {}
+
+// ── Table ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// Rows of cells in equal columns under a header: a grid of labels, the header on the raised surface and every other row
+/// tinted so a long row can be followed across.
+#[derive(Clone, Copy, Debug)]
+pub struct Table<'a> {
+    headers: &'a [&'a str],
+    rows: &'a [&'a [&'a str]],
+}
+
+/// A table with `headers` for the columns and `rows` of cells (a row with fewer cells than headers leaves the rest empty; a
+/// longer one is cut). The shape (the number of columns and rows) stays the same for as long as the table is shown.
+#[must_use]
+pub const fn table<'a>(headers: &'a [&'a str], rows: &'a [&'a [&'a str]]) -> Table<'a> {
+    Table { headers, rows }
+}
+
+impl Table<'_> {
+    fn cols(&self) -> u8 {
+        u8::try_from(self.headers.len().clamp(1, 255)).unwrap_or(1)
+    }
+
+    fn cell_style(row: usize) -> Style {
+        // Row 0 is the header.
+        Style::new().padding(4).background(match row {
+            0 => Surface::Border,
+            r if r % 2 == 1 => Surface::None,
+            _ => Surface::Raised,
+        })
+    }
+
+    fn sync<M: Clone, const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        node: NodeId,
+    ) {
+        let cols = usize::from(self.cols());
+        let mut at = cx.tree.first_child(node);
+        for row in 0..=self.rows.len() {
+            for col in 0..cols {
+                let Some(cell) = at else { return };
+                cx.tree.set_style(cell, Self::cell_style(row));
+                if let Some(l) = cx.tree.first_child(cell) {
+                    let t = if row == 0 {
+                        self.headers.get(col).copied()
+                    } else {
+                        self.rows[row - 1].get(col).copied()
+                    };
+                    cx.tree.set_text(l, t.unwrap_or(""));
+                }
+                at = cx.tree.next_sibling(cell);
+            }
+        }
+    }
+}
+
+impl<M: Clone> View<M> for Table<'_> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let grid = cx.tree.grid(
+            parent,
+            self.cols(),
+            Style::new()
+                .width(Length::Fill(1))
+                .align(CrossAlign::Stretch)
+                .round(Round::Small),
+        )?;
+        for row in 0..=self.rows.len() {
+            for _ in 0..self.cols() {
+                let cell = cx.tree.row(Some(grid), Self::cell_style(row))?;
+                cx.tree.label(
+                    Some(cell),
+                    "",
+                    if row == 0 {
+                        TextRole::Caption
+                    } else {
+                        TextRole::Body
+                    },
+                )?;
+            }
+        }
+        self.sync::<M, N, K>(cx, grid);
+        Ok(grid)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.sync::<M, N, K>(cx, node);
+    }
+}
+
+impl ViewMarker for Table<'_> {}
+
+// ── Split view ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// The bar between two panes: dragged (or moved with the arrow keys) it sends the new position in thousandths.
+#[derive(Clone, Copy, Debug)]
+pub struct Splitter<M> {
+    permille: u16,
+    on_change: fn(u16) -> M,
+}
+
+/// A splitter at `permille` thousandths, sending what `on_change` makes of the new position.
+#[must_use]
+pub const fn splitter<M>(permille: u16, on_change: fn(u16) -> M) -> Splitter<M> {
+    Splitter {
+        permille,
+        on_change,
+    }
+}
+
+impl<M: Clone> View<M> for Splitter<M> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = cx.tree.splitter(parent, self.permille)?;
+        cx.msgs.on(node, Handler::Value(self.on_change));
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        // Not moved under a finger that holds it by a view that lags a frame behind.
+        if !cx.tree.is_active(node) {
+            cx.tree.set_slider(node, self.permille);
+        }
+        cx.msgs.on(node, Handler::Value(self.on_change));
+    }
+}
+
+impl<M> ViewMarker for Splitter<M> {}
+
+/// Two panes side by side with a draggable bar between them: `permille` of the width goes to `left` (held between 50 and 950, so
+/// neither pane can be dragged shut). The app keeps the position and gives it back.
+#[must_use]
+pub fn split_view<'a, M: Clone + 'a, L: Children<M> + 'a, R: Children<M> + 'a>(
+    permille: u16,
+    on_change: fn(u16) -> M,
+    left: L,
+    right: R,
+) -> impl View<M> + 'a {
+    let p = permille.clamp(50, 950);
+    row((
+        column(left).width(Length::Fill(p)),
+        splitter(p, on_change),
+        column(right).width(Length::Fill(1000 - p)),
+    ))
+    .align(CrossAlign::Stretch)
+    .width(Length::Fill(1))
+}
+
+/// Two panes one above the other, the same way (`permille` of the height goes to `top`).
+#[must_use]
+pub fn split_view_vertical<'a, M: Clone + 'a, T: Children<M> + 'a, B: Children<M> + 'a>(
+    permille: u16,
+    on_change: fn(u16) -> M,
+    top: T,
+    bottom: B,
+) -> impl View<M> + 'a {
+    let p = permille.clamp(50, 950);
+    column((
+        column(top).height(Length::Fill(p)),
+        splitter(p, on_change),
+        column(bottom).height(Length::Fill(1000 - p)),
+    ))
+    .align(CrossAlign::Stretch)
+    .height(Length::Fill(1))
+}

@@ -816,6 +816,22 @@ impl<const N: usize> Tree<N> {
                 }
                 pen.put(rect.x + 1 + inner, row, ']', off);
             }
+            Kind::Splitter { .. } => {
+                let on = look.style(
+                    if disabled { c.border } else { c.border_strong },
+                    None,
+                    attrs,
+                );
+                if rect.w >= rect.h {
+                    for k in 0..rect.w as i32 {
+                        pen.put(rect.x + k, row, '-', on);
+                    }
+                } else {
+                    for k in 0..rect.h as i32 {
+                        pen.put(rect.x, rect.y + k, '|', on);
+                    }
+                }
+            }
             Kind::Slider { permille } => {
                 let span = rect.w.saturating_sub(1);
                 let at = (u64::from(span) * u64::from(permille) / 1000) as i32;

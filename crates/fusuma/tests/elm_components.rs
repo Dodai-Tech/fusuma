@@ -943,3 +943,158 @@ fn a_grid_view_makes_equal_columns_and_a_keypad_of_buttons_presses() {
     assert_eq!(a.tap("7"), Some(M2::Go(7)));
     assert_eq!(a.tap("#"), Some(M2::Go(11)));
 }
+
+#[test]
+fn a_table_is_a_grid_with_a_header_tinted_rows_and_cells_that_follow_the_data() {
+    const HEAD: [&str; 3] = ["Name", "Qty", "Price"];
+    const R1: [&str; 3] = ["Bolt", "10", "0.50"];
+    const R2: [&str; 2] = ["Nut", "25"];
+    let rows: [&[&str]; 2] = [&R1, &R2];
+    let mut a = Mini::new(&fusuma::table(&HEAD, &rows));
+    a.frame();
+    for n in ["Name", "Qty", "Price", "Bolt", "10", "0.50", "Nut", "25"] {
+        assert!(a.names().iter().any(|x| x == n), "{n}");
+    }
+    let rect_of = |a: &Mini, n: &str| {
+        let l = a.tree.semantics().find(|s| s.name == n).unwrap().id;
+        a.tree.rect(a.tree.parent_of(l).unwrap()).unwrap()
+    };
+    // Columns line up under their header, rows are one under another.
+    let (h, b, n) = (rect_of(&a, "Qty"), rect_of(&a, "10"), rect_of(&a, "25"));
+    assert_eq!((h.x, h.w), (b.x, b.w));
+    assert_eq!(b.x, n.x);
+    assert!(b.y > h.y && n.y > b.y);
+    // The short row has an empty cell, which still takes its place.
+    let empty = a
+        .tree
+        .children(a.tree.children(a.tree.root_id().unwrap()).next().unwrap())
+        .count();
+    assert_eq!(empty, 3 * 3, "header and two rows of three cells");
+    // Header, odd and even rows are three different looks.
+    let px = |a: &Mini, r: Rect| a.scr.pixel(r.x + 1, r.y + 1).unwrap().to_rgb565();
+    let (ph, p1, p2) = (px(&a, h), px(&a, b), px(&a, n));
+    assert_eq!(ph, THEME.colors.border.to_rgb565());
+    assert_eq!(p2, THEME.colors.surface_raised.to_rgb565());
+    assert_ne!(p1, ph);
+    assert_ne!(p1, p2);
+    // New data in the same shape: the cells change, nothing is added.
+    const R3: [&str; 3] = ["Washer", "7", "0.10"];
+    const R4: [&str; 3] = ["Screw", "3", "0.20"];
+    let rows2: [&[&str]; 2] = [&R3, &R4];
+    let before = a.tree.len();
+    a.show(&fusuma::table(&HEAD, &rows2));
+    a.frame();
+    assert_eq!(a.tree.len(), before);
+    assert!(a.names().iter().any(|x| x == "Washer") && !a.names().iter().any(|x| x == "Bolt"));
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sp {
+    Split(u16),
+}
+
+#[test]
+fn a_split_view_gives_the_panes_their_share_and_follows_a_drag_through_the_apps_state() {
+    let view = |p: u16| fusuma::split_view(p, Sp::Split, (text("Left"),), (text("Right"),));
+    let mut tree = Tree::<40>::new();
+    let mut host = Host::<Sp, 16>::new();
+    let root = tree.column(None, Style::new().padding(10)).unwrap();
+    host.sync(&mut tree, Some(root), &view(300)).unwrap();
+    let mut scr = screen();
+    let frame = |tree: &mut Tree<40>, scr: &mut Screen| {
+        tree.update(scr, &THEME, BOUNDS);
+        tree.paint_frame(scr, &THEME, BOUNDS).unwrap();
+    };
+    frame(&mut tree, &mut scr);
+    let bar = tree
+        .semantics()
+        .find(|s| s.role == fusuma_ui::Role::Slider)
+        .unwrap()
+        .id;
+    let left = tree
+        .rect(
+            tree.parent_of(tree.semantics().find(|s| s.name == "Left").unwrap().id)
+                .unwrap(),
+        )
+        .unwrap();
+    let right = tree
+        .rect(
+            tree.parent_of(tree.semantics().find(|s| s.name == "Right").unwrap().id)
+                .unwrap(),
+        )
+        .unwrap();
+    // 340 inside: the panes share what the bar leaves by 3 : 7.
+    assert!(
+        left.w * 7 / 3 >= right.w - 4 && left.w * 7 / 3 <= right.w + 4,
+        "{left:?} {right:?}"
+    );
+    // Drag the bar to the middle of the row: the message carries the position and the app gives it back.
+    let b = tree.rect(bar).unwrap();
+    let y = b.y + b.h as i32 / 2;
+    let from = Point::new(b.x + 1, y);
+    let to = Point::new(10 + 170, y);
+    let mut state = 300u16;
+    for e in [
+        Pointer::Move(from),
+        Pointer::Down(from),
+        Pointer::Move(to),
+        Pointer::Up(to),
+        Pointer::Leave,
+    ] {
+        tree.pointer(e);
+        while let Some(a) = tree.pop_action() {
+            if let Some(Sp::Split(p)) = host.message(&tree, a) {
+                state = p;
+                host.sync(&mut tree, Some(root), &view(state)).unwrap();
+                frame(&mut tree, &mut scr);
+            }
+        }
+    }
+    assert!((495..=505).contains(&state), "{state}");
+    let left = tree
+        .rect(
+            tree.parent_of(tree.semantics().find(|s| s.name == "Left").unwrap().id)
+                .unwrap(),
+        )
+        .unwrap();
+    let right = tree
+        .rect(
+            tree.parent_of(tree.semantics().find(|s| s.name == "Right").unwrap().id)
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(
+        (left.w as i32 - right.w as i32).abs() <= 3,
+        "equal halves: {left:?} {right:?}"
+    );
+    // Neither pane can be dragged shut: a position of 0 or 1000 is held to 50 and 950 in the view.
+    host.sync(&mut tree, Some(root), &view(0)).unwrap();
+    frame(&mut tree, &mut scr);
+    let left = tree
+        .rect(
+            tree.parent_of(tree.semantics().find(|s| s.name == "Left").unwrap().id)
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(left.w > 8, "{left:?}");
+}
+
+#[test]
+fn a_vertical_split_view_divides_the_height() {
+    let v = fusuma::split_view_vertical(500, Sp::Split, (text("Top"),), (text("Bottom"),));
+    let mut tree = Tree::<40>::new();
+    let mut host = Host::<Sp, 16>::new();
+    let root = tree.column(None, Style::new().padding(10)).unwrap();
+    host.sync(&mut tree, Some(root), &v).unwrap();
+    tree.update(&screen(), &THEME, BOUNDS);
+    let pane = |n: &str| {
+        tree.rect(
+            tree.parent_of(tree.semantics().find(|s| s.name == n).unwrap().id)
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let (t, b) = (pane("Top"), pane("Bottom"));
+    assert!((t.h as i32 - b.h as i32).abs() <= 3, "{t:?} {b:?}");
+    assert!(b.y > t.bottom());
+}

@@ -124,23 +124,48 @@ impl<const N: usize> Tree<N> {
         }
     }
 
+    /// A slider or a splitter: the widgets a press on drags.
     pub(crate) const fn is_slider(&self, i: usize) -> bool {
-        matches!(self.nodes[i].kind, Kind::Slider { .. })
+        matches!(
+            self.nodes[i].kind,
+            Kind::Slider { .. } | Kind::Splitter { .. }
+        )
+    }
+
+    /// Whether splitter `i` divides a column (the panes are one above the other).
+    pub(crate) fn splitter_is_vertical(&self, i: usize) -> bool {
+        self.nodes[i].parent.is_some_and(|p| {
+            matches!(
+                self.nodes[usize::from(p)].kind,
+                Kind::Stack(crate::tree::Axis::Column)
+            )
+        })
     }
 
     /// Moves slider `i` to `to` thousandths; sends [`ActionKind::Changed`] if that is a change.
     pub(crate) fn move_slider(&mut self, i: usize, to: u16) {
         let to = to.min(1000);
-        let Kind::Slider { permille: old } = self.nodes[i].kind else {
+        let (Kind::Slider { permille: old } | Kind::Splitter { permille: old }) =
+            self.nodes[i].kind
+        else {
             return;
         };
         if old == to {
             return;
         }
-        if let Kind::Slider { permille } = &mut self.nodes[i].kind {
+        if let Kind::Slider { permille } | Kind::Splitter { permille } = &mut self.nodes[i].kind {
             *permille = to;
         }
         let source = self.id_of(i);
+        if matches!(self.nodes[i].kind, Kind::Splitter { .. }) {
+            // The bar and what it divides move with the app's answer: draw the bar, and the layout is the app's.
+            self.request(i, Flags::PAINT);
+            self.push_action(Action {
+                source,
+                kind: ActionKind::Changed(to),
+            });
+            return;
+        }
         // Only the stretch between the old and the new thumb changes: the thumb, and the filled part of the track.
         // Marking the whole slider changed would redraw a screen-wide strip for a thumb that moved a few pixels.
         let r = self.nodes[i].rect;
@@ -157,6 +182,32 @@ impl<const N: usize> Tree<N> {
             source,
             kind: ActionKind::Changed(to),
         });
+    }
+
+    /// Moves slider or splitter `i` to where the pointer is. A splitter goes to where the pointer is along its parent.
+    pub(crate) fn slider_to(&mut self, i: usize, p: Point) {
+        if !matches!(self.nodes[i].kind, Kind::Splitter { .. }) {
+            self.slider_to_x(i, p.x);
+            return;
+        }
+        let Some(parent) = self.nodes[i].parent else {
+            return;
+        };
+        let inner = self.nodes[usize::from(parent)]
+            .rect
+            .inset(self.nodes[usize::from(parent)].style.padding);
+        let (pos, from, len) = if self.splitter_is_vertical(i) {
+            (p.y, inner.y, inner.h)
+        } else {
+            (p.x, inner.x, inner.w)
+        };
+        if len == 0 {
+            return;
+        }
+        let along = i64::from(pos) - i64::from(from);
+        let permille =
+            (along.clamp(0, i64::from(len)) * 1000 + i64::from(len) / 2) / i64::from(len);
+        self.move_slider(i, permille as u16);
     }
 
     /// Moves slider `i` to where the pointer is, `x` in tree coordinates. The thumb is as wide as the
@@ -177,7 +228,7 @@ impl<const N: usize> Tree<N> {
     #[must_use]
     pub fn slider_value(&self, id: NodeId) -> Option<u16> {
         match self.nodes[self.slot(id)?].kind {
-            Kind::Slider { permille } => Some(permille),
+            Kind::Slider { permille } | Kind::Splitter { permille } => Some(permille),
             _ => None,
         }
     }
@@ -186,7 +237,8 @@ impl<const N: usize> Tree<N> {
     pub fn set_slider(&mut self, id: NodeId, permille: u16) {
         let Some(i) = self.slot(id) else { return };
         let permille = permille.min(1000);
-        if let Kind::Slider { permille: p } = &mut self.nodes[i].kind
+        if let Kind::Slider { permille: p } | Kind::Splitter { permille: p } =
+            &mut self.nodes[i].kind
             && *p != permille
         {
             *p = permille;
@@ -426,6 +478,18 @@ impl<const N: usize> Tree<N> {
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)
             }
+            Kind::Splitter { .. } => {
+                let bar = if theme.cells {
+                    1
+                } else {
+                    theme.spacing.sm.max(4)
+                };
+                if self.splitter_is_vertical(i) {
+                    Size::new(0, bar)
+                } else {
+                    Size::new(bar, 0)
+                }
+            }
             Kind::Slider { .. } if theme.cells => Size::new(theme.indicator.saturating_mul(6), 1),
             Kind::Slider { .. } => Size::new(
                 theme.indicator.saturating_mul(6),
@@ -598,6 +662,62 @@ impl<const N: usize> Tree<N> {
                 self.ring(i, r, theme, theme.radii.sm)
             }
             Kind::TextInput { .. } => self.paint_text_input(i, r, theme),
+            Kind::Splitter { .. } => {
+                // A thin bar; a short grip in the middle that lights while it is held or has the focus.
+                let c = &theme.colors;
+                let vertical = self.splitter_is_vertical(i);
+                let accent = if n.disabled_eff {
+                    c.border
+                } else if n.active {
+                    c.primary_active
+                } else if n.hovered {
+                    c.primary_hover
+                } else {
+                    c.border_strong
+                };
+                let line = Rect::new(
+                    if vertical {
+                        rect.x
+                    } else {
+                        px(rect.x, rect.w / 2)
+                    },
+                    if vertical {
+                        px(rect.y, rect.h / 2)
+                    } else {
+                        rect.y
+                    },
+                    if vertical {
+                        rect.w
+                    } else {
+                        1.max(theme.border_width)
+                    },
+                    if vertical {
+                        1.max(theme.border_width)
+                    } else {
+                        rect.h
+                    },
+                );
+                r.fill_rect(line, 0, c.border)?;
+                let grip = if vertical {
+                    let w = rect.w.min(theme.control_height);
+                    Rect::new(
+                        px(rect.x, (rect.w - w) / 2),
+                        px(rect.y, rect.h / 4),
+                        w,
+                        rect.h.saturating_sub(rect.h / 2).max(2),
+                    )
+                } else {
+                    let h = rect.h.min(theme.control_height);
+                    Rect::new(
+                        px(rect.x, rect.w / 4),
+                        px(rect.y, (rect.h - h) / 2),
+                        rect.w.saturating_sub(rect.w / 2).max(2),
+                        h,
+                    )
+                };
+                r.fill_rect(grip, grip.w.min(grip.h) / 2, accent)?;
+                self.ring(i, r, theme, theme.radii.sm)
+            }
             Kind::Slider { permille } => {
                 let thumb = rect.h.min(rect.w);
                 let span = rect.w.saturating_sub(thumb);
@@ -1216,5 +1336,138 @@ mod tests {
         t.update(&screen(), &THEME, Rect::new(0, 0, 200, 100));
         assert!(t.rect(text).unwrap().w < 50, "{:?}", t.rect(text));
         assert_eq!(t.rect(wide).unwrap().w, 200);
+    }
+
+    fn split(vertical: bool, permille: u16) -> (Tree<16>, [NodeId; 3]) {
+        let mut t = Tree::<16>::new();
+        let root = if vertical {
+            t.column(None, Style::new().padding(10))
+        } else {
+            t.row(None, Style::new().padding(10))
+        }
+        .unwrap();
+        let weight = |p: u16| {
+            let l = crate::tree::Length::Fill(p);
+            if vertical {
+                Style::new().height(l).width(crate::tree::Length::Fill(1))
+            } else {
+                Style::new().width(l).height(crate::tree::Length::Fill(1))
+            }
+        };
+        let a = t.row(Some(root), weight(permille)).unwrap();
+        let bar = t.splitter(Some(root), permille).unwrap();
+        let b = t.row(Some(root), weight(1000 - permille)).unwrap();
+        t.update(&screen(), &THEME, Rect::new(0, 0, 220, 300));
+        (t, [a, bar, b])
+    }
+
+    /// What an app does with the splitter's value: the panes' weights follow it.
+    fn follow(t: &mut Tree<16>, [a, bar, b]: [NodeId; 3], vertical: bool) {
+        let v = t.slider_value(bar).unwrap();
+        let w = |p: u16| {
+            let l = crate::tree::Length::Fill(p);
+            if vertical {
+                Style::new().height(l).width(crate::tree::Length::Fill(1))
+            } else {
+                Style::new().width(l).height(crate::tree::Length::Fill(1))
+            }
+        };
+        t.set_style(a, w(v));
+        t.set_style(b, w(1000 - v));
+        t.update(&screen(), &THEME, Rect::new(0, 0, 220, 300));
+    }
+
+    fn drag_to(t: &mut Tree<16>, from: Point, to: Point) {
+        t.pointer(Pointer::Move(from));
+        t.pointer(Pointer::Down(from));
+        for k in 1..=4 {
+            let p = Point::new(
+                from.x + (to.x - from.x) * k / 4,
+                from.y + (to.y - from.y) * k / 4,
+            );
+            t.pointer(Pointer::Move(p));
+        }
+        t.pointer(Pointer::Up(to));
+        t.pointer(Pointer::Leave);
+    }
+
+    fn changes(t: &mut Tree<16>, id: NodeId) -> std::vec::Vec<u16> {
+        std::iter::from_fn(|| t.pop_action())
+            .filter(|a| a.source == id)
+            .filter_map(|a| match a.kind {
+                crate::tree::ActionKind::Changed(v) => Some(v),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_splitter_between_two_panes_reports_where_it_is_dragged_along_its_parent() {
+        let (mut t, ids) = split(false, 300);
+        let [a, bar, b] = ids;
+        let (ra, rb, rbar) = (t.rect(a).unwrap(), t.rect(b).unwrap(), t.rect(bar).unwrap());
+        assert!(ra.w < rb.w && ra.right() <= rbar.x && rbar.right() <= rb.x);
+        assert_eq!(rbar.h, 280, "a bar in a row is as tall as the row");
+        assert_eq!(t.slider_value(bar), Some(300));
+        let from = Point::new(rbar.x + 1, 150);
+        drag_to(&mut t, from, Point::new(110, 150));
+        let got = changes(&mut t, bar);
+        assert_eq!(got.last(), Some(&500), "{got:?}");
+        assert!(
+            got.windows(2).all(|w| w[0] != w[1]),
+            "each change once: {got:?}"
+        );
+        assert_eq!(t.slider_value(bar), Some(500));
+        follow(&mut t, ids, false);
+        assert!(
+            t.rect(a).unwrap().w > 90 && t.rect(a).unwrap().w < 110,
+            "the panes followed"
+        );
+        let at = t.rect(bar).unwrap().x + 1;
+        drag_to(&mut t, Point::new(at, 150), Point::new(900, 150));
+        assert_eq!(changes(&mut t, bar).last(), Some(&1000));
+        follow(&mut t, ids, false);
+        let at = t.rect(bar).unwrap().x + 1;
+        drag_to(&mut t, Point::new(at, 150), Point::new(-50, 150));
+        assert_eq!(t.slider_value(bar), Some(0));
+        let _ = changes(&mut t, bar);
+        assert_eq!(
+            t.pop_action(),
+            None,
+            "nothing but the bar reported anything"
+        );
+    }
+
+    #[test]
+    fn a_splitter_in_a_column_goes_by_height_and_arrow_keys_move_it_in_steps() {
+        let (mut t, [_, bar, _]) = split(true, 500);
+        let r = t.rect(bar).unwrap();
+        assert_eq!(r.w, 200, "a bar in a column is as wide as the column");
+        let from = Point::new(150, r.y + 1);
+        drag_to(&mut t, from, Point::new(150, 103));
+        let v = t.slider_value(bar).unwrap();
+        assert!((330..=336).contains(&v), "{v}");
+        let _ = changes(&mut t, bar);
+        t.focus(bar);
+        t.key(Key::Right);
+        assert_eq!(
+            t.slider_value(bar),
+            Some((v + crate::focus::SLIDER_STEP).min(1000))
+        );
+        t.key(Key::Left);
+        t.key(Key::Left);
+        assert_eq!(
+            t.slider_value(bar),
+            Some(v.saturating_sub(crate::focus::SLIDER_STEP))
+        );
+        assert!(!changes(&mut t, bar).is_empty());
+        let s = t.semantics().find(|s| s.id == bar).unwrap();
+        assert_eq!(s.role, crate::semantic::Role::Slider);
+        assert_eq!(s.value, t.slider_value(bar).map(i32::from));
+        t.set_enabled(bar, false);
+        t.update(&screen(), &THEME, Rect::new(0, 0, 220, 300));
+        let before = t.slider_value(bar);
+        drag_to(&mut t, Point::new(150, r.y + 1), Point::new(150, 200));
+        assert_eq!(t.slider_value(bar), before);
     }
 }

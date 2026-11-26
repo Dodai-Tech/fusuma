@@ -144,10 +144,15 @@ impl<const N: usize> Tree<N> {
             Key::Left | Key::Right => {
                 if let Some(i) = self.focus.and_then(|id| self.slot(id))
                     && self.focusable(i)
-                    && matches!(self.nodes[i].kind, Kind::Slider { .. })
+                    && matches!(
+                        self.nodes[i].kind,
+                        Kind::Slider { .. } | Kind::Splitter { .. }
+                    )
                 {
                     self.set_focus(Some(i), true);
-                    let Kind::Slider { permille } = self.nodes[i].kind else {
+                    let (Kind::Slider { permille } | Kind::Splitter { permille }) =
+                        self.nodes[i].kind
+                    else {
                         return;
                     };
                     let to = if key == Key::Left {

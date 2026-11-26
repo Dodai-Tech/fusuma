@@ -120,7 +120,7 @@ impl<const N: usize> Tree<N> {
                 }
                 self.set_active(i, true);
                 if let (Some(p), true) = (self.pointer, self.is_slider(i)) {
-                    self.slider_to_x(i, p.x);
+                    self.slider_to(i, p);
                 }
                 if let Some(p) = self.pointer {
                     self.input_press(i, p.x);
@@ -178,7 +178,7 @@ impl<const N: usize> Tree<N> {
                     && self.nodes[held].active
                     && self.is_slider(held)
                 {
-                    self.slider_to_x(held, p.x);
+                    self.slider_to(held, p);
                 }
                 // A text field that holds the press extends its selection to the pointer.
                 if let Some(held) = self.captured.and_then(|id| self.slot(id))
