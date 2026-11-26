@@ -1516,6 +1516,10 @@ flash_mb = 32
                 "s3-amoled-206",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-206/board.toml"),
             ),
+            (
+                "s3-amoled-164",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-164/board.toml"),
+            ),
         ] {
             let b = read(text).unwrap_or_else(|e| panic!("{path}: {e}"));
             assert_eq!(b.name, path, "the file's name is its directory's");

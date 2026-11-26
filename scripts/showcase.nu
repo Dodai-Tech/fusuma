@@ -7,11 +7,12 @@
 # `install` without `--board` asks the connected chip what it is and picks the board for it.
 # The firmware is not a workspace member (it needs the ESP toolchain), so its generated file, build
 # and flashing live here, tested. Flashing is non-destructive: the image goes into an OTA slot and an
-# `otadata` entry selects it; `restore` erases `otadata` so the board boots its factory app again.
+# `otadata` entry selects it; `restore` erases `otadata` so the board boots its factory app again. A board whose table has
+# no OTA slot (the Waveshare 1.64) installs over the factory app instead, only with `--backup` or `--force`.
 #
 #   nu scripts/showcase.nu detect  [--port P]
 #   nu scripts/showcase.nu build   --board B [--features render-vello-cpu]
-#   nu scripts/showcase.nu install [--board B] [--slot ota_0] [--port /dev/ttyACM0] [--features render-vello-cpu]
+#   nu scripts/showcase.nu install [--board B] [--slot ota_0|factory] [--backup|--force] [--port /dev/ttyACM0] [--features render-vello-cpu]
 #   nu scripts/showcase.nu restore [--port P]
 #   nu scripts/showcase.nu monitor [--port P]
 # ──────────────────────────────────────────────────────────────────────────────
@@ -141,6 +142,20 @@ export def slot_seq [slot: string]: nothing -> int {
     let m = $slot | parse --regex '^ota_(?<n>\d+)$'
     if ($m | is-empty) { error make { msg: $"'($slot)' is not an OTA slot like ota_0" } }
     ($m.0.n | into int) + 1
+}
+
+# The slot to install into. An empty `slot` picks `ota_0` when the board has an OTA slot, else the `factory` app. The
+# factory app is the shipped firmware: writing there is destructive, so it needs a backup (`--backup`) or `--force`.
+export def pick_slot [table: table, slot: string, safe: bool]: nothing -> string {
+    let names = $table.name
+    let has_ota = $names | any {|n| $n starts-with "ota_" }
+    let chosen = if $slot != "" { $slot } else if $has_ota { "ota_0" } else if "factory" in $names { "factory" } else {
+        error make { msg: $"the board has no app slot to install into; it has: ($names | str join ', ')" }
+    }
+    if $chosen == "factory" and not $safe {
+        error make { msg: "this board has no OTA slot: installing overwrites its factory app. Add --backup (reads the flash first, `restore-flash` puts it back) or --force." }
+    }
+    $chosen
 }
 
 # Little-endian unsigned integer from `n` bytes at `at`.
@@ -305,27 +320,32 @@ def "main restore-flash" [--file: string, --port: string = ""] {
     print -e "Whole flash restored."
 }
 
-def "main install" [--board: string = "", --slot: string = "ota_0", --port: string = "", --features: string = "", --backup] {
-    if $backup { main backup --board $board --port $port }
-    let seq = slot_seq $slot
+def "main install" [--board: string = "", --slot: string = "", --port: string = "", --features: string = "", --backup, --force] {
     let b = if ($board | is-empty) { detect $port } else { board_named $board }
     print -e $"Board: ($b.name), ($b.about)"
-    main build --board $b.name --features $features
-    let image = mktemp --suffix .bin
-    ^espflash save-image --chip $b.chip --flash-size $"($b.flash_mb)mb" (elf_path $b) $image
     let table_file = mktemp --suffix .bin
     ^espflash read-flash ...(port_args $port) 0x8000 0xc00 $table_file
     let table = parse_ptable (open --raw $table_file | into binary)
+    # Decide before building: a refusal costs nothing.
+    let slot = pick_slot $table $slot ($backup or $force)
+    if $backup { main backup --board $b.name --port $port }
+    main build --board $b.name --features $features
+    let image = mktemp --suffix .bin
+    ^espflash save-image --chip $b.chip --flash-size $"($b.flash_mb)mb" (elf_path $b) $image
     let target = partition $table $slot
-    let otadata = partition $table otadata
     check_fits $target (ls $image | get size.0 | into int)
     check_bootable $b $target
-    let entry = mktemp --suffix .bin
-    otadata_entry $seq | save -f $entry
     ^espflash write-bin ...(port_args $port) $target.offset $image
-    ^espflash write-bin ...(port_args $port) $otadata.offset $entry
+    if $slot == "factory" {
+        print -e "Showcase installed over the factory app; `nu scripts/showcase.nu restore-flash --file <backup>` brings the shipped firmware back."
+    } else {
+        let otadata = partition $table otadata
+        let entry = mktemp --suffix .bin
+        otadata_entry (slot_seq $slot) | save -f $entry
+        ^espflash write-bin ...(port_args $port) $otadata.offset $entry
+        print -e $"Showcase installed in ($slot); `nu scripts/showcase.nu restore` boots the factory app again."
+    }
     ^espflash reset ...(port_args $port)
-    print -e $"Showcase installed in ($slot); `nu scripts/showcase.nu restore` boots the factory app again."
 }
 
 def "main restore" [--port: string = ""] {

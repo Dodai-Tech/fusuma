@@ -1,0 +1,7 @@
+# Waveshare ESP32-S3-Touch-AMOLED-1.64 (16 MB flash): the table its factory firmware carries (read with
+# `espflash read-flash 0x8000 0xc00`). It has one 6 MB app slot and no OTA, so an install overwrites the factory demo:
+# keep a backup first (`espflash read-flash 0x0 0x1000000 backup.bin`).
+# Name,     Type, SubType, Offset,    Size,     Flags
+nvs,        data, nvs,     0x9000,    0x6000,
+phy_init,   data, phy,     0xf000,    0x1000,
+factory,    app,  factory, 0x10000,   0x600000,

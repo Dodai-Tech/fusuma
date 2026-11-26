@@ -1,0 +1,33 @@
+# ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.64): 280x456 CO5300 AMOLED over QSPI, FT3168 touch, 8 MB octal PSRAM.
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="@PARTITIONS@"
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+
+# PSRAM (8 MB octal): the renderer's frame and Parley's allocations.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# General-purpose allocations go to PSRAM above this size, so internal RAM stays free for stacks and DMA (see the P4's
+# file for the measurement behind it).
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512
+
+# Logs over the chip's own USB, the only port this board has.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Runtime. The esp-hal firmware in Hibari ran the CPU at 160 MHz; this one at 240, so its numbers are not comparable
+# one to one.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# The frame is in PSRAM and read row by row for every update: longer data cache lines suit that sequential read.
+# (A 64 KB cache was measured too: 2 ms more off a full frame for 32 KB less internal RAM; not worth it.)
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

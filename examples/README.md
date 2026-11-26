@@ -12,6 +12,7 @@ toolchain:
 | Board | Chip | Screen | Toolchain |
 |---|---|---|---|
 | `p4-7in`: Waveshare ESP32-P4 7" touch board | ESP32-P4 | 1024x600 DSI with a frame buffer, GT911 touch | `nightly-2026-09-15` |
+| `s3-amoled-164`: Waveshare ESP32-S3-Touch-AMOLED-1.64 | ESP32-S3 | 280x456 CO5300 AMOLED over QSPI, FT3168 touch (16 MB flash, no OTA slot) | `esp` (espup) |
 | `s3-amoled-206`: Waveshare ESP32-S3-Touch-AMOLED-2.06 watch | ESP32-S3 | 410x502 CO5300 AMOLED over QSPI, FT3168 touch | `esp` (espup) |
 
 `just showcase-esp` asks the connected chip what it is (`espflash board-info`), picks the board for it from the board

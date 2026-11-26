@@ -5,7 +5,7 @@
 
 use std/assert
 use runner.nu *
-use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args BOARDS_DIR CHIPS board_from load_boards board_named parse_board_info pick_board check_bootable espup_env build_args backup_path backup_args restore_args]
+use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq pick_slot parse_ptable partition check_fits port_args feature_args BOARDS_DIR CHIPS board_from load_boards board_named parse_board_info pick_board check_bootable espup_env build_args backup_path backup_args restore_args]
 
 def "test showcase: the partition path is filled in everywhere" [] {
     let out = sdkconfig "A=1\nP=\"@PARTITIONS@\"\nQ=\"@PARTITIONS@\"\n" "/x/p.csv"
@@ -45,6 +45,20 @@ def "test showcase: ota_0 is sequence 1 and others are rejected" [] {
 def entry [name: string, offset: int, size: int]: nothing -> binary {
     let label = ($name | into binary) | append (0..<(16 - ($name | str length)) | each { 0x[00] } | bytes collect) | bytes collect
     [0x[aa 50 01 00] (le_bytes $offset 4) (le_bytes $size 4) $label 0x[00 00 00 00]] | bytes collect
+}
+
+def "test showcase: the slot is an OTA slot when the board has one, else the factory app, which needs a backup" [] {
+    let ota = [{name: otadata, offset: 0xf000, size: 0x2000} {name: ota_0, offset: 0xa00000, size: 0x600000}]
+    let plain = [{name: nvs, offset: 0x9000, size: 0x6000} {name: factory, offset: 0x10000, size: 0x600000}]
+    assert equal (pick_slot $ota "" false) "ota_0"
+    assert equal (pick_slot $ota "ota_1" false) "ota_1"
+    assert equal (pick_slot $plain "factory" true) "factory"
+    assert equal (pick_slot $plain "" true) "factory"
+    # Overwriting the shipped app is destructive: only with a backup (or --force).
+    assert error { pick_slot $plain "" false }
+    assert error { pick_slot $plain "factory" false }
+    # Nothing to boot from on a table with neither.
+    assert error { pick_slot [{name: nvs, offset: 0x9000, size: 0x6000}] "" true }
 }
 
 def "test showcase: a partition table is read until the first blank entry" [] {
@@ -107,7 +121,7 @@ def "test showcase: two boards with one chip are told apart by flash, else --boa
 
 def "test showcase: the boards come from their board files, with the chip target and toolchain" [] {
     let boards = load_boards
-    assert equal ($boards.name) ["p4-7in" "s3-amoled-206" "s3-sticky"]
+    assert equal ($boards.name) ["p4-7in" "s3-amoled-164" "s3-amoled-206" "s3-sticky"]
     for b in $boards {
         assert ($b.dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
         assert ($b.dir | path join partitions.csv | path exists) $"($b.name) has a partition table"
