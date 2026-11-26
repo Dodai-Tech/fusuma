@@ -52,6 +52,12 @@ impl Default for Dither {
 const BAYER4: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
 
 impl Dither {
+    /// The entry (0 to 15) of the 4x4 ordered-dither pattern at `(x, y)`: the same for the same place on every screen.
+    #[must_use]
+    pub const fn bayer(x: u32, y: u32) -> u32 {
+        BAYER4[(y & 3) as usize][(x & 3) as usize] as u32
+    }
+
     /// Whether the pixel at `(x, y)` with brightness `luma` is white.
     #[must_use]
     pub const fn white(self, x: u32, y: u32, luma: u8) -> bool {

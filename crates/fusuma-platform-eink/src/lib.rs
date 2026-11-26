@@ -28,6 +28,68 @@ pub const fn luma(p: u16) -> u8 {
     fusuma::renderers::embedded::luma565(p)
 }
 
+/// The four grays a panel with a gray mode shows, darkest first. A level is two bits: 0 black, 1 dark gray, 2 light gray, 3 white.
+pub const GRAY_LEVELS: u8 = 4;
+
+/// The level (0 to 3) of a brightness 0 to 255 at pixel `(x, y)`: the nearest of the four, or with an ordered dither the one a
+/// 4x4 pattern of the neighbours' rounding errors picks, so a smooth ramp is dots of two neighbouring levels instead of bands.
+#[must_use]
+pub const fn gray_level(dither: Dither, x: u32, y: u32, luma: u8) -> u8 {
+    // The four levels are at 0, 85, 170 and 255: a step of 85.
+    match dither {
+        Dither::Threshold(_) => ((luma as u32 * 3 + 127) / 255) as u8,
+        Dither::Ordered => {
+            let t = Dither::bayer(x, y);
+            // Which step the brightness is in, and how far into it (0 to 84): above the pattern's threshold it rounds up.
+            let step = luma as u32 / 85;
+            let into = luma as u32 % 85;
+            let up = into * 16 / 85 > t;
+            let level = step + up as u32;
+            if level > 3 { 3 } else { level as u8 }
+        }
+    }
+}
+
+/// Packs `region` (the whole width, from [`byte_region`]) of the picture in `src` as a four-gray panel takes it: two bits a pixel,
+/// four pixels to a byte, the first pixel in the top bits, a level as in [`gray_level`]. Rows follow one another. `out` is cleared first
+/// and ends up `region.w / 4 * region.h` long; pixels past the picture's edge are white.
+pub fn pack_gray4<P: Pixels + ?Sized>(
+    src: &mut P,
+    screen: (u32, u32),
+    region: Rect,
+    dither: Dither,
+    out: &mut Vec<u8>,
+) {
+    out.clear();
+    if region.w == 0 || region.h == 0 || region.x < 0 || region.y < 0 {
+        return;
+    }
+    let (x0, y0) = (region.x as u32, region.y as u32);
+    let per_row = (region.w as usize).div_ceil(4);
+    out.reserve(per_row * region.h as usize);
+    let on = region.w.min(screen.0.saturating_sub(x0)) as usize;
+    let mut line = vec![0u16; on];
+    for row in 0..region.h {
+        let y = y0 + row;
+        if y >= screen.1 {
+            out.extend(core::iter::repeat_n(0xFF, per_row));
+            continue;
+        }
+        src.row(y, x0, &mut line);
+        for byte in 0..per_row {
+            let mut b = 0u8;
+            for k in 0..4 {
+                let i = byte * 4 + k;
+                let level = line
+                    .get(i)
+                    .map_or(3, |&p| gray_level(dither, x0 + i as u32, y, luma(p)));
+                b = (b << 2) | level;
+            }
+            out.push(b);
+        }
+    }
+}
+
 /// `region` cut to a `width` x `height` screen and grown to whole bytes in x (columns in multiples of 8), the way
 /// e-paper controllers address their memory. `None` when nothing of it is on the screen. The right edge may go past a
 /// screen whose width is not a multiple of 8 (122 pixels: 16 bytes); [`pack_mono`] fills the extra pixels white.
@@ -251,6 +313,22 @@ pub trait Panel {
     /// The bus error.
     fn sleep(&mut self) -> Result<(), Self::Error>;
 
+    /// Whether this panel can show four grays (and has been set up to): see [`full_gray4`](Self::full_gray4). Nothing does by
+    /// default.
+    fn gray4(&self) -> bool {
+        false
+    }
+
+    /// The whole picture in four grays, as [`pack_gray4`] makes it (two bits a pixel, four to a byte), shown with the panel's gray
+    /// refresh. A panel with no gray mode never has this called.
+    ///
+    /// # Errors
+    /// The bus error.
+    fn full_gray4(&mut self, levels: &[u8]) -> Result<(), Self::Error> {
+        let _ = levels;
+        Ok(())
+    }
+
     /// What this panel is, for the app: reflective, one bit, the refresh it takes. The default is a plain 1-bit
     /// e-paper of its size; a panel with more levels or a different refresh says so.
     fn screen(&self) -> Screen {
@@ -278,6 +356,8 @@ pub struct EinkDriver<A, P> {
     canvas: Canvas,
     planner: Planner,
     packed: Vec<u8>,
+    /// The panel shows four grays and this driver was made for them ([`EinkDriver::new_gray4`]): every refresh is a whole gray one.
+    gray: bool,
 }
 
 /// What the app draws on: an RGB565 surface (either renderer) that is quantised for the panel when it is shown, or a one-bit
@@ -313,6 +393,30 @@ impl Canvas {
     fn rasterise(&mut self) {
         if let Self::Rgb(s) = self {
             s.rasterise();
+        }
+    }
+
+    /// The whole picture in four grays (see [`pack_gray4`]). Only the colour surface has grays to give: the one-bit frame has none, so
+    /// it gives its black and white as levels 0 and 3.
+    fn pack_gray(&mut self, screen: (u32, u32), region: Rect, dither: Dither, out: &mut Vec<u8>) {
+        match self {
+            Self::Rgb(s) => pack_gray4(s, screen, region, dither, out),
+            Self::Mono(r) => {
+                out.clear();
+                let f = r.target();
+                let per_row = (region.w as usize).div_ceil(4);
+                for y in 0..region.h as i32 {
+                    for byte in 0..per_row {
+                        let mut b = 0u8;
+                        for k in 0..4 {
+                            let x = (byte * 4 + k) as i32;
+                            let white = f.white_at(region.x + x, region.y + y).unwrap_or(true);
+                            b = (b << 2) | if white { 3 } else { 0 };
+                        }
+                        out.push(b);
+                    }
+                }
+            }
         }
     }
 
@@ -368,6 +472,26 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
         Some(Self::with_canvas(app, panel, canvas, policy))
     }
 
+    /// Like [`new`](Self::new) for a panel that shows four grays ([`Panel::gray4`]): the picture is drawn in colour and quantised to
+    /// four grays, so smooth text and edges are smooth, and every refresh is a whole gray one (the chips' gray mode has no partial
+    /// refresh). `None` when the panel has no gray mode, or the surface cannot be made. It needs the colour surface (768 KB for
+    /// 800x480), so a chip with PSRAM.
+    pub fn new_gray4(app: A, panel: P, backend: Backend, policy: RefreshPolicy) -> Option<Self> {
+        if !panel.gray4() {
+            return None;
+        }
+        let mut d = Self::new(app, panel, backend, policy)?;
+        d.gray = true;
+        // The app is told the glass has four levels: smooth enough for the paper palette's anti-aliasing, not for colour.
+        let s = d.panel.screen();
+        d.shell.input(Input::Screen(s.with_glass(
+            DisplayKind::Reflective,
+            2,
+            s.refresh_ms,
+        )));
+        Some(d)
+    }
+
     fn with_canvas(app: A, panel: P, canvas: Canvas, policy: RefreshPolicy) -> Self {
         let (w, h) = panel.size();
         let mut shell = Shell::new(app);
@@ -378,6 +502,7 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
             canvas,
             planner: Planner::new((w, h), policy),
             packed: Vec::new(),
+            gray: false,
         }
     }
 
@@ -436,6 +561,23 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
         if let Some(what) = refreshed {
             let (w, h) = self.panel.size();
             let dither = self.planner.policy().dither;
+            if self.gray {
+                // Whatever was asked, the gray mode shows the whole picture: pack it in four levels and send that.
+                let whole = Rect::new(0, 0, w.next_multiple_of(8), h);
+                self.canvas.pack_gray(
+                    (w, h),
+                    whole,
+                    self.planner.policy().dither,
+                    &mut self.packed,
+                );
+                self.panel
+                    .full_gray4(&self.packed)
+                    .map_err(DriverError::Board)?;
+                return Ok(EinkStep {
+                    refreshed: Some(Refresh::Full),
+                    wake: self.wake_after(now_ms),
+                });
+            }
             match what {
                 Refresh::Full => {
                     self.canvas.pack(
@@ -454,6 +596,14 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
                 }
             }
         }
+        Ok(EinkStep {
+            refreshed,
+            wake: self.wake_after(now_ms),
+        })
+    }
+
+    /// When to step again: the soonest of the app's wake and the planner's.
+    fn wake_after(&self, now_ms: u64) -> fusuma::Wake {
         let app = self.shell.wake(now_ms);
         let plan = self.planner.next_at().map(|t| {
             let ms = u32::try_from(t.saturating_sub(now_ms)).unwrap_or(u32::MAX);
@@ -463,8 +613,7 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
                 fusuma::Wake::At(ms)
             }
         });
-        let wake = plan.map_or(app, |p| app.min(p));
-        Ok(EinkStep { refreshed, wake })
+        plan.map_or(app, |p| app.min(p))
     }
 
     /// Puts the panel to sleep (it keeps the picture) and asks for a full refresh when it wakes.
@@ -503,6 +652,83 @@ mod tests {
         assert_eq!(luma(0xFFFF), 255);
         assert!(luma(0x07E0) > luma(0x001F) * 3, "green over blue");
         assert!(luma(0xF800) < luma(0x07E0), "red under green");
+    }
+
+    #[test]
+    fn four_levels_are_the_nearest_of_four_or_a_pattern_of_two_neighbours_and_packing_is_two_bits_a_pixel()
+     {
+        // The nearest: 0, 85, 170, 255 are the levels, with the halfway points between.
+        for (luma, level) in [
+            (0u8, 0u8),
+            (42, 0),
+            (43, 1),
+            (85, 1),
+            (127, 1),
+            (128, 2),
+            (170, 2),
+            (212, 2),
+            (213, 3),
+            (255, 3),
+        ] {
+            assert_eq!(
+                gray_level(Dither::Threshold(0), 0, 0, luma),
+                level,
+                "{luma}"
+            );
+        }
+        // Ordered: the ends stay the ends, a level stays itself, and a ramp is made of two neighbouring levels in the right share.
+        for x in 0..4 {
+            for y in 0..4 {
+                assert_eq!(gray_level(Dither::Ordered, x, y, 0), 0);
+                assert_eq!(gray_level(Dither::Ordered, x, y, 255), 3);
+            }
+        }
+        for luma in [20u8, 60, 100, 140, 200, 240] {
+            let mut sum = 0u32;
+            let mut seen = alloc::collections::BTreeSet::new();
+            for i in 0..16 {
+                let l = gray_level(Dither::Ordered, i % 4, i / 4, luma);
+                sum += u32::from(l);
+                seen.insert(l);
+            }
+            assert!(seen.len() <= 2, "{luma}: {seen:?}");
+            // The average level times 85 is the brightness, to within half a step.
+            let avg = sum as f64 * 85.0 / 16.0;
+            assert!((avg - f64::from(luma)).abs() < 45.0, "{luma}: {avg}");
+        }
+        // Packing: 4 pixels to a byte, the first in the top bits; a pixel past the edge is white.
+        let mut pic = Pic {
+            w: 6,
+            px: vec![0x0000, 0x528A, 0xAD75, 0xFFFF, 0x0000, 0xFFFF],
+        };
+        let mut out = Vec::new();
+        pack_gray4(
+            &mut pic,
+            (6, 1),
+            Rect::new(0, 0, 8, 1),
+            Dither::Threshold(0),
+            &mut out,
+        );
+        // Levels: 0, 1, 2, 3 | 0, 3, then two past the edge: white.
+        assert_eq!(out, [0b00_01_10_11, 0b00_11_11_11]);
+        let mut none = vec![9u8];
+        pack_gray4(
+            &mut pic,
+            (6, 1),
+            Rect::new(0, 0, 0, 1),
+            Dither::default(),
+            &mut none,
+        );
+        assert!(none.is_empty());
+        pack_gray4(
+            &mut pic,
+            (6, 1),
+            Rect::new(0, 0, 8, 3),
+            Dither::default(),
+            &mut out,
+        );
+        assert_eq!(out.len(), 2 * 3, "rows below the picture are white");
+        assert_eq!(&out[2..], [0xFF; 4]);
     }
 
     #[test]

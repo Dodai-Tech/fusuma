@@ -393,3 +393,80 @@ fn the_showcase_on_a_7_5_inch_uc8179_is_a_full_refresh_then_a_partial_one_with_t
     let part = data_of(&log, 0x13).pop().unwrap();
     assert_eq!(part.len(), (r.w as usize / 8) * r.h as usize);
 }
+
+#[test]
+fn a_four_gray_panel_gets_the_whole_picture_in_levels_with_smooth_edges_for_every_refresh() {
+    use fusuma_platform_eink::uc8179::{Config, Uc8179};
+    let panel = Uc8179::new(Recorder::default(), Config::EPD_7IN5).with_gray4();
+    // A panel with no gray mode is refused, a gray one is taken.
+    assert!(
+        EinkDriver::new_gray4(
+            Showcase::new(800, 480),
+            Ssd1680::new(
+                Recorder::default(),
+                fusuma_platform_eink::ssd1680::Config::EPD_2IN9
+            ),
+            Backend::Integer,
+            policy()
+        )
+        .is_none()
+    );
+    let mut d =
+        EinkDriver::new_gray4(Showcase::new(800, 480), panel, Backend::Integer, policy()).unwrap();
+    let mut now = 0u64;
+    let mut first = None;
+    for _ in 0..80 {
+        let s = d.step(now).unwrap();
+        now += 10;
+        if s.refreshed.is_some() {
+            first = s.refreshed;
+            break;
+        }
+    }
+    assert_eq!(first, Some(Refresh::Full));
+    let log = d.panel_mut().bus_mut().log.clone();
+    let (a, b) = (data_of(&log, 0x10).remove(0), data_of(&log, 0x13).remove(0));
+    assert_eq!(
+        (a.len(), b.len()),
+        (100 * 480, 100 * 480),
+        "two planes of one bit a pixel"
+    );
+    // Four levels on the glass: anti-aliased text has pixels in all four combinations of the planes, not only black and white.
+    let mut seen = [0usize; 4];
+    for (x, y) in a.iter().zip(&b) {
+        for k in 0..8 {
+            let (pa, pb) = ((x >> k) & 1, (y >> k) & 1);
+            seen[usize::from(pa * 2 + pb)] += 1;
+        }
+    }
+    assert!(
+        seen[1] > 50 && seen[2] > 50,
+        "dark and light grays appear: {seen:?}"
+    );
+    assert!(seen[0] > seen[1] && seen[3] > 0, "{seen:?}");
+    // A key press: the next refresh is a whole gray one again, never a partial.
+    let mut again = None;
+    for _ in 0..4 {
+        d.input(Input::Key(Key::Next));
+        for _ in 0..120 {
+            now += 10;
+            let s = d.step(now).unwrap();
+            if let Some(r) = s.refreshed {
+                again = Some(r);
+                break;
+            }
+        }
+        if again.is_some() {
+            break;
+        }
+    }
+    assert_eq!(again, Some(Refresh::Full));
+    assert!(
+        !d.panel_mut()
+            .bus_mut()
+            .log
+            .iter()
+            .any(|c| matches!(c, Call::Command(0x91))),
+        "no partial window in gray"
+    );
+}

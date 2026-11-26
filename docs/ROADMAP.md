@@ -488,9 +488,13 @@ has shipped with, told apart by register 0x70 in `Sticky::detect`).
   `Bus::wait_busy_low` and the C side's `active_low` exist; `controller = "uc8179"` in a board file (a built-in preset for the panel is
   `epaper-7in5`; no board file for a Waveshare ESP32 driver board yet, its pins are not known). Tested against a recording bus and as the
   showcase on a 800x480 one-bit canvas; **not run on a panel**
-- [ ] The 4.2 inch UC8176 (it needs a look-up table of waveforms), four grays (a two-bit picture, which the pipeline does not make yet:
-  the UC8179's four-gray mode is `init_4Gray` and two planes, ready to follow it), tri-colour and Spectra 6 panels, landscape on a
-  portrait panel
+- [x] **Four grays** (`Panel::gray4`/`full_gray4`, `pack_gray4`, `gray_level` nearest or ordered dither, `EinkDriver::new_gray4`): the picture is drawn in
+  colour (smooth text and edges), quantised to four levels and sent as two-bit pixels; every refresh is a whole gray one. `Uc8179::with_gray4`
+  follows Waveshare's `init_4Gray` and `display_4Gray` (black in both planes, dark in the second, light in the first; only on panels sold after
+  October 2023). Needs the colour surface (768 KB for 800x480, so PSRAM). Not wired into the ESP loop yet (it takes a board option), **not run
+  on a panel**
+- [ ] The 4.2 inch UC8176 (it needs a look-up table of waveforms), four grays on the SSD1677/SSD2677, tri-colour and Spectra 6 panels,
+  landscape on a portrait panel
 - [x] **A one-bit framebuffer** (`MonoFrame` in `fusuma-render-integer`: the integer renderer draws on it, eight pixels a byte, a set
   bit is white, colours thresholded or ordered-dithered as they are drawn, scroll by whole bytes; `EinkDriver::new_mono`; the ESP
   loop uses it): 48 KB for 800x480 where RGB565 is 768 KB, nothing to pack; a partial refresh is checked to be exactly the change
