@@ -8,6 +8,7 @@ mod cells;
 #[cfg(test)]
 mod damage;
 mod dialog;
+mod dnd;
 mod event;
 mod focus;
 mod gauge;

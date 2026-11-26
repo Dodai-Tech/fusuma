@@ -1653,3 +1653,100 @@ fn a_text_area_view_keeps_line_breaks_through_the_apps_state_and_a_field_stays_o
     }
     assert!(sub, "Enter in a one-line field submits");
 }
+
+#[test]
+fn a_dragged_view_and_a_drop_target_send_their_messages_through_the_apps_state() {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum D {
+        Pick(u8),
+        Cancel,
+        Drop(u8),
+        Clicked(u8),
+    }
+    // Two cards and two bins: carrying a card to a bin is "Pick(card)" then "Drop(bin)".
+    let view = || {
+        column((
+            fusuma::draggable(fusuma::button("A").on_press(D::Clicked(0)), D::Pick(0))
+                .on_cancel(D::Cancel),
+            fusuma::draggable(fusuma::button("B").on_press(D::Clicked(1)), D::Pick(1))
+                .on_cancel(D::Cancel),
+            fusuma::drop_target(
+                column((text("Bin one"),))
+                    .padding(8)
+                    .height(Length::Fixed(40))
+                    .width(Length::Fill(1)),
+                D::Drop(0),
+            ),
+            fusuma::drop_target(
+                column((text("Bin two"),))
+                    .padding(8)
+                    .height(Length::Fixed(40))
+                    .width(Length::Fill(1)),
+                D::Drop(1),
+            ),
+        ))
+        .gap(8)
+        .align(CrossAlign::Stretch)
+    };
+    let mut tree = Tree::<32>::new();
+    let mut host = Host::<D, 16>::new();
+    let root = tree.column(None, Style::new().padding(8)).unwrap();
+    host.sync(&mut tree, Some(root), &view()).unwrap();
+    let mut scr = screen();
+    tree.update(&scr, &THEME, BOUNDS);
+    tree.paint_frame(&mut scr, &THEME, BOUNDS).unwrap();
+    let rect_of = |tree: &Tree<32>, n: &str| {
+        tree.rect(tree.semantics().find(|s| s.name == n).unwrap().id)
+            .unwrap()
+    };
+    let centre = |r: Rect| Point::new(r.x + r.w as i32 / 2, r.y + r.h as i32 / 2);
+    let msgs = |tree: &mut Tree<32>, host: &Host<D, 16>| {
+        let mut out = Vec::new();
+        while let Some(a) = tree.pop_action() {
+            if let Some(m) = host.message(tree, a) {
+                out.push(m);
+            }
+        }
+        out
+    };
+    // A plain press on A is a click.
+    let a = centre(rect_of(&tree, "A"));
+    for e in [
+        Pointer::Move(a),
+        Pointer::Down(a),
+        Pointer::Up(a),
+        Pointer::Leave,
+    ] {
+        tree.pointer(e);
+    }
+    assert_eq!(msgs(&mut tree, &host), [D::Clicked(0)]);
+    // Carry B to the second bin.
+    let b = centre(rect_of(&tree, "B"));
+    let bin2 = centre(rect_of(&tree, "Bin two"));
+    for e in [
+        Pointer::Move(b),
+        Pointer::Down(b),
+        Pointer::Move(Point::new(b.x + 15, b.y)),
+    ] {
+        tree.pointer(e);
+    }
+    assert_eq!(msgs(&mut tree, &host), [D::Pick(1)]);
+    for e in [Pointer::Move(bin2), Pointer::Up(bin2), Pointer::Leave] {
+        tree.pointer(e);
+    }
+    assert_eq!(
+        msgs(&mut tree, &host),
+        [D::Drop(1)],
+        "the target answers, not the card"
+    );
+    // Let go over nothing: the card's cancel.
+    for e in [
+        Pointer::Move(b),
+        Pointer::Down(b),
+        Pointer::Move(Point::new(b.x + 15, b.y)),
+        Pointer::Up(Point::new(b.x + 15, b.y)),
+    ] {
+        tree.pointer(e);
+    }
+    assert_eq!(msgs(&mut tree, &host), [D::Pick(1), D::Cancel]);
+}

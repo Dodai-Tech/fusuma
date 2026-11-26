@@ -717,3 +717,88 @@ pub const fn variant(primary: bool) -> ButtonVariant {
         ButtonVariant::Secondary
     }
 }
+
+/// A view that can be picked up and dragged, or that takes what is dropped on it (see [`draggable`] and [`drop_target`]).
+#[derive(Clone, Copy, Debug)]
+pub struct Dnd<V, M> {
+    view: V,
+    on_start: Option<M>,
+    on_cancel: Option<M>,
+    on_drop: Option<M>,
+}
+
+/// `view`, which can be picked up when a press on it travels: `on_start` is what picking it up sends (the app remembers
+/// what is being carried), and [`Dnd::on_cancel`] what ending the drag over nothing sends. A press that does not travel is
+/// still a click.
+#[must_use]
+pub const fn draggable<V, M>(view: V, on_start: M) -> Dnd<V, M> {
+    Dnd {
+        view,
+        on_start: Some(on_start),
+        on_cancel: None,
+        on_drop: None,
+    }
+}
+
+/// `view`, which takes what is dropped on it: `on_drop` is what a drop sends (the app moves what it was carrying, which it
+/// remembered when the drag started). It is outlined while a drag is over it.
+#[must_use]
+pub const fn drop_target<V, M>(view: V, on_drop: M) -> Dnd<V, M> {
+    Dnd {
+        view,
+        on_start: None,
+        on_cancel: None,
+        on_drop: Some(on_drop),
+    }
+}
+
+impl<V, M> Dnd<V, M> {
+    /// Sends `message` when a drag from this view ends without a drop.
+    #[must_use]
+    pub fn on_cancel(mut self, message: M) -> Self {
+        self.on_cancel = Some(message);
+        self
+    }
+
+    /// Also takes drops, sending `message` (a view that can be carried and also be dropped on).
+    #[must_use]
+    pub fn on_drop(mut self, message: M) -> Self {
+        self.on_drop = Some(message);
+        self
+    }
+}
+
+impl<M: Clone, V: View<M>> Dnd<V, M> {
+    fn sync<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        cx.tree.set_draggable(node, self.on_start.is_some());
+        cx.tree.set_drop_target(node, self.on_drop.is_some());
+        if let Some(m) = &self.on_start {
+            cx.msgs.on(node, Handler::DragStart(m.clone()));
+        }
+        if let Some(m) = &self.on_cancel {
+            cx.msgs.on(node, Handler::DragCancel(m.clone()));
+        }
+        if let Some(m) = &self.on_drop {
+            cx.msgs.on(node, Handler::Drop(m.clone()));
+        }
+    }
+}
+
+impl<M: Clone, V: View<M>> View<M> for Dnd<V, M> {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = self.view.build(cx, parent)?;
+        self.sync(cx, node);
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.view.rebuild(cx, node);
+        self.sync(cx, node);
+    }
+}
+
+impl<V, M> ViewMarker for Dnd<V, M> {}

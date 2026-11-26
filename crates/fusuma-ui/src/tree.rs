@@ -589,6 +589,14 @@ pub enum ActionKind {
     /// A press travelled far enough along one axis on a widget that asked for it ([`Tree::set_swipe`]). The press is
     /// then over: its release is not a click, and a scroll container under it stops following the finger.
     Swiped(crate::gesture::SwipeDir),
+    /// A press on a draggable node ([`Tree::set_draggable`]) travelled far enough to pick it up. The press is then the drag's: its
+    /// release is not a click.
+    DragStarted,
+    /// A drag was let go over a drop target ([`Tree::set_drop_target`]): the action's source is the dragged node, this is the
+    /// target. The app moves the data.
+    Dropped(NodeId),
+    /// A drag ended without a drop: it was let go over nothing that takes it, Escape was pressed, or the pointer left.
+    DragCancelled,
 }
 
 /// Something that happened in the tree, for the application to handle.
@@ -640,6 +648,8 @@ pub struct Tree<const N: usize> {
     pub(crate) clock: u32,
     /// The last press on a field: which, where and when, to see a double click.
     pub(crate) last_press: Option<(NodeId, i32, u32)>,
+    /// The drag in progress (see `dnd`).
+    pub(crate) dragging: Option<crate::dnd::DragState>,
     /// The press that may become a long press or a swipe.
     pub(crate) track: Option<crate::gesture::Track>,
     /// The slides in progress (see `transition`).
@@ -703,6 +713,7 @@ impl<const N: usize> Tree<N> {
             preedit: InputText::EMPTY,
             pending_click: None,
             pending_y: 0,
+            dragging: None,
             rtl: false,
             history: crate::textedit::History::new(),
             clock: 0,

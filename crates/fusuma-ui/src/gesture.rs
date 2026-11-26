@@ -90,7 +90,7 @@ impl<const N: usize> Tree<N> {
         let mut cur = Some(root);
         while let Some(i) = cur {
             let n = &self.nodes[i];
-            if n.gestures != 0
+            if n.gestures & !crate::dnd::DROP != 0
                 && !n.disabled_eff
                 && n.rect.contains(p)
                 && self.in_viewports(i, p)
@@ -133,6 +133,14 @@ impl<const N: usize> Tree<N> {
             t.wandered = true;
         }
         let g = self.nodes[i].gestures;
+        // A draggable node is picked up once the press has travelled; that press is then the drag's.
+        if g & crate::dnd::DRAG != 0
+            && (dx.abs() > crate::dnd::DRAG_SLOP || dy.abs() > crate::dnd::DRAG_SLOP)
+        {
+            self.track = Some(t);
+            self.gesture_pick_up(i, t.start, p);
+            return;
+        }
         let reach = i64::from(SWIPE_PX);
         let dir = if g & SWIPE_H != 0 && dx.abs() >= reach && dx.abs() >= 2 * dy.abs() {
             Some(if dx < 0 {
@@ -186,6 +194,19 @@ impl<const N: usize> Tree<N> {
                     .slot(t.node)
                     .is_some_and(|i| self.nodes[i].gestures & LONG != 0)
         })
+    }
+
+    /// A draggable node is picked up: the press is the drag's now (no click, no scroll following the finger).
+    fn gesture_pick_up(&mut self, i: usize, start: Point, at: Point) {
+        if let Some(t) = &mut self.track {
+            t.done = true;
+        }
+        if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {
+            self.set_active(held, false);
+        }
+        self.drag = None;
+        self.request(i, Flags::PAINT);
+        self.drag_begin(i, start, at);
     }
 
     /// The gesture happened: tell the app and end the press.

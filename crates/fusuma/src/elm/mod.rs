@@ -42,9 +42,9 @@ pub use msgs::{Handler, Msgs};
 pub use program::{Preset, Program, QUEUE, Runner, TIMERS};
 pub use task::{Effect, Recipe, SUB_CAP, Sub, TASK_CAP, Task};
 pub use widgets::{
-    Gestures, Icon, Item, Paragraph, Radio, Slider, Special, Switch, Tab, TextField, bottom_sheet,
-    dialog, gestures, icon, item, menu, paragraph, radio, scroll, slider, switch, tab, tab_bar,
-    text_field, variant,
+    Dnd, Gestures, Icon, Item, Paragraph, Radio, Slider, Special, Switch, Tab, TextField,
+    bottom_sheet, dialog, draggable, drop_target, gestures, icon, item, menu, paragraph, radio,
+    scroll, slider, switch, tab, tab_bar, text_field, variant,
 };
 
 use fusuma_ui::{BuildError, NodeId, Tree};

@@ -20,6 +20,12 @@ pub enum Handler<M> {
     LongPress(M),
     /// A swipe sends a message made from its direction.
     Swipe(fn(SwipeDir) -> M),
+    /// The node was picked up for a drag.
+    DragStart(M),
+    /// A drag from this node ended without a drop (let go over nothing, Escape, the pointer left).
+    DragCancel(M),
+    /// Something was dropped on this node.
+    Drop(M),
 }
 
 /// A fixed table of `(node, handler)`. When it is full the extra handlers are dropped and counted.
@@ -102,6 +108,17 @@ impl<M: Clone, const K: usize> Msgs<M, K> {
     /// several: a card that takes a swipe and a long press).
     #[must_use]
     pub fn resolve<const N: usize>(&self, tree: &Tree<N>, action: Action) -> Option<M> {
+        // A drop is answered by the node it fell on, not the one that was carried.
+        if let ActionKind::Dropped(target) = action.kind {
+            return self.slots[..self.len]
+                .iter()
+                .flatten()
+                .filter(|(n, _)| *n == target)
+                .find_map(|(_, handler)| match handler {
+                    Handler::Drop(m) => Some(m.clone()),
+                    _ => None,
+                });
+        }
         self.slots[..self.len]
             .iter()
             .flatten()
@@ -114,6 +131,8 @@ impl<M: Clone, const K: usize> Msgs<M, K> {
                 (Handler::Dismiss(m), ActionKind::Dismissed) => Some(m.clone()),
                 (Handler::LongPress(m), ActionKind::LongPressed) => Some(m.clone()),
                 (Handler::Swipe(f), ActionKind::Swiped(d)) => Some(f(d)),
+                (Handler::DragStart(m), ActionKind::DragStarted) => Some(m.clone()),
+                (Handler::DragCancel(m), ActionKind::DragCancelled) => Some(m.clone()),
                 _ => None,
             })
     }

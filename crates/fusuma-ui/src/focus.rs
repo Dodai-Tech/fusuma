@@ -129,7 +129,13 @@ impl<const N: usize> Tree<N> {
     /// changes state and queues [`Action`](crate::Action)s.
     pub fn key(&mut self, key: Key) {
         match key {
-            Key::Cancel => self.dismiss_modal(),
+            Key::Cancel => {
+                if self.dragging.is_some() {
+                    self.drag_cancel();
+                } else {
+                    self.dismiss_modal();
+                }
+            }
             Key::Activate => {
                 // Enter in a text area is a line break, not a press.
                 if let Some(i) = self.focused_input_public()

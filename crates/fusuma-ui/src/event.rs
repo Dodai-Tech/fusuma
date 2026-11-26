@@ -173,6 +173,7 @@ impl<const N: usize> Tree<N> {
             Pointer::Move(p) => {
                 self.pointer = Some(p);
                 self.gesture_move(p);
+                self.drag_to(p);
                 self.drag_scroll(p);
                 // A slider that holds the press follows the pointer, even outside its bounds.
                 if let Some(held) = self.captured.and_then(|id| self.slot(id))
@@ -223,6 +224,7 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Up(p) => {
                 self.pointer = Some(p);
+                self.drag_drop(p);
                 self.gesture_end();
                 let released = self.drag.take();
                 let h = self.hit(p);
@@ -256,6 +258,7 @@ impl<const N: usize> Tree<N> {
             }
             Pointer::Leave => {
                 self.pointer = None;
+                self.drag_cancel();
                 self.gesture_end();
                 self.drag = None;
                 if let Some(held) = self.captured.take().and_then(|id| self.slot(id)) {

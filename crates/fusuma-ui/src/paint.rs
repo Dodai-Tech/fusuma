@@ -58,6 +58,7 @@ impl<const N: usize> Tree<N> {
         self.paint_walk(root, renderer, theme, None)?;
         self.paint_dialogs(renderer, theme, None)?;
         self.paint_toasts(renderer, theme, None)?;
+        self.paint_drag(renderer, theme, None)?;
         self.clear_flag(Flags::PAINT);
         self.damage = None;
         self.pieces.clear();
@@ -201,6 +202,9 @@ impl<const N: usize> Tree<N> {
         }
         if result.is_ok() {
             result = self.paint_toasts(renderer, theme, Some(region));
+        }
+        if result.is_ok() {
+            result = self.paint_drag(renderer, theme, Some(region));
         }
         let restored = renderer.restore();
         result?;
