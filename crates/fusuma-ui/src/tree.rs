@@ -331,6 +331,8 @@ pub(crate) enum Kind {
         anchor: u8,
         /// Shown, muted, while the field is empty (empty: none).
         placeholder: &'static str,
+        /// 0 for a one-line field; else a text area that shows this many lines (Enter starts a new one).
+        rows: u8,
     },
     /// A modal panel centred over the screen and drawn on top of everything: a column of its own, out of the flow of
     /// its parent. Closed until [`Tree::open_dialog`].
@@ -628,6 +630,8 @@ pub struct Tree<const N: usize> {
     pub(crate) preedit: InputText,
     /// A press on a text field, to put its cursor at the next layout (which has a renderer to measure with).
     pub(crate) pending_click: Option<(NodeId, i32, crate::textedit::Click)>,
+    /// The y of that press, for a text area (which line it landed on).
+    pub(crate) pending_y: i32,
     /// The edits of the text fields that can be undone and redone.
     pub(crate) history: crate::textedit::History,
     /// Milliseconds the animation clock has run, to tell a double click from two clicks.
@@ -696,6 +700,7 @@ impl<const N: usize> Tree<N> {
             caret: None,
             preedit: InputText::EMPTY,
             pending_click: None,
+            pending_y: 0,
             history: crate::textedit::History::new(),
             clock: 0,
             last_press: None,
@@ -1134,6 +1139,34 @@ impl<const N: usize> Tree<N> {
                 cursor: end,
                 anchor: end,
                 placeholder: "",
+                rows: 0,
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Adds a text area: a text field of `rows` lines (at least 2). Enter starts a new line, Up and Down move between lines, and
+    /// the text is kept like a field's (at most [`crate::INPUT_CAP`] bytes, so line breaks count). It does not wrap: a long line
+    /// is cut at the edge.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn text_area(
+        &mut self,
+        parent: Option<NodeId>,
+        text: &str,
+        rows: u8,
+    ) -> Result<NodeId, BuildError> {
+        let text = InputText::new(text);
+        let end = text.as_str().len() as u8;
+        self.add(
+            parent,
+            Kind::TextInput {
+                text,
+                cursor: end,
+                anchor: end,
+                placeholder: "",
+                rows: rows.max(2),
             },
             Style::DEFAULT,
         )

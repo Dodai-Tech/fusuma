@@ -173,7 +173,7 @@ impl<M: Clone> View<M> for Slider<M> {
 
 impl<M> ViewMarker for Slider<M> {}
 
-/// A one-line text field. The view gives the value; the tree keeps the caret, the selection and the undo; every change
+/// A text field (one line, or a text area with [`TextField::rows`]). The view gives the value; the tree keeps the caret, the selection and the undo; every change
 /// the user makes is a message with the new text, and the program's state becomes the value again.
 #[derive(Clone, Copy, Debug)]
 pub struct TextField<'a, M> {
@@ -181,6 +181,7 @@ pub struct TextField<'a, M> {
     placeholder: &'static str,
     on_input: Option<fn(&str) -> M>,
     on_submit: Option<M>,
+    rows: u8,
 }
 
 /// A text field holding `value`.
@@ -191,6 +192,7 @@ pub const fn text_field<M>(value: &str) -> TextField<'_, M> {
         placeholder: "",
         on_input: None,
         on_submit: None,
+        rows: 0,
     }
 }
 
@@ -199,6 +201,14 @@ impl<M> TextField<'_, M> {
     #[must_use]
     pub const fn placeholder(mut self, text: &'static str) -> Self {
         self.placeholder = text;
+        self
+    }
+
+    /// Makes it a text area of `rows` lines (at least 2): Enter breaks the line instead of submitting, Up and Down move between
+    /// lines. The text is kept like a field's, at most [`fusuma_ui::INPUT_CAP`] bytes, breaks included.
+    #[must_use]
+    pub const fn rows(mut self, rows: u8) -> Self {
+        self.rows = rows;
         self
     }
 
@@ -239,7 +249,11 @@ impl<M: Clone> View<M> for TextField<'_, M> {
         cx: &mut Cx<'_, M, N, K>,
         parent: Option<NodeId>,
     ) -> Result<NodeId, BuildError> {
-        let node = cx.tree.text_input(parent, self.value)?;
+        let node = if self.rows > 0 {
+            cx.tree.text_area(parent, self.value, self.rows)?
+        } else {
+            cx.tree.text_input(parent, self.value)?
+        };
         self.sync(cx, node);
         Ok(node)
     }

@@ -107,6 +107,13 @@ pub enum Edit {
     WordLeft(bool),
     /// Move the cursor to the end of the next word; `true` extends the selection (Ctrl+Right).
     WordRight(bool),
+    /// A line break (Enter in a text area).
+    Newline,
+    /// Move the cursor up a line, to the same column or the end of a shorter line; `true` extends the selection. Only in a text
+    /// area.
+    Up(bool),
+    /// Move the cursor down a line, the same way.
+    Down(bool),
     /// Take back the last edit or run of edits (Ctrl+Z).
     Undo,
     /// Put back what an undo took back (Ctrl+Y, or Ctrl+Shift+Z).
@@ -139,9 +146,38 @@ fn next_boundary(s: &str, at: usize) -> usize {
     i
 }
 
-/// Characters a single-line field refuses: control characters (a newline, a tab, a bell).
-fn allowed(c: char) -> bool {
-    !c.is_control()
+/// Characters a field refuses: control characters (a tab, a bell), and a newline unless it is a text area's.
+fn allowed(c: char, multiline: bool) -> bool {
+    !c.is_control() || (multiline && c == '\n')
+}
+
+/// Where the line that holds byte `at` of `s` starts and ends (without its break).
+fn line_bounds(s: &str, at: usize) -> (usize, usize) {
+    let at = at.min(s.len());
+    let start = s[..at].rfind('\n').map_or(0, |i| i + 1);
+    let end = s[at..].find('\n').map_or(s.len(), |i| at + i);
+    (start, end)
+}
+
+/// Which line (counted from 0) holds byte `at`, and how many characters precede it in that line.
+fn line_and_column(s: &str, at: usize) -> (usize, usize) {
+    let at = at.min(s.len());
+    let line = s[..at].bytes().filter(|b| *b == b'\n').count();
+    let (start, _) = line_bounds(s, at);
+    (line, s[start..at].chars().count())
+}
+
+/// The byte at `column` characters into the line that starts at `start`, or the end of that line if it is shorter.
+fn byte_at_column(s: &str, start: usize, column: usize) -> usize {
+    let (_, end) = line_bounds(s, start);
+    let mut at = start;
+    for _ in 0..column {
+        if at >= end {
+            break;
+        }
+        at = next_boundary(s, at);
+    }
+    at.min(end)
 }
 
 impl Edit {
@@ -254,6 +290,7 @@ impl<const N: usize> Tree<N> {
         };
         self.preedit = InputText::EMPTY;
         let before = self.input_text_at(i);
+        let multiline = matches!(self.nodes[i].kind, Kind::TextInput { rows, .. } if rows > 0);
         self.record(i, crate::textedit::Group::Typing);
         let Kind::TextInput {
             text,
@@ -270,7 +307,7 @@ impl<const N: usize> Tree<N> {
         );
         text.remove(a, b);
         let mut at = a;
-        for c in s.chars().filter(|&c| allowed(c)) {
+        for c in s.chars().filter(|&c| allowed(c, multiline)) {
             let mut one = [0u8; 4];
             at += text.insert(at, c.encode_utf8(&mut one));
         }
@@ -294,6 +331,11 @@ impl<const N: usize> Tree<N> {
         }
         if matches!(e, Edit::Backspace | Edit::Delete) {
             self.record(i, crate::textedit::Group::Deleting);
+        } else if e == Edit::Newline
+            && matches!(self.nodes[i].kind, Kind::TextInput { rows, .. } if rows > 0)
+        {
+            // A line break is typing: it joins the run of typing and is taken back with it.
+            self.record(i, crate::textedit::Group::Typing);
         } else {
             // A move or a selection ends a run of typing.
             self.history.break_run();
@@ -302,12 +344,14 @@ impl<const N: usize> Tree<N> {
             text,
             cursor,
             anchor,
+            rows,
             ..
         } = &mut self.nodes[i].kind
         else {
             return;
         };
         let len = text.as_str().len();
+        let multiline = *rows > 0;
         let (c, a) = (usize::from(*cursor), usize::from(*anchor));
         let (lo, hi) = (c.min(a), c.max(a));
         // Where a move ends, and whether it keeps the other end of the selection.
@@ -346,8 +390,59 @@ impl<const N: usize> Tree<N> {
             Edit::WordLeft(x) => (crate::textedit::prev_word(text.as_str(), c), x),
             Edit::WordRight(x) => (crate::textedit::next_word(text.as_str(), c), x),
             Edit::Undo | Edit::Redo => return,
-            Edit::Home(x) => (0, x),
-            Edit::End(x) => (len, x),
+            Edit::Newline => {
+                if !multiline {
+                    return;
+                }
+                // Replaces the selection, like typing does.
+                text.remove(lo, hi);
+                let n = text.insert(lo, "\n");
+                (*cursor, *anchor) = ((lo + n) as u8, (lo + n) as u8);
+                self.after_edit(i, before);
+                return;
+            }
+            Edit::Up(x) | Edit::Down(x) => {
+                if !multiline {
+                    return;
+                }
+                let s = text.as_str();
+                let (line, column) = line_and_column(s, c);
+                let up = matches!(e, Edit::Up(_));
+                let to = if up {
+                    if line == 0 {
+                        // Already on the first line: the start of it.
+                        0
+                    } else {
+                        let (here, _) = line_bounds(s, c);
+                        let (prev, _) = line_bounds(s, here - 1);
+                        byte_at_column(s, prev, column)
+                    }
+                } else {
+                    let (_, end) = line_bounds(s, c);
+                    if end >= s.len() {
+                        s.len()
+                    } else {
+                        byte_at_column(s, end + 1, column)
+                    }
+                };
+                (to, x)
+            }
+            Edit::Home(x) => (
+                if multiline {
+                    line_bounds(text.as_str(), c).0
+                } else {
+                    0
+                },
+                x,
+            ),
+            Edit::End(x) => (
+                if multiline {
+                    line_bounds(text.as_str(), c).1
+                } else {
+                    len
+                },
+                x,
+            ),
             Edit::SelectAll => {
                 (*cursor, *anchor) = (len as u8, 0);
                 self.request(i, Flags::LAYOUT | Flags::PAINT);
@@ -423,6 +518,28 @@ impl<const N: usize> Tree<N> {
         )
     }
 
+    /// For a text area: the height of one line, the gap above the first, and the first line shown (scrolled so the cursor's line
+    /// is the last one shown at most).
+    fn area_geometry<M: fusuma_render::Measure>(
+        &self,
+        i: usize,
+        r: &M,
+        theme: &Theme,
+    ) -> (u32, i32, usize) {
+        let Kind::TextInput {
+            text, cursor, rows, ..
+        } = &self.nodes[i].kind
+        else {
+            return (0, 0, 0);
+        };
+        let style = TextStyle::new(theme.text.body, theme.colors.text).font(theme.fonts.body);
+        let pitch = r.measure_text("M", &style).h.max(1);
+        let pad = i32::try_from(theme.spacing.xs).unwrap_or(0);
+        let line = line_and_column(text.as_str(), usize::from(*cursor)).0;
+        let first = line.saturating_sub(usize::from(*rows).saturating_sub(1));
+        (pitch, pad, first)
+    }
+
     /// How far the text is scrolled left so that the caret is in view, and the caret's x from the start of
     /// the text, in pixels.
     fn input_metrics<M: fusuma_render::Measure>(
@@ -431,19 +548,28 @@ impl<const N: usize> Tree<N> {
         r: &M,
         theme: &Theme,
     ) -> (u32, u32) {
-        let Kind::TextInput { text, cursor, .. } = &self.nodes[i].kind else {
+        let Kind::TextInput {
+            text, cursor, rows, ..
+        } = &self.nodes[i].kind
+        else {
             return (0, 0);
         };
         let style = TextStyle::new(theme.text.body, theme.colors.text).font(theme.fonts.body);
         let s = text.as_str();
         let at = usize::from(*cursor).min(s.len());
         let focused = self.focus == Some(self.id_of(i));
-        let mut caret = r.measure_text(&s[..at], &style).w;
+        // A text area measures the caret along its own line, and does not scroll sideways.
+        let from = if *rows > 0 { line_bounds(s, at).0 } else { 0 };
+        let mut caret = r.measure_text(&s[from..at], &style).w;
         if focused {
             caret = caret.saturating_add(r.measure_text(self.preedit.as_str(), &style).w);
         }
         let inner = self.input_inner(i, theme).w;
-        let shift = caret.saturating_add(2).saturating_sub(inner);
+        let shift = if *rows > 0 {
+            0
+        } else {
+            caret.saturating_add(2).saturating_sub(inner)
+        };
         (shift, caret)
     }
 
@@ -456,26 +582,51 @@ impl<const N: usize> Tree<N> {
             let style = TextStyle::new(theme.text.body, theme.colors.text).font(theme.fonts.body);
             let inner = self.input_inner(i, theme);
             let want = i64::from(x) - i64::from(inner.x) + i64::from(shift);
+            // In a text area the press also picks the line, and the search runs along that line only.
+            let (pitch, pad, first) = self.area_geometry(i, r, theme);
+            let py = self.pending_y;
+            let rect_y = self.nodes[i].rect.y;
             let Kind::TextInput {
                 text,
                 cursor,
                 anchor,
+                rows,
                 ..
             } = &mut self.nodes[i].kind
             else {
                 return;
             };
+            let multiline = *rows > 0;
             let s = text.as_str();
+            let (lo, hi) = if multiline {
+                let line = first
+                    + usize::try_from(
+                        ((i64::from(py) - i64::from(rect_y) - i64::from(pad)) / i64::from(pitch))
+                            .max(0),
+                    )
+                    .unwrap_or(0);
+                // The start of that line (the last one if the press is below the text).
+                let mut start = 0;
+                for _ in 0..line {
+                    match s[start..].find('\n') {
+                        Some(k) => start += k + 1,
+                        None => break,
+                    }
+                }
+                line_bounds(s, start)
+            } else {
+                (0, s.len())
+            };
             // The character boundary whose left edge is nearest to the press.
-            let (mut best, mut best_d) = (0usize, i64::MAX);
-            let mut at = 0usize;
+            let (mut best, mut best_d) = (lo, i64::MAX);
+            let mut at = lo;
             loop {
-                let w = i64::from(r.measure_text(&s[..at], &style).w);
+                let w = i64::from(r.measure_text(&s[lo..at], &style).w);
                 let d = (w - want).abs();
                 if d < best_d {
                     (best, best_d) = (at, d);
                 }
-                if at >= s.len() {
+                if at >= hi {
                     break;
                 }
                 at = next_boundary(s, at);
@@ -499,12 +650,104 @@ impl<const N: usize> Tree<N> {
             let x = i64::from(inner.x) + i64::from(caret) - i64::from(shift);
             let x = x.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
             let h = theme.text.body.min(self.nodes[i].rect.h);
-            let y = self.nodes[i]
-                .rect
-                .y
-                .saturating_add((self.nodes[i].rect.h.saturating_sub(h) / 2) as i32);
+            let area = matches!(self.nodes[i].kind, Kind::TextInput { rows, .. } if rows > 0);
+            let y = if area {
+                // On the cursor's line, counted from the first one shown.
+                let (pitch, pad, first) = self.area_geometry(i, r, theme);
+                let Kind::TextInput { text, cursor, .. } = &self.nodes[i].kind else {
+                    return Rect::new(x, 0, 2, h);
+                };
+                let line = line_and_column(text.as_str(), usize::from(*cursor)).0;
+                self.nodes[i]
+                    .rect
+                    .y
+                    .saturating_add(pad)
+                    .saturating_add((pitch as usize * line.saturating_sub(first)) as i32)
+            } else {
+                self.nodes[i]
+                    .rect
+                    .y
+                    .saturating_add((self.nodes[i].rect.h.saturating_sub(h) / 2) as i32)
+            };
             Rect::new(x, y, 2, h)
         });
+    }
+
+    /// The lines of a text area: the ones from the first shown, each on its own row, the selection behind them and the caret on
+    /// its line. (The frame is drawn by [`paint_text_input`](Self::paint_text_input).)
+    fn paint_text_area<R: Renderer>(
+        &self,
+        i: usize,
+        r: &mut R,
+        theme: &Theme,
+    ) -> Result<(), R::Error> {
+        let n = &self.nodes[i];
+        let Kind::TextInput {
+            text,
+            cursor,
+            anchor,
+            placeholder,
+            rows,
+        } = n.kind
+        else {
+            return Ok(());
+        };
+        let c = &theme.colors;
+        let rect = n.rect;
+        let focused = self.focus == Some(self.id_of(i));
+        let inner = self.input_inner(i, theme);
+        let s = text.as_str();
+        let (lo, hi) = (
+            usize::from(cursor.min(anchor)),
+            usize::from(cursor.max(anchor)),
+        );
+        let color = if n.disabled_eff {
+            c.text_disabled
+        } else {
+            c.text
+        };
+        let style = TextStyle::new(theme.text.body, color).font(theme.fonts.body);
+        let (pitch, pad, first) = self.area_geometry(i, r, theme);
+        let top = rect.y.saturating_add(pad);
+        let clip = Rect::new(inner.x, rect.y, inner.w, rect.h);
+        Self::in_clip(r, clip, |r| {
+            if s.is_empty() && !placeholder.is_empty() {
+                let muted = TextStyle::new(theme.text.body, c.text_muted).font(theme.fonts.body);
+                return r.draw_text(placeholder, Point::new(inner.x, top), &muted);
+            }
+            let mut start = 0usize;
+            let mut line = 0usize;
+            loop {
+                let (_, end) = line_bounds(s, start);
+                if line >= first && line < first + usize::from(rows) {
+                    let y = top.saturating_add((pitch as usize * (line - first)) as i32);
+                    // The selection's part of this line.
+                    if focused && lo != hi && lo <= end && hi >= start {
+                        let (a, b) = (lo.max(start), hi.min(end));
+                        let x0 = inner.x + r.measure_text(&s[start..a], &style).w as i32;
+                        let mut w = r.measure_text(&s[a..b], &style).w;
+                        if hi > end {
+                            // The break itself is selected: a little extra so an empty line shows it.
+                            w = w.saturating_add(theme.spacing.xs.max(2));
+                        }
+                        r.fill_rect(Rect::new(x0, y, w, pitch), 0, c.primary)?;
+                    }
+                    r.draw_text(&s[start..end], Point::new(inner.x, y), &style)?;
+                }
+                if end >= s.len() {
+                    break;
+                }
+                start = end + 1;
+                line += 1;
+            }
+            if focused
+                && !n.disabled_eff
+                && let Some(caret) = self.caret
+            {
+                r.fill_rect(caret, 0, c.primary)?;
+            }
+            Ok(())
+        })
     }
 
     pub(crate) fn paint_text_input<R: Renderer>(
@@ -519,6 +762,7 @@ impl<const N: usize> Tree<N> {
             cursor,
             anchor,
             placeholder,
+            rows,
         } = n.kind
         else {
             return Ok(());
@@ -546,6 +790,9 @@ impl<const N: usize> Tree<N> {
             (c.border_strong, theme.border_width)
         };
         r.stroke_rect(rect, radius, width, border)?;
+        if rows > 0 {
+            return self.paint_text_area(i, r, theme);
+        }
         let (shift, _) = self.input_metrics(i, r, theme);
         let inner = self.input_inner(i, theme);
         let s = text.as_str();
@@ -995,5 +1242,194 @@ mod tests {
         assert_eq!(t.rect(a).unwrap().w, THEME.control_height * 6);
         assert_eq!(t.rect(b).unwrap().w, 90);
         assert_eq!(t.rect(a).unwrap().h, THEME.control_height);
+    }
+
+    fn area(initial: &str, rows: u8) -> (Tree<8>, NodeId) {
+        let mut t = Tree::<8>::new();
+        let root = t
+            .column(None, Style::new().padding(8).align(CrossAlign::Stretch))
+            .unwrap();
+        let a = t.text_area(Some(root), initial, rows).unwrap();
+        t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        t.focus(a);
+        t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        (t, a)
+    }
+
+    #[test]
+    fn enter_in_a_text_area_breaks_the_line_and_a_one_line_field_still_refuses_a_newline() {
+        let (mut t, a) = area("", 3);
+        t.type_text("ab");
+        t.key(crate::Key::Activate);
+        t.type_text("cd");
+        assert_eq!(t.text(a), Some("ab\ncd"));
+        // A pasted text with line breaks keeps them, and a carriage return is dropped.
+        t.type_text("\r\nef");
+        assert_eq!(t.text(a), Some("ab\ncd\nef"));
+        // Enter replaces a selection, like typing.
+        t.edit(Edit::SelectAll);
+        t.key(crate::Key::Activate);
+        assert_eq!(t.text(a), Some("\n"));
+        // The change is reported once per edit.
+        assert!(std::iter::from_fn(|| t.pop_action()).any(|x| x.kind == ActionKind::TextChanged));
+        // A one-line field: Enter is a press (submit), and pasted breaks are dropped.
+        let mut u = ui("");
+        u.t.focus(u.field);
+        u.t.type_text("a\nb");
+        assert_eq!(u.t.text(u.field), Some("ab"));
+        u.t.edit(Edit::Newline);
+        assert_eq!(u.t.text(u.field), Some("ab"), "a field takes no line break");
+    }
+
+    #[test]
+    fn up_and_down_move_between_lines_by_column_and_stop_at_the_ends_then_leave_for_the_next_widget()
+     {
+        let (mut t, a) = area("hello\nhi\nworld", 4);
+        let at = |t: &Tree<8>| t.input_cursor(a).unwrap().0;
+        // The cursor starts at the end: line 2, column 5.
+        assert_eq!(at(&t), "hello\nhi\nworld".len());
+        t.key(crate::Key::Up);
+        assert_eq!(
+            at(&t),
+            "hello\nhi".len(),
+            "line 1 is only two long: the end of it"
+        );
+        t.key(crate::Key::Up);
+        assert_eq!(
+            at(&t),
+            2,
+            "line 0 at column 2 (the column of the shorter line)"
+        );
+        t.set_input_cursor(a, 4);
+        t.key(crate::Key::Down);
+        assert_eq!(at(&t), "hello\nhi".len());
+        t.key(crate::Key::Down);
+        assert_eq!(at(&t), "hello\nhi\nwo".len());
+        // Home and End go to the ends of the line, not of the text.
+        t.edit(Edit::Home(false));
+        assert_eq!(at(&t), "hello\nhi\n".len());
+        t.edit(Edit::End(false));
+        assert_eq!(at(&t), "hello\nhi\nworld".len());
+        // On the last line Down leaves the field (the focus moves on); with nowhere to go it stays.
+        t.key(crate::Key::Down);
+        assert_eq!(at(&t), "hello\nhi\nworld".len());
+        // Shift+Up extends the selection over the break.
+        t.edit(Edit::Up(true));
+        let (c, anchor) = t.input_cursor(a).unwrap();
+        assert!(c < anchor, "{c} {anchor}");
+        assert_eq!(t.selected_text().map(str::len), Some(anchor - c));
+        // A move on a one-line field does nothing.
+        let mut u = ui("abc");
+        u.t.focus(u.field);
+        u.t.edit(Edit::Up(false));
+        assert_eq!(u.t.input_cursor(u.field), Some((3, 3)));
+    }
+
+    #[test]
+    fn a_text_area_is_as_tall_as_its_rows_draws_each_line_on_its_own_row_and_puts_the_caret_on_the_cursors_line()
+     {
+        let (mut t, a) = area("one\ntwo\nthree", 3);
+        let r = t.rect(a).unwrap();
+        let single = {
+            let (t1, f) = {
+                let mut t = Tree::<8>::new();
+                let root = t.column(None, Style::new().padding(8)).unwrap();
+                let f = t.text_input(Some(root), "x").unwrap();
+                t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+                (t, f)
+            };
+            t1.rect(f).unwrap().h
+        };
+        let (mut two, two_id) = area("a\nb", 2);
+        two.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        assert!(
+            r.h > two.rect(two_id).unwrap().h,
+            "three rows are taller than two ({single} is a one-line field)"
+        );
+        // Draw it: ink on three separate bands.
+        let mut s = screen();
+        s.clear(THEME.colors.background).unwrap();
+        t.paint(&mut s, &THEME).unwrap();
+        let band = |y0: i32, y1: i32| {
+            (r.x + 4..r.right() - 4)
+                .flat_map(|x| (y0..y1).map(move |y| (x, y)))
+                .filter(|&(x, y)| s.pixel(x, y) == Some(THEME.colors.text))
+                .count()
+        };
+        let third = r.h as i32 / 3;
+        let (b0, b1, b2) = (
+            band(r.y, r.y + third),
+            band(r.y + third, r.y + 2 * third),
+            band(r.y + 2 * third, r.bottom() - 2),
+        );
+        assert!(
+            b0 > 5 && b1 > 5 && b2 > 5,
+            "ink in each line: {b0} {b1} {b2}"
+        );
+        // The caret is on the last line (the cursor is at the end), at the right of "three".
+        let caret = t.text_cursor().unwrap();
+        assert!(caret.y > r.y + 2 * third - 6, "{caret:?} in {r:?}");
+        t.key(crate::Key::Up);
+        t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        let up = t.text_cursor().unwrap();
+        assert!(up.y < caret.y, "one line up: {up:?} {caret:?}");
+        assert!(up.x < caret.x, "'two' is shorter than 'three'");
+    }
+
+    #[test]
+    fn a_text_area_with_more_lines_than_rows_shows_the_ones_with_the_cursor_and_a_press_picks_the_line()
+     {
+        let text = "l0\nl1\nl2\nl3\nl4";
+        let (mut t, a) = area(text, 2);
+        let r = t.rect(a).unwrap();
+        // The cursor is on the last line, so the last two lines are shown: a press on the top row lands on line 3.
+        let p = Point::new(r.x + 30, r.y + 8);
+        t.pointer(Pointer::Move(p));
+        t.pointer(Pointer::Down(p));
+        t.pointer(Pointer::Up(p));
+        t.pointer(Pointer::Leave);
+        t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        let (c, _) = t.input_cursor(a).unwrap();
+        assert!(
+            (text.find("l3").unwrap()..=text.find("l3").unwrap() + 2).contains(&c),
+            "the cursor is on line 3: {c}"
+        );
+        // A press below the last line goes to the end of the last one.
+        let q = Point::new(r.x + 200, r.bottom() - 2);
+        t.pointer(Pointer::Move(q));
+        t.pointer(Pointer::Down(q));
+        t.pointer(Pointer::Up(q));
+        t.pointer(Pointer::Leave);
+        t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        assert_eq!(t.input_cursor(a).unwrap().0, text.len());
+        // Every line is reachable: Up four times is the first line.
+        for _ in 0..4 {
+            t.key(crate::Key::Up);
+        }
+        assert_eq!(t.input_cursor(a).unwrap().0, 2, "line 0 column 2");
+        // Undo takes back an edit that broke a line.
+        t.key(crate::Key::Activate);
+        assert!(t.text(a).unwrap().starts_with("l0\n\n") || t.text(a).unwrap().contains("l0\n"));
+        t.edit(Edit::Undo);
+        assert_eq!(t.text(a), Some(text));
+    }
+
+    #[test]
+    fn a_text_area_never_overflows_its_cap_and_has_at_least_two_rows() {
+        let (mut t, a) = area("", 1);
+        assert!(t.rect(a).unwrap().h > 0);
+        for _ in 0..(INPUT_CAP * 2) {
+            t.key(crate::Key::Activate);
+        }
+        assert_eq!(t.text(a).map(str::len), Some(INPUT_CAP));
+        t.edit(Edit::Newline);
+        t.edit(Edit::Up(false));
+        t.edit(Edit::Down(true));
+        t.edit(Edit::SelectAll);
+        t.edit(Edit::Newline);
+        assert_eq!(t.text(a), Some("\n"));
+        t.update(&screen(), &THEME, Rect::new(0, 0, 300, 200));
+        let mut s = screen();
+        t.paint(&mut s, &THEME).unwrap();
     }
 }

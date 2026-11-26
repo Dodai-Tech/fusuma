@@ -123,6 +123,7 @@ impl<const N: usize> Tree<N> {
                     self.slider_to(i, p);
                 }
                 if let Some(p) = self.pointer {
+                    self.pending_y = p.y;
                     self.input_press(i, p.x);
                 }
                 true
@@ -184,6 +185,7 @@ impl<const N: usize> Tree<N> {
                 if let Some(held) = self.captured.and_then(|id| self.slot(id))
                     && self.nodes[held].active
                 {
+                    self.pending_y = p.y;
                     self.input_drag(held, p.x);
                 }
                 // While a scroll waits to be laid out the rows are not where they will be: the hover is worked out

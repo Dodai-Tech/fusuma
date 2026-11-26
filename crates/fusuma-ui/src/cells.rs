@@ -922,6 +922,71 @@ impl<const N: usize> Tree<N> {
                 cursor,
                 anchor,
                 placeholder,
+                rows,
+            } if rows > 0 => {
+                // A text area: its lines, one to a row, from the first that keeps the cursor's line in view.
+                let focus = self.focus == Some(self.id_of(i));
+                let bg = if disabled {
+                    c.surface
+                } else {
+                    c.surface_raised
+                };
+                let base = look.style(ink, Some(bg), attrs);
+                pen.fill(rect, ' ', base);
+                let s = text.as_str();
+                let cur = usize::from(cursor).min(s.len());
+                let line_at = |at: usize| s[..at].bytes().filter(|b| *b == b'\n').count();
+                let first = line_at(cur).saturating_sub(usize::from(rows) - 1);
+                let (lo, hi) = (
+                    usize::from(cursor.min(anchor)),
+                    usize::from(cursor.max(anchor)),
+                );
+                let outer = pen.clip;
+                pen.clip = outer.intersect(&rect);
+                if s.is_empty() && !placeholder.is_empty() {
+                    let muted = look.style(c.text_muted, Some(bg), attrs);
+                    pen.text(rect.x + 1, rect.y, placeholder, muted);
+                }
+                let mut start = 0;
+                for (k, line) in s.split('\n').enumerate() {
+                    let end = start + line.len();
+                    if k >= first && k < first + usize::from(rows) {
+                        let y = rect.y + (k - first) as i32;
+                        let sel = look.style(c.text, Some(c.primary), attrs);
+                        let mut x = rect.x + 1;
+                        for (b, ch) in line.char_indices() {
+                            let at = start + b;
+                            let st = if focus && lo != hi && at >= lo && at < hi {
+                                sel
+                            } else {
+                                base
+                            };
+                            pen.text(x, y, ch.encode_utf8(&mut [0; 4]), st);
+                            x +=
+                                i32::try_from(fusuma_cells::str_width(ch.encode_utf8(&mut [0; 4])))
+                                    .unwrap_or(1);
+                        }
+                        if focus && cur >= start && cur <= end {
+                            let col =
+                                i32::try_from(fusuma_cells::str_width(&s[start..cur])).unwrap_or(0);
+                            pen.text(
+                                rect.x + 1 + col,
+                                y,
+                                "\u{2588}",
+                                look.style(c.primary, None, Attrs::NONE),
+                            );
+                        }
+                    }
+                    start = end + 1;
+                }
+                pen.clip = outer;
+            }
+            Kind::TextInput {
+                text,
+                cursor,
+                anchor,
+                placeholder,
+                ..
             } => {
                 let focus = self.focus == Some(self.id_of(i));
                 let bg = if disabled {

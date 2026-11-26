@@ -1580,3 +1580,76 @@ impl Mini4 {
             .collect()
     }
 }
+
+#[test]
+fn a_text_area_view_keeps_line_breaks_through_the_apps_state_and_a_field_stays_one_line() {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum T {
+        Typed(String),
+        Submit,
+    }
+    let mut tree = Tree::<16>::new();
+    let mut host = Host::<T, 8>::new();
+    let root = tree.column(None, Style::new().padding(4).gap(4)).unwrap();
+    let mut value = String::from("first");
+    fn view(v: &str, rows: u8) -> fusuma::TextField<'_, T> {
+        let f = fusuma::text_field(v)
+            .on_input(|t| T::Typed(t.to_owned()))
+            .on_submit(T::Submit);
+        if rows > 0 { f.rows(rows) } else { f }
+    }
+    host.sync(&mut tree, Some(root), &view(&value, 3)).unwrap();
+    let mut scr = screen();
+    tree.update(&scr, &THEME, BOUNDS);
+    let field = tree
+        .semantics()
+        .find(|s| s.role == fusuma_ui::Role::TextField)
+        .unwrap()
+        .id;
+    assert!(tree.focus(field));
+    // Typing and Enter come back as the new text, and the view gives it back: the break survives the round trip.
+    let mut feed = |tree: &mut Tree<16>,
+                    host: &mut Host<T, 8>,
+                    value: &mut String,
+                    f: &dyn Fn(&mut Tree<16>)| {
+        f(tree);
+        while let Some(a) = tree.pop_action() {
+            if let Some(T::Typed(t)) = host.message(tree, a) {
+                *value = t;
+            }
+        }
+        host.sync(tree, Some(root), &view(value, 3)).unwrap();
+    };
+    feed(&mut tree, &mut host, &mut value, &|t| {
+        t.key(fusuma_ui::Key::Activate)
+    });
+    feed(&mut tree, &mut host, &mut value, &|t| t.type_text("second"));
+    assert_eq!(value, "first\nsecond");
+    tree.update(&scr, &THEME, BOUNDS);
+    tree.paint_frame(&mut scr, &THEME, BOUNDS).unwrap();
+    assert_eq!(tree.text(field), Some("first\nsecond"));
+    // Enter in the area is not a submit; in a one-line field it is.
+    let mut got_submit = false;
+    tree.key(fusuma_ui::Key::Activate);
+    while let Some(a) = tree.pop_action() {
+        got_submit |= host.message(&tree, a) == Some(T::Submit);
+    }
+    assert!(!got_submit, "a line break, not a submit");
+    let mut tree1 = Tree::<16>::new();
+    let mut host1 = Host::<T, 8>::new();
+    let r1 = tree1.column(None, Style::new()).unwrap();
+    host1.sync(&mut tree1, Some(r1), &view("x", 0)).unwrap();
+    tree1.update(&scr, &THEME, BOUNDS);
+    let f1 = tree1
+        .semantics()
+        .find(|s| s.role == fusuma_ui::Role::TextField)
+        .unwrap()
+        .id;
+    tree1.focus(f1);
+    tree1.key(fusuma_ui::Key::Activate);
+    let mut sub = false;
+    while let Some(a) = tree1.pop_action() {
+        sub |= host1.message(&tree1, a) == Some(T::Submit);
+    }
+    assert!(sub, "Enter in a one-line field submits");
+}

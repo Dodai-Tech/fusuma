@@ -474,7 +474,16 @@ impl<const N: usize> Tree<N> {
                 let side = theme.control_height.saturating_mul(2);
                 Size::new(side, side)
             }
-            Kind::TextInput { .. } if theme.cells => Size::new(24, 1),
+            Kind::TextInput { rows, .. } if theme.cells => Size::new(24, u32::from(rows.max(1))),
+            Kind::TextInput { rows, .. } if rows > 0 => {
+                // A text area is as tall as its lines.
+                let line = r.measure_text("M", &body).h.max(1);
+                Size::new(
+                    theme.control_height.saturating_mul(6),
+                    line.saturating_mul(u32::from(rows))
+                        .saturating_add(theme.spacing.xs.saturating_mul(2)),
+                )
+            }
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)
             }

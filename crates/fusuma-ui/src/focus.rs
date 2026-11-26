@@ -131,6 +131,13 @@ impl<const N: usize> Tree<N> {
         match key {
             Key::Cancel => self.dismiss_modal(),
             Key::Activate => {
+                // Enter in a text area is a line break, not a press.
+                if let Some(i) = self.focused_input_public()
+                    && matches!(self.nodes[i].kind, Kind::TextInput { rows, .. } if rows > 0)
+                {
+                    self.edit(crate::textinput::Edit::Newline);
+                    return;
+                }
                 if let Some(i) = self.focus.and_then(|id| self.slot(id))
                     && self.focusable(i)
                 {
@@ -164,6 +171,27 @@ impl<const N: usize> Tree<N> {
                 }
             }
             Key::Next | Key::Prev | Key::Down | Key::Up => {
+                // In a text area the arrows move the cursor between lines until it is on the first or last, and only then leave.
+                if matches!(key, Key::Up | Key::Down)
+                    && let Some(i) = self.focused_input_public()
+                    && let Kind::TextInput {
+                        text, cursor, rows, ..
+                    } = self.nodes[i].kind
+                    && rows > 0
+                {
+                    let s = text.as_str();
+                    let at = usize::from(cursor).min(s.len());
+                    let on_first = !s[..at].contains('\n');
+                    let on_last = !s[at..].contains('\n');
+                    if key == Key::Up && !on_first {
+                        self.edit(crate::textinput::Edit::Up(false));
+                        return;
+                    }
+                    if key == Key::Down && !on_last {
+                        self.edit(crate::textinput::Edit::Down(false));
+                        return;
+                    }
+                }
                 let forward = matches!(key, Key::Next | Key::Down);
                 let from = self.focus.and_then(|id| self.slot(id));
                 let Some(to) = self.focus_step(forward) else {
