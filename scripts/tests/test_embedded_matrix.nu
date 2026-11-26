@@ -40,4 +40,13 @@ def "test embedded matrix: only the missing targets are installed" [] {
     assert equal (missing_targets [] ["a"]) []
 }
 
+def "test embedded matrix: the facade is built without its defaults, which need std and Vello" [] {
+    let a = build_args { target: "thumbv6m-none-eabi", features: "", package: "fusuma", bare: true }
+    assert ("--no-default-features" in $a)
+    assert equal ($a | first) "build"
+    let b = build_args { target: "thumbv6m-none-eabi", features: "" }
+    assert ("--no-default-features" not-in $b)
+    assert ($MATRIX | any { |e| ($e.package? | default "") == "fusuma" and ($e.bare? | default false) })
+}
+
 def main [] { run-tests }

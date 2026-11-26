@@ -1,6 +1,6 @@
 # fusuma-test
 
-Drives an Elm program (`fusuma_view::Program`) the way a person would, headless, on Vello's CPU renderer:
+Drives an Elm program (`fusuma::Program`) the way a person would, headless, on Vello's CPU renderer:
 
 - **find** a widget by the text it shows, the name the app gave it (`Id`), or its role;
 - **click** it (pointer events at its centre) or **activate** it (focus and Enter, the way a keyboard or an accessibility

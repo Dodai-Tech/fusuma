@@ -2,10 +2,10 @@
 
 use std::fmt;
 
+use fusuma::{Program, Runner};
 use fusuma_render::Point;
 use fusuma_render_vello_cpu::VelloCpu;
 use fusuma_ui::{App, Id, Key, NodeId, Pointer, Role, Semantic};
-use fusuma_view::{Program, Runner};
 
 /// How a widget is found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

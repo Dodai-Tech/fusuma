@@ -2,7 +2,7 @@
 
 use fusuma_ui::{BuildError, NodeId, SmallText};
 
-use crate::{Cx, Handler, View, ViewMarker};
+use super::{Cx, Handler, View, ViewMarker};
 
 /// A thin line.
 #[derive(Clone, Copy, Debug)]

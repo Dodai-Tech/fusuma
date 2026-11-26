@@ -3,12 +3,12 @@
 //! for an animation, a message log that replays, and a session that allocates nothing.
 
 use allocation_counter::measure;
+use fusuma::{
+    Children, Program, Runner, Sub, Task, button, card, column, named, row, show, text_fmt, toast,
+};
 use fusuma_render::{Point, Rect};
 use fusuma_render_embedded::{Embedded, Frame};
 use fusuma_ui::{App, Id, Pointer, Screen, Shell};
-use fusuma_view::{
-    Children, Program, Runner, Sub, Task, button, card, column, named, row, show, text_fmt, toast,
-};
 
 const TOAST: Id = Id::new(1);
 
@@ -293,8 +293,8 @@ fn a_running_program_asks_the_allocator_for_nothing() {
 
 mod animated {
     use super::*;
+    use fusuma::animate;
     use fusuma_anim::SpringConfig;
-    use fusuma_view::animate;
 
     #[derive(Clone, Copy, Debug)]
     enum M2 {

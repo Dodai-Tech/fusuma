@@ -127,7 +127,7 @@ pub struct Theme {
     pub cells: bool,
 }
 
-/// A style class: a number a view gives a widget (`.class(..)` in `fusuma-view`) that the hooks of a design system map to a
+/// A style class: a number a view gives a widget (`.class(..)` in `fusuma`) that the hooks of a design system map to a
 /// look, so a widget is restyled by name and not by changing the widget. 0 is the default look.
 pub type Class = u8;
 

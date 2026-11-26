@@ -5,7 +5,7 @@ use fusuma_ui::{
     BuildError, ButtonVariant, CrossAlign, Length, NodeId, Style, Swipe, SwipeDir, TextRole,
 };
 
-use crate::{Children, Cx, Handler, View, ViewMarker};
+use super::{Children, Cx, Handler, View, ViewMarker};
 
 /// A radio button: ticked or not; a group is the radio buttons that share a parent, one ticked at most.
 #[derive(Clone, Copy, Debug)]

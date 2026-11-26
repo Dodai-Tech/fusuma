@@ -1,12 +1,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout)]
 //! The simulator driving a small program: find, click, activate, type, time, messages, scripts, screenshots.
 
-use fusuma_test::{Error, Sim};
-use fusuma_ui::{Id, Key, Role, Screen};
-use fusuma_view::{
+use fusuma::{
     Children, Preset, Program, Sub, Task, button, card, column, named, row, show, text, text_field,
     text_fmt, toast,
 };
+use fusuma_test::{Error, Sim};
+use fusuma_ui::{Id, Key, Role, Screen};
 
 const TOAST: Id = Id::new(1);
 const FIELD: Id = Id::new(2);

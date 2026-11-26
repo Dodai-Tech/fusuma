@@ -1,5 +1,5 @@
-#![doc = include_str!("../README.md")]
-#![cfg_attr(not(test), no_std)]
+//! The Elm architecture: `Program` (state, message, `update`, `view`, `subscription`), `Runner`, `Task`, `Sub`, and the
+//! views that describe the screen. Re-exported at the top of `fusuma`.
 
 mod blocks;
 mod container;

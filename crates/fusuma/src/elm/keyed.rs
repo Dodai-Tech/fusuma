@@ -3,7 +3,7 @@
 
 use fusuma_ui::{BuildError, NodeId};
 
-use crate::{Cx, Part, View, ViewMarker};
+use super::{Cx, Part, View, ViewMarker};
 
 /// A keyed list: one view per item, found again by a key the app chooses, so rows that stay keep their node (their text,
 /// focus and scroll), rows that arrive are made, rows that leave are removed and rows that move are moved.

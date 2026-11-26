@@ -954,6 +954,7 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 name = "fusuma"
 version = "0.2.0"
 dependencies = [
+ "allocation-counter",
  "fusuma-anim",
  "fusuma-cells",
  "fusuma-fonts",
@@ -964,7 +965,6 @@ dependencies = [
  "fusuma-render-vello-cpu",
  "fusuma-text",
  "fusuma-ui",
- "fusuma-view",
 ]
 
 [[package]]
@@ -1149,10 +1149,10 @@ dependencies = [
 name = "fusuma-test"
 version = "0.2.0"
 dependencies = [
+ "fusuma",
  "fusuma-render",
  "fusuma-render-vello-cpu",
  "fusuma-ui",
- "fusuma-view",
 ]
 
 [[package]]
@@ -1173,18 +1173,6 @@ dependencies = [
  "fusuma-render",
  "fusuma-render-embedded",
  "fusuma-render-vello-cpu",
-]
-
-[[package]]
-name = "fusuma-view"
-version = "0.2.0"
-dependencies = [
- "allocation-counter",
- "fusuma-anim",
- "fusuma-render",
- "fusuma-render-embedded",
- "fusuma-render-vello-cpu",
- "fusuma-ui",
 ]
 
 [[package]]

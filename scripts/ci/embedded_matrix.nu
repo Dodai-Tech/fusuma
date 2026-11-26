@@ -24,15 +24,17 @@ export const MATRIX = [
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-ui" }
     { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-cells-panel" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-cells-panel" }
-    { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-view" }
-    { target: "thumbv6m-none-eabi", features: "", package: "fusuma-view" }
+    { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma", bare: true }
+    { target: "thumbv6m-none-eabi", features: "", package: "fusuma", bare: true }
 ]
 
 # The cargo arguments that build one entry.
 export def build_args [entry: record]: nothing -> list<string> {
     let package = $entry.package? | default "fusuma-platform-embedded"
     let features = if ($entry.features | is-empty) { [] } else { ["--features" $entry.features] }
-    ["build" "-p" $package ...$features "--target" $entry.target]
+    # `bare`: the crate has default features that need `std` or Vello (the `fusuma` facade); a chip builds without them.
+    let bare = if ($entry.bare? | default false) { ["--no-default-features"] } else { [] }
+    ["build" "-p" $package ...$bare ...$features "--target" $entry.target]
 }
 
 # The targets of `entries` the toolchain does not have installed yet.

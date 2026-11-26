@@ -275,7 +275,7 @@ pub struct Showcase {
     /// The Overview page's stepper value.
     quantity: u32,
     /// The Overview page's view, kept in step with its part of the tree.
-    pages: fusuma::view::Host<pages::PageMsg, 24>,
+    pages: fusuma::Host<pages::PageMsg, 24>,
     /// The icon characters, looked up once (a lookup by name is not free on a chip).
     icons: Option<pages::Icons>,
     /// The state the pages show, besides the ones above.
@@ -330,7 +330,7 @@ impl Showcase {
             tab: 0,
             swipes: 0,
             quantity: 2,
-            pages: fusuma::view::Host::new(),
+            pages: fusuma::Host::new(),
             icons: None,
             notify: true,
             location: false,

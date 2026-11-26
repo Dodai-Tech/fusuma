@@ -11,8 +11,16 @@ pub use fusuma_render as render;
 /// serial console or a character panel.
 pub use fusuma_cells as cells;
 
-/// The Elm-style view layer: describe the screen from your state, and only what changed is touched.
-pub use fusuma_view as view;
+mod elm;
+
+// The Elm architecture at the top level: `fusuma::Program`, `fusuma::button`, `fusuma::column`. An explicit export wins over
+// the glob of the toolkit below it, so a name both have (`Stepper`) is the Elm view here and the widget under `fusuma::ui`.
+pub use elm::*;
+// A name both layers have: here it is the Elm view; the toolkit's widget is `fusuma::ui::Stepper`.
+pub use elm::Stepper;
+
+/// The toolkit under the Elm layer (the retained tree, layout, widgets, themes), for what the views do not cover.
+pub use fusuma_ui as ui;
 
 /// Animation: easing, tweens, keyframes, springs and decay.
 pub use fusuma_anim as anim;

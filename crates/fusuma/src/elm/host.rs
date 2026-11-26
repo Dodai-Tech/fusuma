@@ -3,7 +3,7 @@
 
 use fusuma_ui::{BuildError, NodeId, Tree};
 
-use crate::{Children, Cx, Msgs, View};
+use super::{Children, Cx, Msgs, View};
 
 /// A view, kept in step with a part of a tree.
 #[derive(Clone, Debug)]

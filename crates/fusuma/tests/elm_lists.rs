@@ -1,14 +1,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout)]
 //! Keyed lists, memoised views, hand-built subtrees, and the views for the other widgets.
 
+use fusuma::{
+    Cx, Handler, Host, Imperative, button, card, column, dialog, each, gestures, imperative, item,
+    memo, menu, named, radio, row, scroll, slider, switch, tab, tab_bar, text, text_field,
+};
 use fusuma_render::{Point, Rect};
 use fusuma_render_vello_cpu::VelloCpu;
 use fusuma_ui::{
     Action, ActionKind, CrossAlign, Id, NodeId, Pointer, Style, Swipe, SwipeDir, Theme, Tree,
-};
-use fusuma_view::{
-    Cx, Handler, Host, Imperative, button, card, column, dialog, each, gestures, imperative, item,
-    memo, menu, named, radio, row, scroll, slider, switch, tab, tab_bar, text, text_field,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,7 +52,7 @@ impl Page {
         }
     }
 
-    fn sync<V: fusuma_view::Children<Msg>>(&mut self, children: &V) {
+    fn sync<V: fusuma::Children<Msg>>(&mut self, children: &V) {
         self.host
             .sync_children(&mut self.tree, self.root, children)
             .unwrap();
@@ -100,7 +100,7 @@ struct Row {
     name: &'static str,
 }
 
-fn rows(list: &[Row]) -> impl fusuma_view::Children<Msg> + '_ {
+fn rows(list: &[Row]) -> impl fusuma::Children<Msg> + '_ {
     (column((each(
         list,
         |r| r.id,
@@ -207,10 +207,7 @@ fn a_random_run_of_changes_always_shows_exactly_the_list_in_order() {
 }
 
 /// The text of each row's field lives in the program's state, as a controlled field requires.
-fn fields<'a>(
-    list: &'a [Row],
-    texts: &'a [(u32, &'a str)],
-) -> impl fusuma_view::Children<Msg> + 'a {
+fn fields<'a>(list: &'a [Row], texts: &'a [(u32, &'a str)]) -> impl fusuma::Children<Msg> + 'a {
     (column((each(
         list,
         |r| r.id,

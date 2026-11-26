@@ -14,7 +14,7 @@ categories = ["gui", "development-tools::testing"]
 
 [dependencies]
 fusuma-ui.workspace = true
-fusuma-view.workspace = true
+fusuma = { workspace = true, features = ["std"] }
 fusuma-render.workspace = true
 fusuma-render-vello-cpu = { workspace = true, features = ["std", "png"] }
 

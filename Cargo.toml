@@ -15,7 +15,6 @@ members = [
     "crates/fusuma-platform-tui",
     "crates/fusuma-platform-console",
     "crates/fusuma-cells-panel",
-    "crates/fusuma-view",
     "crates/fusuma-test",
     "crates/fusuma-palette",
     "crates/fusuma-render-vello-common",
@@ -61,7 +60,6 @@ fusuma-text = { path = "crates/fusuma-text", version = "0.2.0", default-features
 parley = { version = "0.13", default-features = false, features = ["libm"] }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-cells = { path = "crates/fusuma-cells", version = "0.2.0" }
-fusuma-view = { path = "crates/fusuma-view", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
 vello_common = { version = "0.4", default-features = false }
 vello_cpu = { version = "0.4", default-features = false, features = ["u8_pipeline"] }

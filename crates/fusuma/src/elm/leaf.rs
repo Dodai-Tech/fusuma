@@ -4,7 +4,7 @@ use core::fmt::{self, Write};
 
 use fusuma_ui::{BuildError, ButtonVariant, Length, NodeId, SmallText, Style, TextRole};
 
-use crate::{Cx, Handler, View, ViewMarker};
+use super::{Cx, Handler, View, ViewMarker};
 
 /// A piece of text. Plain (`text`), or made with `.title()` or `.caption()`.
 #[derive(Clone, Copy, Debug)]

@@ -1,7 +1,7 @@
 //! The showcase's pages as views: each is a function of the app's state, built from the same widgets as before, and the
 //! messages they send are the one place the app's state changes (`Showcase::page_message`).
 
-use fusuma::view::{
+use fusuma::{
     Children, avatar, badge, button, card, checkbox, column, divider, each, gestures, icon, item,
     menu, named, paragraph, progress, radio, row, scroll, section, slider, stepper, switch, tab,
     tab_bar, text, text_field, text_fmt, toast,
@@ -528,12 +528,12 @@ pub fn reading<'a>(look: Look, _: State<'a>) -> impl Children<PageMsg> + 'a {
 #[derive(Clone, Copy, Debug)]
 struct TypographyIcons([(u32, char); 9], usize, u32);
 
-impl fusuma::view::ViewMarker for TypographyIcons {}
+impl fusuma::ViewMarker for TypographyIcons {}
 
-impl fusuma::view::View<PageMsg> for TypographyIcons {
+impl fusuma::View<PageMsg> for TypographyIcons {
     fn build<const N: usize, const K: usize>(
         &self,
-        cx: &mut fusuma::view::Cx<'_, PageMsg, N, K>,
+        cx: &mut fusuma::Cx<'_, PageMsg, N, K>,
         parent: Option<fusuma::NodeId>,
     ) -> Result<fusuma::NodeId, fusuma::BuildError> {
         row((each(&self.0[..self.1], |i| i.0, |i| icon(i.1)),))
@@ -543,7 +543,7 @@ impl fusuma::view::View<PageMsg> for TypographyIcons {
 
     fn rebuild<const N: usize, const K: usize>(
         &self,
-        cx: &mut fusuma::view::Cx<'_, PageMsg, N, K>,
+        cx: &mut fusuma::Cx<'_, PageMsg, N, K>,
         node: fusuma::NodeId,
     ) {
         row((each(&self.0[..self.1], |i| i.0, |i| icon(i.1)),))

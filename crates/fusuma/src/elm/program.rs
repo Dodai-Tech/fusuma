@@ -5,7 +5,7 @@
 use fusuma_render::{Rect, Renderer};
 use fusuma_ui::{App, Edit, Key, NodeId, Palette, Pointer, Screen, Shape, Style, Theme, Tree};
 
-use crate::{Children, Effect, Host, Recipe, Sub, Task};
+use super::{Children, Effect, Host, Recipe, Sub, Task};
 
 /// How many timers (`Task::after`) can be waiting at once.
 pub const TIMERS: usize = 8;
@@ -79,7 +79,7 @@ pub struct Runner<P: Program, const N: usize, const K: usize, const L: usize = 0
     dark: bool,
     screen: Screen,
     timers: [Option<Timer<P::Msg>>; TIMERS],
-    active: [Option<Active<P::Msg>>; crate::SUB_CAP],
+    active: [Option<Active<P::Msg>>; super::SUB_CAP],
     queue: [Option<P::Msg>; QUEUE],
     queued: usize,
     /// The view has to be made again (a message was handled, or the screen changed).
@@ -128,7 +128,7 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> Runner<P, N, K,
             dark: true,
             screen: Screen::new(width, height),
             timers: [None; TIMERS],
-            active: [None; crate::SUB_CAP],
+            active: [None; super::SUB_CAP],
             queue: [None; QUEUE],
             queued: 0,
             dirty: true,

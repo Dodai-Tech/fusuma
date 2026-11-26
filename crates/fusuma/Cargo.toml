@@ -60,7 +60,6 @@ fusuma-ui.workspace = true
 fusuma-render.workspace = true
 fusuma-anim.workspace = true
 fusuma-cells.workspace = true
-fusuma-view.workspace = true
 fusuma-platform.workspace = true
 fusuma-text = { workspace = true, optional = true }
 fusuma-fonts = { workspace = true, optional = true, default-features = false }
@@ -70,3 +69,8 @@ fusuma-render-vello = { workspace = true, optional = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+fusuma-render-vello-cpu = { workspace = true, features = ["std"] }
+fusuma-render-embedded.workspace = true
+allocation-counter = "0.8.1"
