@@ -1,6 +1,6 @@
 [package]
 name = "fusuma-platform-mobile"
-description = "What every phone and tablet host shares: the app and surface lifecycle, the soft keyboard, the system insets and the back gesture, as plain values a host feeds and reads (no_std, no allocator, host-testable)"
+description = "Fusuma on phones and tablets: what every host shares (the app and surface lifecycle, the soft keyboard, the system insets and the back gesture) and, behind the `android`, `ios` and `linux` features, each OS's touch, key and display translation: the app and surface lifecycle, the soft keyboard, the system insets and the back gesture, as plain values a host feeds and reads (no_std, no allocator, host-testable)"
 readme = "README.md"
 documentation = "https://docs.rs/fusuma-platform-mobile"
 version.workspace = true
@@ -13,6 +13,13 @@ keywords = ["gui", "mobile", "android", "ios", "no-std"]
 categories = ["gui", "no-std"]
 # A scaffold: published once one of the hosts (Android, iOS, Linux mobile) runs an app (see the roadmap).
 publish = false
+
+[features]
+default = []
+# Per-OS translation tables over the shared lifecycle. Each is a scaffold (no activity, view or window runs an app yet).
+android = []
+ios = []
+linux = []
 
 [dependencies]
 fusuma-ui.workspace = true

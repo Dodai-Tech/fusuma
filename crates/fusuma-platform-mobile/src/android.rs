@@ -1,11 +1,8 @@
-#![doc = include_str!("../README.md")]
-#![cfg_attr(not(test), no_std)]
+//! Fusuma on Android: touch, keys and the system back gesture, translated to Fusuma input over the shared lifecycle (feature `android`; a scaffold, no activity, view or window yet).
 
-use fusuma_platform_mobile::{HostInfo, Status};
+use crate::{HostInfo, Status};
 use fusuma_render::Point;
 use fusuma_ui::{Edit, Key, Pointer};
-
-pub use fusuma_platform_mobile as mobile;
 
 /// What this host is, and how far it has got.
 pub const HOST: HostInfo = HostInfo {
@@ -33,10 +30,7 @@ pub const ACTION_HOVER_MOVE: u8 = 7;
 
 fn at(x: f32, y: f32) -> Point {
     // The system reports pixels as floats; the toolkit works in whole pixels.
-    Point::new(
-        fusuma_platform_mobile::pixel(x),
-        fusuma_platform_mobile::pixel(y),
-    )
+    Point::new(crate::pixel(x), crate::pixel(y))
 }
 
 /// Millimetres for `pixels` at `dpi` pixels per inch (`DisplayMetrics.xdpi` and `ydpi`), or 0 when the system reports none.
@@ -57,25 +51,19 @@ pub fn millimetres(pixels: u32, dpi: f32) -> u32 {
 /// (1.0 is 160 dpi), the size in millimetres comes from the real dpi, so a phone and a watch with the same logical width
 /// are told apart. Insets and the keyboard are the host's to add.
 #[must_use]
-pub fn display(
-    width: u32,
-    height: u32,
-    density: f32,
-    xdpi: f32,
-    ydpi: f32,
-) -> fusuma_platform_mobile::Display {
+pub fn display(width: u32, height: u32, density: f32, xdpi: f32, ydpi: f32) -> crate::Display {
     let percent = if density.is_finite() && density > 0.0 {
         (density * 100.0 + 0.5).min(100_000.0) as u32
     } else {
         100
     };
-    fusuma_platform_mobile::Display {
+    crate::Display {
         width,
         height,
         scale_percent: percent,
         width_mm: millimetres(width, xdpi),
         height_mm: millimetres(height, ydpi),
-        ..fusuma_platform_mobile::Display::default()
+        ..crate::Display::default()
     }
 }
 
@@ -99,9 +87,9 @@ pub fn pointer(action: u8, x: f32, y: f32) -> Option<Pointer> {
 #[must_use]
 pub fn key(code: i32) -> Option<Key> {
     Some(match code {
-        4 | 111 => fusuma_platform_mobile::back(), // KEYCODE_BACK, KEYCODE_ESCAPE
-        61 => Key::Next,                           // KEYCODE_TAB
-        66 | 160 | 23 => Key::Activate,            // ENTER, NUMPAD_ENTER, DPAD_CENTER
+        4 | 111 => crate::back(),       // KEYCODE_BACK, KEYCODE_ESCAPE
+        61 => Key::Next,                // KEYCODE_TAB
+        66 | 160 | 23 => Key::Activate, // ENTER, NUMPAD_ENTER, DPAD_CENTER
         19 => Key::Up,
         20 => Key::Down,
         21 => Key::Left,

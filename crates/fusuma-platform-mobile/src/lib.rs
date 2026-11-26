@@ -1,6 +1,13 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
 
+#[cfg(feature = "android")]
+pub mod android;
+#[cfg(feature = "ios")]
+pub mod ios;
+#[cfg(feature = "linux")]
+pub mod linux;
+
 use fusuma_render::Rect;
 use fusuma_ui::{Key, Screen};
 

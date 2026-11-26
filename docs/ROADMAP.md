@@ -77,7 +77,7 @@ fusuma                       the front door: the Elm API (Program, views, Task, 
       fusuma-render-integer  the integer engine for chips (no_std, no allocator)
       fusuma-render-vello*   Vello on the CPU and the GPU
   fusuma-text, -fonts        shaping and bundled fonts (optional, by feature)
-  fusuma-platform-*          hosts: desktop (winit), embedded (Board) + esp + eink, mobile (+ android, ios, linux-mobile), tui (crossterm), console (any writer)
+  fusuma-platform-*          hosts: desktop (winit), embedded (Board) + esp + eink, mobile (features android, ios, linux), tui (crossterm), console (any writer)
   fusuma-cells, -cells-panel the text UI
   fusuma-test, -palette      the simulator, palette generation
 ```
@@ -111,7 +111,7 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 | `fusuma-cells-panel` | the text UI on a pixel panel through any renderer, one region a frame | yes |
 | planned: `fusuma-shaders` | shader engine | no |
 | `fusuma-platform-mobile` | what every phone host shares: the surface lifecycle (a surface is made only with a window and the app in front, dropped the moment the system takes it), safe areas with the soft keyboard as an inset, the keyboard's show and hide once per change, back as cancel | yes |
-| `fusuma-platform-android`, `-ios`, `-linux-mobile` | **scaffolds** (not published): touch and key translation for Android and iOS, shell and output rotation for Linux phones; no activity, view or window runs an app yet | yes |
+| `fusuma-platform-mobile` | **scaffold** (not published): the shared phone lifecycle, insets and back, and per OS, behind the features `android`, `ios` and `linux`, touch and key translation, the shell and output rotation of Linux phones, and the `display(..)` conversions; no activity, view or window runs an app yet | yes |
 | `examples/showcase`, `-desktop`, `-tui`, `-web`, `-esp` | the one app and its hosts: window, terminal, browser (wasm), boards | `showcase` yes |
 
 ## Renderers
@@ -414,8 +414,8 @@ derives the rest.
 - [x] **Board `[screen]`:** `preset = "..."` (`SCREEN_PRESETS`: the S3 watch, round 1.28, OLED 0.96, LCD 1.14, e-paper 1.54,
   2.13, 2.9, 3.97, 4.2, 7.5, the P4 7 inch) and any key to override; the ESP build emits `SCREEN`, and the driver sends
   `Input::Screen`, which reaches an app as `App::screen`. `Board::screen()` has a default
-- [x] **Hosts report the glass:** ESP `board.toml`; `fusuma_platform_android::display` (`DisplayMetrics`),
-  `fusuma_platform_ios::display` (points and scale, the model's size), `fusuma_platform_linux_mobile::display`
+- [x] **Hosts report the glass:** ESP `board.toml`; `fusuma_platform_mobile::android::display` (`DisplayMetrics`),
+  `fusuma_platform_mobile::ios::display` (points and scale, the model's size), `fusuma_platform_mobile::linux::display`
   (`wl_output` mm, rotation swaps the sizes)
 - [ ] Desktop (`winit` monitor size), web (no mm, `devicePixelRatio`), and a change (rotation, resize, keyboard) as an
   Elm message

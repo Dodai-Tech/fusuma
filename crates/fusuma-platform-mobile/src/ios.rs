@@ -1,11 +1,8 @@
-#![doc = include_str!("../README.md")]
-#![cfg_attr(not(test), no_std)]
+//! Fusuma on iOS and iPadOS: touch phases and hardware keys, translated to Fusuma input over the shared lifecycle (feature `ios`; a scaffold, no activity, view or window yet).
 
-use fusuma_platform_mobile::{HostInfo, Status};
+use crate::{HostInfo, Status};
 use fusuma_render::Point;
 use fusuma_ui::{Edit, Key, Pointer};
-
-pub use fusuma_platform_mobile as mobile;
 
 /// What this host is, and how far it has got.
 pub const HOST: HostInfo = HostInfo {
@@ -41,22 +38,20 @@ pub fn display(
     scale: f32,
     width_mm: u32,
     height_mm: u32,
-) -> fusuma_platform_mobile::Display {
+) -> crate::Display {
     let scale = if scale.is_finite() && scale >= 1.0 {
         scale
     } else {
         1.0
     };
-    let px = |points: f32| {
-        u32::try_from(fusuma_platform_mobile::pixel(points * scale).max(0)).unwrap_or(0)
-    };
-    fusuma_platform_mobile::Display {
+    let px = |points: f32| u32::try_from(crate::pixel(points * scale).max(0)).unwrap_or(0);
+    crate::Display {
         width: px(points_width),
         height: px(points_height),
         scale_percent: (scale * 100.0 + 0.5).min(100_000.0) as u32,
         width_mm,
         height_mm,
-        ..fusuma_platform_mobile::Display::default()
+        ..crate::Display::default()
     }
 }
 
@@ -64,10 +59,7 @@ pub fn display(
 /// A finger that has not moved (`stationary`) gives nothing.
 #[must_use]
 pub fn pointer(phase: u8, x: f32, y: f32) -> Option<Pointer> {
-    let p = Point::new(
-        fusuma_platform_mobile::pixel(x),
-        fusuma_platform_mobile::pixel(y),
-    );
+    let p = Point::new(crate::pixel(x), crate::pixel(y));
     match phase {
         PHASE_BEGAN => Some(Pointer::Down(p)),
         PHASE_MOVED => Some(Pointer::Move(p)),
@@ -81,7 +73,7 @@ pub fn pointer(phase: u8, x: f32, y: f32) -> Option<Pointer> {
 #[must_use]
 pub fn key(input: &str) -> Option<Key> {
     Some(match input {
-        "UIKeyInputEscape" => fusuma_platform_mobile::back(),
+        "UIKeyInputEscape" => crate::back(),
         "\t" => Key::Next,
         "\r" | "\n" => Key::Activate,
         "UIKeyInputUpArrow" => Key::Up,
@@ -107,7 +99,7 @@ pub fn edit(input: &str, shift: bool) -> Option<Edit> {
 }
 
 /// Whether a touch that began at `x` (pixels) on a screen `width` pixels wide starts the system's back swipe: within the
-/// leftmost `edge` pixels. A host that sees one sends [`fusuma_platform_mobile::back`] and does not send the touch on.
+/// leftmost `edge` pixels. A host that sees one sends [`crate::back`] and does not send the touch on.
 #[must_use]
 pub const fn is_edge_swipe(x: f32, edge: u32) -> bool {
     x >= 0.0 && (x as u32) < edge

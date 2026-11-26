@@ -1,9 +1,6 @@
-#![doc = include_str!("../README.md")]
-#![cfg_attr(not(test), no_std)]
+//! Fusuma on Linux phones and tablets: the shell, output rotation and virtual keyboard rules, translated to Fusuma input over the shared lifecycle (feature `linux`; a scaffold, no activity, view or window yet).
 
-use fusuma_platform_mobile::{HostInfo, Status};
-
-pub use fusuma_platform_mobile as mobile;
+use crate::{HostInfo, Status};
 
 /// What this host is, and how far it has got.
 pub const HOST: HostInfo = HostInfo {
@@ -96,16 +93,16 @@ pub fn display(
     physical_height_mm: u32,
     scale_percent: u32,
     transform: Transform,
-) -> fusuma_platform_mobile::Display {
+) -> crate::Display {
     let (width, height) = transform.apparent(width, height);
     let (width_mm, height_mm) = transform.apparent(physical_width_mm, physical_height_mm);
-    fusuma_platform_mobile::Display {
+    crate::Display {
         width,
         height,
         scale_percent,
         width_mm,
         height_mm,
-        ..fusuma_platform_mobile::Display::default()
+        ..crate::Display::default()
     }
 }
 
