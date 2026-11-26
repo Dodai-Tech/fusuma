@@ -85,6 +85,30 @@ pub const fn transform(value: u32) -> Option<Transform> {
     })
 }
 
+/// The display for a `wl_output`: its mode in pixels, its `physical_width` and `physical_height` in millimetres (0 when it
+/// does not say), its `scale` (whole numbers; a fractional scale comes from `wp_fractional_scale` as `scale_percent`) and
+/// its transform, which swaps width and height (and the sizes) at 90 and 270 degrees.
+#[must_use]
+pub fn display(
+    width: u32,
+    height: u32,
+    physical_width_mm: u32,
+    physical_height_mm: u32,
+    scale_percent: u32,
+    transform: Transform,
+) -> fusuma_platform_mobile::Display {
+    let (width, height) = transform.apparent(width, height);
+    let (width_mm, height_mm) = transform.apparent(physical_width_mm, physical_height_mm);
+    fusuma_platform_mobile::Display {
+        width,
+        height,
+        scale_percent,
+        width_mm,
+        height_mm,
+        ..fusuma_platform_mobile::Display::default()
+    }
+}
+
 impl Transform {
     /// The size the app sees for an output of `width` x `height` pixels: width and height swap at 90 and 270 degrees.
     #[must_use]
@@ -177,6 +201,31 @@ mod tests {
             transform(2).unwrap().apparent(720, 1440),
             (720, 1440),
             "180 degrees keeps the shape"
+        );
+    }
+
+    #[test]
+    fn an_output_becomes_a_display_turned_the_way_it_is_held() {
+        let up = transform(0).unwrap();
+        let on_side = transform(1).unwrap();
+        // A phone panel 720x1440 at 2x, 65 x 130 mm.
+        let d = display(720, 1440, 65, 130, 200, up);
+        assert_eq!(
+            (d.width, d.height, d.width_mm, d.height_mm),
+            (720, 1440, 65, 130)
+        );
+        assert_eq!(d.screen().form_factor(), fusuma_ui::FormFactor::Phone);
+        // Turned a quarter: the sizes swap together, so the short side is still 65 mm.
+        let r = display(720, 1440, 65, 130, 200, on_side);
+        assert_eq!(
+            (r.width, r.height, r.width_mm, r.height_mm),
+            (1440, 720, 130, 65)
+        );
+        assert_eq!(r.screen().short_side_mm(), 65);
+        assert_eq!(
+            r.screen().form_factor(),
+            fusuma_ui::FormFactor::Phone,
+            "not a tablet or a watch for being turned"
         );
     }
 

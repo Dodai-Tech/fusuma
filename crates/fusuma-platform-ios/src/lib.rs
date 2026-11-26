@@ -31,6 +31,35 @@ pub const PHASE_ENDED: u8 = 3;
 /// `UITouch.Phase.cancelled`.
 pub const PHASE_CANCELLED: u8 = 4;
 
+/// The display for a `UIScreen`: its `bounds` in points and its `scale` (1, 2 or 3), so the pixels are points times the scale.
+/// UIKit does not report the glass's size: the host looks it up from the device model (an iPhone is 65 to 78 mm wide, an
+/// Apple Watch 30 to 40) and gives 0 when it does not know.
+#[must_use]
+pub fn display(
+    points_width: f32,
+    points_height: f32,
+    scale: f32,
+    width_mm: u32,
+    height_mm: u32,
+) -> fusuma_platform_mobile::Display {
+    let scale = if scale.is_finite() && scale >= 1.0 {
+        scale
+    } else {
+        1.0
+    };
+    let px = |points: f32| {
+        u32::try_from(fusuma_platform_mobile::pixel(points * scale).max(0)).unwrap_or(0)
+    };
+    fusuma_platform_mobile::Display {
+        width: px(points_width),
+        height: px(points_height),
+        scale_percent: (scale * 100.0 + 0.5).min(100_000.0) as u32,
+        width_mm,
+        height_mm,
+        ..fusuma_platform_mobile::Display::default()
+    }
+}
+
 /// The pointer event for a `UITouch` of the first finger, in **points** times the screen scale (that is, pixels).
 /// A finger that has not moved (`stationary`) gives nothing.
 #[must_use]
@@ -138,6 +167,17 @@ mod tests {
         assert!(!is_edge_swipe(24.0, 24));
         assert!(!is_edge_swipe(-5.0, 24));
         assert!(!is_edge_swipe(f32::NAN, 24));
+    }
+
+    #[test]
+    fn a_screen_in_points_becomes_pixels_with_its_glass() {
+        let d = display(393.0, 852.0, 3.0, 71, 154);
+        assert_eq!((d.width, d.height, d.scale_percent), (1179, 2556, 300));
+        assert_eq!(d.screen().form_factor(), fusuma_ui::FormFactor::Phone);
+        assert_eq!(d.screen().class(), fusuma_ui::Class::Phone);
+        // Nonsense from the system is a 1x screen of nothing, not a panic.
+        let d = display(f32::NAN, -5.0, f32::NAN, 0, 0);
+        assert_eq!((d.width, d.height, d.scale_percent), (0, 0, 100));
     }
 
     #[test]

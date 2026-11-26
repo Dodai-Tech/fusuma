@@ -247,6 +247,8 @@ pub struct Showcase {
     insets: fusuma::Insets,
     /// The shape of the screen, as the board said.
     shape: fusuma::Shape,
+    /// What the device is, as the platform told us (a plain screen until then).
+    device: fusuma::Screen,
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
@@ -310,6 +312,7 @@ impl Showcase {
             dialog: [None; 3],
             insets: fusuma::Insets::all(0),
             shape: fusuma::Shape::Rect,
+            device: fusuma::Screen::new(0, 0),
             open: false,
             tiles: [None; 10],
             back: None,
@@ -1039,6 +1042,12 @@ impl Showcase {
         let _ = self.build();
     }
 
+    /// What the platform said the device is (a plain screen until it says).
+    #[must_use]
+    pub const fn device(&self) -> fusuma::Screen {
+        self.device
+    }
+
     /// A point on the page that is not on the menu or its button, for a test that dismisses by pressing outside.
     #[cfg(test)]
     fn tab_outside_point(&self) -> fusuma::render::Point {
@@ -1133,7 +1142,9 @@ impl Showcase {
 
     /// The theme for the current colours, scale and class: a watch redraws slowly, so it gets half the motion.
     fn make_theme(&self) -> Theme {
-        let budget = if self.class == Class::Watch {
+        let budget = if self.device.is_reflective() {
+            fusuma::MotionBudget::Off
+        } else if self.class == Class::Watch {
             fusuma::MotionBudget::Reduced
         } else {
             fusuma::MotionBudget::Full
@@ -1408,6 +1419,25 @@ impl App for Showcase {
         self.set_palette(palette);
     }
 
+    fn screen(&mut self, screen: fusuma::Screen) {
+        // What the device is: the layout class is the device's (a small board is the watch layout at any scale), and a
+        // glass that reflects light has no motion.
+        self.device = screen;
+        let class = fusuma::Screen {
+            width: self.bounds.w,
+            height: self.bounds.h,
+            ..screen
+        }
+        .with_scale(self.scale)
+        .class();
+        if class != self.class {
+            self.class = class;
+            self.open = false;
+        }
+        self.theme = self.make_theme();
+        self.rebuild();
+    }
+
     fn shape(&mut self, shape: fusuma::Shape) {
         let (w, h) = (self.bounds.w, self.bounds.h);
         let insets = shape.safe_insets(w, h);
@@ -1426,9 +1456,13 @@ impl App for Showcase {
         let class = if self.cells {
             Class::of(width.saturating_mul(CELL_PX))
         } else {
-            fusuma::Screen::new(width, self.bounds.h)
-                .with_scale(scale)
-                .class()
+            fusuma::Screen {
+                width,
+                height: self.bounds.h,
+                ..self.device
+            }
+            .with_scale(scale)
+            .class()
         };
         if scale != self.scale || class != self.class {
             // Spacing and sizes are in the styles the tree was built with, so a new scale is a new tree.
@@ -2355,6 +2389,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_reflective_glass_stops_the_motion_and_a_micro_board_gets_the_small_layout() {
+        let mut s = Showcase::new(296, 128);
+        let before = s.theme.motion;
+        assert!(before.normal_ms > 0, "an ordinary screen moves");
+        App::screen(
+            &mut s,
+            fusuma::Screen::new(296, 128)
+                .with_form_factor(fusuma::FormFactor::Micro)
+                .with_glass(fusuma::DisplayKind::Reflective, 1, 300),
+        );
+        assert_eq!(s.theme.motion.normal_ms, 0, "e-ink does not animate");
+        assert_eq!(s.theme.motion.fast_ms, 0);
+        assert_eq!(s.class, Class::Watch);
+        // A resize afterwards keeps what the device is.
+        App::resized(&mut s, 296, 128, 100);
+        assert!(s.device().is_reflective());
+        assert_eq!(s.theme.motion.normal_ms, 0);
+        // A phone told its glass is 68 mm wide gets the phone layout though 360 logical px is under the watch limit.
+        let mut p = Showcase::new(1080, 2400);
+        App::screen(
+            &mut p,
+            fusuma::Screen::new(1080, 2400).with_size_mm(68, 150),
+        );
+        App::resized(&mut p, 1080, 2400, 300);
+        assert_eq!(p.class, Class::Phone);
     }
 
     #[test]

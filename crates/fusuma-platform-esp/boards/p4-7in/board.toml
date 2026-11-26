@@ -14,6 +14,9 @@ pins = { rst = 33 }
 # The DSI PHY is powered from LDO_VO3 at 2.5 V.
 options = { lanes = 2, lane_mbps = 1000, phy_ldo_channel = 3, phy_ldo_mv = 2500 }
 
+[screen]
+preset = "lcd-7in-1024x600"
+
 [touch]
 controller = "gt911"
 bus = "i2c"

@@ -20,6 +20,10 @@ bus = "qspi"
 pins = { sck = 11, d = [4, 5, 6, 7], cs = 12, rst = 8 }
 options = { pclk_mhz = 80 }
 
+# What the screen is, for the toolkit: a watch (declared, not guessed), the glass's size in millimetres and how it is driven.
+[screen]
+preset = "amoled-2in06-watch"
+
 [touch]
 controller = "ft3168"
 bus = "i2c"

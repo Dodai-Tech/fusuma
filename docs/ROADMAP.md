@@ -381,23 +381,23 @@ derives the rest.
 
 - [x] Physical size and a declared form factor on `Screen` (`with_size_mm`, `with_form_factor`, `form_factor()`, `dpi()`,
   `Display::screen()`); the order is declared, then the glass (short side under 55 mm a watch, under 85 a phone), then the width
-- [ ] **More form factors, declared and not guessed:** `Micro` (a tiny display, no touch: 128x64 and 240x135 boards, e-paper
+- [x] **More form factors, declared and not guessed** (`FormFactor::Micro`, `Panel`; `form` in a board file; under `MICRO_BELOW` = 260 logical px an undeclared screen is guessed `Micro`): `Micro` (a tiny display, no touch: 128x64 and 240x135 boards, e-paper
   tags; one value or short list per screen, driven by a button or an encoder) and `Panel` (a small touch board that is not
   worn: 1.28 to 2.8 inch dev boards, a smart knob), below `Watch` (worn: the square with round corners, a crown, a tile grid),
   `Phone`, `Tablet`, `Desktop`. Size alone cannot tell a 1.28 inch round board from a watch, so `board.toml` says
   `form = "micro" | "panel" | "watch"`; with nothing declared, only a very small pixel size (under about 240 logical px) guesses `Micro`
-- [ ] **Display kind** (a property of the glass, across every form factor): `Emissive` or `Reflective` (e-ink, memory LCD),
+- [x] **Display kind** (`DisplayKind`, `Screen::with_glass`, `is_reflective`, `motion()`; `Screen::theme` turns motion off on a reflective glass, the showcase follows; the mono/gray palette and one damage rect per refresh are not built yet) (a property of the glass, across every form factor): `Emissive` or `Reflective` (e-ink, memory LCD),
   the colour depth (1 bit, 4 or 16 grays, spot colours) and a refresh hint (`Fast` or `Slow`, in ms). Reflective gives, with
   no code in the app: a mono or grayscale palette from `fusuma-palette`, animation `Off` (pages jump, scroll by whole steps),
   and one batched damage rect per refresh, with a full clear now and then against ghosting
-- [ ] **Input kind** (touch, keys, encoder, pointer) as its own property, not part of the form factor: a micro board can
+- [x] **Input kind** (`Inputs`, a set: touch, keys, encoder, pointer; reported, no layout reads it yet) (touch, keys, encoder, pointer) as its own property, not part of the form factor: a micro board can
   have touch and a watch can have only a crown; layout asks for it independently
-- [ ] **Board presets:** `preset = "..."` in `board.toml` fills in the whole `Screen` (size, mm, form, display kind, depth,
+- [x] **Board presets** (`[screen] preset = "..."` in `board.toml`, six presets in `SCREEN_PRESETS`; the ESP build emits `SCREEN`, the driver sends `Input::Screen` / `App::screen`): `preset = "..."` in `board.toml` fills in the whole `Screen` (size, mm, form, display kind, depth,
   refresh, input) for known hardware (the S3 watch, the small S3 boards, common e-paper modules); custom hardware declares only
   what it knows, every other field has a default
-- [ ] `SizeClass` (compact, medium, expanded by window width, for resizing) apart from the form factor, and `Metrics`
+- [x] `SizeClass` (`Screen::size_class`) and `Metrics` (`Screen::metrics`; nothing in the showcase uses them yet); `Class` stays as the compatibility layer. Old text: (compact, medium, expanded by window width, for resizing) apart from the form factor, and `Metrics`
   (touch target and spacing minimums per form factor); `Class` stays as the compatibility layer
-- [ ] Hosts report what they know: ESP `board.toml` (mm, shape, form, display kind), Android `DisplayMetrics` (`xdpi`), iOS
+- [~] Hosts report what they know (done: ESP `board.toml`, `fusuma_platform_android::display` from `DisplayMetrics`, `..._ios::display`, `..._linux_mobile::display` from `wl_output`; todo: desktop (`winit` monitor mm), web, a change as an Elm message); was: ESP `board.toml` (mm, shape, form, display kind), Android `DisplayMetrics` (`xdpi`), iOS
   `UIScreen`, Wayland `wl_output` (mm), the web `devicePixelRatio` (no mm); a change (rotation, resize, keyboard) arrives as a
   message in the Elm layer
 

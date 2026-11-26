@@ -127,6 +127,30 @@ fn main() {
     line(format!(
         "/// The screen's outline.\npub(crate) const SHAPE: fusuma::Shape = {shape};"
     ));
+    let mut screen = format!("fusuma::Screen::new({}, {}).with_shape(SHAPE)", display.width, display.height);
+    if let Some(spec) = &board.screen {
+        if spec.width_mm > 0 {
+            screen += &format!(".with_size_mm({}, {})", spec.width_mm, spec.height_mm);
+        }
+        if let Some(form) = &spec.form {
+            // The board file's names are checked on load, so each is a variant.
+            let variant = format!("{}{}", form[..1].to_uppercase(), &form[1..]);
+            screen += &format!(".with_form_factor(fusuma::FormFactor::{variant})");
+        }
+        let kind = if spec.reflective { "Reflective" } else { "Emissive" };
+        screen += &format!(
+            ".with_glass(fusuma::DisplayKind::{kind}, {}, {})",
+            spec.depth_bits, spec.refresh_ms
+        );
+        let mut inputs = "fusuma::Inputs::NONE".to_string();
+        for i in &spec.inputs {
+            inputs += &format!(".with(fusuma::Inputs::{})", i.to_uppercase());
+        }
+        screen += &format!(".with_inputs({inputs})");
+    }
+    line(format!(
+        "/// What the device is, from the board file's `[screen]`.\npub(crate) const SCREEN: fusuma::Screen = {screen};"
+    ));
     if controller.offset {
         line(format!(
             "/// Where the visible area starts in the panel's memory.\npub(crate) const OFFSET: [u16; 2] = {:?};",

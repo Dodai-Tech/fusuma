@@ -26,6 +26,21 @@
         "options": { "$ref": "#/$defs/options" }
       }
     },
+    "screen": {
+      "type": "object",
+      "description": "What the screen is: the facts the toolkit cannot measure. Every key is optional; a preset fills them all and the others override it.",
+      "additionalProperties": false,
+      "properties": {
+        "preset": { "enum": ["amoled-2in06-watch", "round-1in28", "oled-0in96", "lcd-1in14", "epaper-2in9", "lcd-7in-1024x600"] },
+        "form": { "enum": ["micro", "panel", "watch", "phone", "tablet", "desktop"] },
+        "width_mm": { "type": "integer", "minimum": 1, "maximum": 5000 },
+        "height_mm": { "type": "integer", "minimum": 1, "maximum": 5000 },
+        "kind": { "enum": ["emissive", "reflective", "eink", "epaper"] },
+        "depth": { "enum": [1, 2, 4, 8] },
+        "refresh_ms": { "type": "integer", "minimum": 0, "maximum": 60000 },
+        "inputs": { "type": "array", "items": { "enum": ["touch", "keys", "encoder", "pointer"] } }
+      }
+    },
     "touch": {
       "type": "object",
       "additionalProperties": false,

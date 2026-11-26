@@ -6,7 +6,7 @@ use std::convert::Infallible;
 use fusuma::render::{Point, Rect};
 use fusuma_platform_embedded::{Board, HeldTouch, Pixels, orient};
 
-use crate::board::{HEIGHT, SHAPE, TOUCH_MIRROR, TOUCH_SWAP_XY, WIDTH};
+use crate::board::{HEIGHT, SCREEN, SHAPE, TOUCH_MIRROR, TOUCH_SWAP_XY, WIDTH};
 use crate::display::Display;
 use crate::{backlight, touch};
 
@@ -50,6 +50,10 @@ impl Board for EspBoard {
 
     fn shape(&self) -> fusuma::Shape {
         SHAPE
+    }
+
+    fn screen(&self) -> fusuma::Screen {
+        SCREEN
     }
 
     fn touch(&mut self) -> Result<Option<Point>, Infallible> {

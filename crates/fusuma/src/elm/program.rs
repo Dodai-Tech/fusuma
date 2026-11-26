@@ -372,10 +372,26 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.dirty = true;
     }
 
+    fn screen(&mut self, screen: Screen) {
+        // What the device is; the area and the scale are the ones the program already has.
+        self.screen = Screen {
+            width: self.screen.width,
+            height: self.screen.height,
+            scale_percent: self.screen.scale_percent,
+            ..screen
+        };
+        self.theme = self.screen.theme(&self.theme);
+        self.tree.invalidate();
+        self.dirty = true;
+    }
+
     fn resized(&mut self, width: u32, height: u32, scale_percent: u32) {
-        self.screen = Screen::new(width, height)
-            .with_scale(scale_percent)
-            .with_shape(self.screen.shape);
+        self.screen = Screen {
+            width,
+            height,
+            ..self.screen
+        }
+        .with_scale(scale_percent);
         self.theme = self.screen.theme(&self.theme);
         self.tree.invalidate();
         // The view can choose its layout by the screen.

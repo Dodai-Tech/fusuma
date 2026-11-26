@@ -59,6 +59,13 @@ pub trait App {
         let _ = shape;
     }
 
+    /// The device is `screen`: its form factor, the glass's size, whether it reflects light and how it is driven. A
+    /// platform that knows sends it once at start, before the first frame; an app that lays out by the class alone can
+    /// ignore it, which the default does.
+    fn screen(&mut self, screen: crate::Screen) {
+        let _ = screen;
+    }
+
     /// The settings ask for `palette` (`[theme] palette` and `accent` in `fusuma.toml`, the accent already put on
     /// it). A platform sends it once at start, before the first frame; an app that has its own colours can ignore
     /// it, which the default does.

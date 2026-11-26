@@ -227,6 +227,14 @@ pub trait Board {
         fusuma::Shape::Rect
     }
 
+    /// What the device is: its form factor, the glass's size, whether it reflects light and how it is driven. The default
+    /// is a screen of [`size`](Board::size) and [`shape`](Board::shape) that nothing else is known of; a board built
+    /// from a board file says the rest (its `[screen]`).
+    fn screen(&self) -> fusuma::Screen {
+        let (w, h) = self.size();
+        fusuma::Screen::new(w, h).with_shape(self.shape())
+    }
+
     /// Where a finger is touching, in screen pixels, or `None` when there is none. A board without a touch
     /// panel always answers `None`.
     ///

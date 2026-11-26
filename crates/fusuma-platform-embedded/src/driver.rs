@@ -64,6 +64,10 @@ impl<A: App, B: Board> Driver<A, B> {
         if shape != fusuma::Shape::Rect {
             shell.input(Input::Shape(shape));
         }
+        let screen = board.screen();
+        if screen != fusuma::Screen::new(w, h).with_shape(shape) {
+            shell.input(Input::Screen(screen));
+        }
         Some(Self {
             shell,
             board,
@@ -215,6 +219,8 @@ mod tests {
         chunk: usize,
         fail_present: bool,
         shape: fusuma::Shape,
+        /// What the board says the device is, if it says.
+        facts: Option<fusuma::Screen>,
         /// A clock that moves 10 us at every reading; `None`: no clock.
         clock: Option<core::cell::Cell<u64>>,
     }
@@ -230,6 +236,7 @@ mod tests {
                 chunk: 1_000_000,
                 fail_present: false,
                 shape: fusuma::Shape::Rect,
+                facts: None,
                 clock: None,
             }
         }
@@ -248,6 +255,11 @@ mod tests {
 
         fn shape(&self) -> fusuma::Shape {
             self.shape
+        }
+
+        fn screen(&self) -> fusuma::Screen {
+            self.facts
+                .unwrap_or_else(|| fusuma::Screen::new(self.w, self.h).with_shape(self.shape))
         }
 
         fn touch(&mut self) -> Result<Option<Point>, ()> {
@@ -608,5 +620,24 @@ mod tests {
         );
         let (ra, rb) = (round.shell().app.rect_of(a), plain.shell().app.rect_of(b));
         assert_ne!(ra, rb, "the page was laid out inside the corners");
+    }
+
+    #[test]
+    fn what_the_board_says_the_device_is_reaches_the_app_and_a_plain_board_says_nothing() {
+        let eink = fusuma::Screen::new(296, 128)
+            .with_form_factor(fusuma::FormFactor::Micro)
+            .with_glass(fusuma::DisplayKind::Reflective, 1, 300);
+        let mut board = Fake::new(296, 128);
+        board.facts = Some(eink);
+        let told = Driver::new(Showcase::new(296, 128), board, Backend::Integer).unwrap();
+        assert_eq!(told.shell().app.device(), eink);
+        let plain = Driver::new(
+            Showcase::new(296, 128),
+            Fake::new(296, 128),
+            Backend::Integer,
+        )
+        .unwrap();
+        assert!(!plain.shell().app.device().is_reflective());
+        assert_eq!(plain.shell().app.device().form, None, "nothing was sent");
     }
 }

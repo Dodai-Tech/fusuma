@@ -306,6 +306,125 @@ pub struct Firmware {
     pub target: Option<String>,
 }
 
+/// The forms a `[screen]` may declare (the names `fusuma::FormFactor` reads).
+pub const FORMS: [&str; 6] = ["micro", "panel", "watch", "phone", "tablet", "desktop"];
+
+/// The inputs a `[screen]` may list.
+pub const INPUTS: [&str; 4] = ["touch", "keys", "encoder", "pointer"];
+
+/// What the screen is, as a board file says it: the facts the toolkit cannot measure. Every field has a default, so a
+/// board declares only what it knows (or names a [`SCREEN_PRESETS`] preset and adds what differs).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScreenSpec {
+    /// The form factor (one of [`FORMS`]), or `None` to let the size decide.
+    pub form: Option<String>,
+    /// The glass's width in millimetres, 0 for unknown.
+    pub width_mm: u32,
+    /// The glass's height in millimetres, 0 for unknown.
+    pub height_mm: u32,
+    /// `true` if the glass reflects light (e-ink, memory LCD).
+    pub reflective: bool,
+    /// Bits per pixel the glass shows (1, 2, 4), 0 for any.
+    pub depth_bits: u8,
+    /// A refresh takes this many milliseconds; 0 for as fast as asked.
+    pub refresh_ms: u32,
+    /// How it is driven (each one of [`INPUTS`]), in the order written.
+    pub inputs: Vec<String>,
+}
+
+/// A known piece of hardware's screen facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScreenPreset {
+    /// What `preset = "..."` takes.
+    pub name: &'static str,
+    /// One line for people.
+    pub about: &'static str,
+    /// The form factor.
+    pub form: &'static str,
+    /// Glass width in millimetres.
+    pub width_mm: u32,
+    /// Glass height in millimetres.
+    pub height_mm: u32,
+    /// Whether the glass reflects light.
+    pub reflective: bool,
+    /// Bits per pixel (0 for any).
+    pub depth_bits: u8,
+    /// Refresh time in milliseconds (0 for fast).
+    pub refresh_ms: u32,
+    /// The inputs.
+    pub inputs: &'static [&'static str],
+}
+
+/// Screens of hardware that is common on a desk: a board file names one and adds only what differs.
+pub const SCREEN_PRESETS: [ScreenPreset; 6] = [
+    ScreenPreset {
+        name: "amoled-2in06-watch",
+        about: "2.06 inch AMOLED watch, 410x502 (Waveshare ESP32-S3-Touch-AMOLED-2.06)",
+        form: "watch",
+        width_mm: 41,
+        height_mm: 50,
+        reflective: false,
+        depth_bits: 0,
+        refresh_ms: 0,
+        inputs: &["touch", "keys"],
+    },
+    ScreenPreset {
+        name: "round-1in28",
+        about: "1.28 inch round touch board, 240x240 (GC9A01 and CST816)",
+        form: "panel",
+        width_mm: 33,
+        height_mm: 33,
+        reflective: false,
+        depth_bits: 0,
+        refresh_ms: 0,
+        inputs: &["touch"],
+    },
+    ScreenPreset {
+        name: "oled-0in96",
+        about: "0.96 inch OLED, 128x64 (SSD1306), with buttons",
+        form: "micro",
+        width_mm: 22,
+        height_mm: 11,
+        reflective: false,
+        depth_bits: 1,
+        refresh_ms: 0,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "lcd-1in14",
+        about: "1.14 inch LCD, 240x135 (ST7789), with buttons",
+        form: "micro",
+        width_mm: 25,
+        height_mm: 14,
+        reflective: false,
+        depth_bits: 0,
+        refresh_ms: 0,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "epaper-2in9",
+        about: "2.9 inch e-paper, 296x128, black and white, partial refresh",
+        form: "micro",
+        width_mm: 67,
+        height_mm: 29,
+        reflective: true,
+        depth_bits: 1,
+        refresh_ms: 300,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "lcd-7in-1024x600",
+        about: "7 inch touch panel, 1024x600 (Waveshare ESP32-P4)",
+        form: "tablet",
+        width_mm: 154,
+        height_mm: 90,
+        reflective: false,
+        depth_bits: 0,
+        refresh_ms: 0,
+        inputs: &["touch"],
+    },
+];
+
 /// A board file, read and checked.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoardFile {
@@ -317,6 +436,8 @@ pub struct BoardFile {
     pub capabilities: Vec<String>,
     /// The screen, if any.
     pub display: Option<Display>,
+    /// What the screen is (form, size, glass, inputs), if the file says.
+    pub screen: Option<ScreenSpec>,
     /// The touch panel, if any.
     pub touch: Option<Touch>,
     /// The backlight, if the panel has one of its own.
@@ -356,6 +477,7 @@ struct RawFile {
     #[serde(default)]
     capabilities: Vec<String>,
     display: Option<RawDisplay>,
+    screen: Option<RawScreen>,
     touch: Option<RawTouch>,
     backlight: Option<RawBacklight>,
     firmware: Option<RawFirmware>,
@@ -378,6 +500,19 @@ struct RawDisplay {
     pins: BTreeMap<String, RawPin>,
     #[serde(default)]
     options: BTreeMap<String, i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawScreen {
+    preset: Option<String>,
+    form: Option<String>,
+    width_mm: Option<u32>,
+    height_mm: Option<u32>,
+    kind: Option<String>,
+    depth: Option<u8>,
+    refresh_ms: Option<u32>,
+    inputs: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -485,6 +620,13 @@ impl BoardFile {
             .display
             .map(|d| read_display(d, chip).map_err(err))
             .transpose()?;
+        let screen = raw
+            .screen
+            .map(|r| read_screen(r).map_err(|e| err(format!("[screen] {e}"))))
+            .transpose()?;
+        if screen.is_some() && display.is_none() {
+            return Err(err("[screen] needs a [display]".into()));
+        }
         let touch = raw
             .touch
             .map(|t| {
@@ -543,6 +685,7 @@ impl BoardFile {
             name: raw.name,
             capabilities: raw.capabilities,
             display,
+            screen,
             touch,
             backlight,
             firmware,
@@ -550,6 +693,76 @@ impl BoardFile {
             render,
         })
     }
+}
+
+fn read_screen(r: RawScreen) -> Result<ScreenSpec, String> {
+    let mut spec = ScreenSpec::default();
+    if let Some(name) = &r.preset {
+        let preset = SCREEN_PRESETS
+            .iter()
+            .find(|p| p.name == name)
+            .ok_or_else(|| {
+                format!(
+                    "preset '{name}' is not one of {}",
+                    SCREEN_PRESETS.map(|p| p.name).join(", ")
+                )
+            })?;
+        spec = ScreenSpec {
+            form: Some(preset.form.to_string()),
+            width_mm: preset.width_mm,
+            height_mm: preset.height_mm,
+            reflective: preset.reflective,
+            depth_bits: preset.depth_bits,
+            refresh_ms: preset.refresh_ms,
+            inputs: preset.inputs.iter().map(|i| (*i).to_string()).collect(),
+        };
+    }
+    if let Some(form) = r.form {
+        if !FORMS.contains(&form.as_str()) {
+            return Err(format!("form '{form}' is not one of {}", FORMS.join(", ")));
+        }
+        spec.form = Some(form);
+    }
+    if let Some(w) = r.width_mm {
+        spec.width_mm = w;
+    }
+    if let Some(h) = r.height_mm {
+        spec.height_mm = h;
+    }
+    if (spec.width_mm == 0) != (spec.height_mm == 0) {
+        return Err("width_mm and height_mm go together".into());
+    }
+    if spec.width_mm > 5000 || spec.height_mm > 5000 {
+        return Err("width_mm and height_mm are at most 5000".into());
+    }
+    if let Some(kind) = r.kind {
+        spec.reflective = match kind.as_str() {
+            "emissive" => false,
+            "reflective" | "eink" | "epaper" => true,
+            _ => return Err(format!("kind '{kind}' is not emissive or reflective")),
+        };
+    }
+    if let Some(d) = r.depth {
+        if ![1, 2, 4, 8].contains(&d) {
+            return Err(format!("depth {d} is not 1, 2, 4 or 8 bits"));
+        }
+        spec.depth_bits = d;
+    }
+    if let Some(ms) = r.refresh_ms {
+        if ms > 60_000 {
+            return Err("refresh_ms is at most 60000".into());
+        }
+        spec.refresh_ms = ms;
+    }
+    if let Some(inputs) = r.inputs {
+        for i in &inputs {
+            if !INPUTS.contains(&i.as_str()) {
+                return Err(format!("input '{i}' is not one of {}", INPUTS.join(", ")));
+            }
+        }
+        spec.inputs = inputs;
+    }
+    Ok(spec)
 }
 
 fn read_display(d: RawDisplay, chip: Option<&str>) -> Result<Display, String> {
@@ -792,6 +1005,73 @@ fpu = true
             e.starts_with("board.toml: ") && e.contains(says),
             "{new}: {e}"
         );
+    }
+
+    #[test]
+    fn a_screen_is_a_preset_and_what_differs_and_every_mistake_is_named() {
+        let with_screen = |t: &str| with("[touch]", &format!("[screen]\n{t}\n\n[touch]"));
+        assert!(read(S3).unwrap().screen.is_none(), "optional");
+        let s = with_screen("preset = \"amoled-2in06-watch\"")
+            .unwrap()
+            .screen
+            .unwrap();
+        assert_eq!(
+            (s.form.as_deref(), s.width_mm, s.height_mm, s.reflective),
+            (Some("watch"), 41, 50, false)
+        );
+        assert_eq!(s.inputs, ["touch", "keys"]);
+        // What is written beats the preset.
+        let s = with_screen(
+            "preset = \"epaper-2in9\"\nrefresh_ms = 900\ninputs = [\"touch\"]\nform = \"panel\"",
+        )
+        .unwrap()
+        .screen
+        .unwrap();
+        assert_eq!((s.reflective, s.depth_bits, s.refresh_ms), (true, 1, 900));
+        assert_eq!(
+            (s.form.as_deref(), s.inputs.as_slice()),
+            (Some("panel"), ["touch".to_string()].as_slice())
+        );
+        // No preset: only what is written, the rest default.
+        let s = with_screen("kind = \"eink\"\ndepth = 2")
+            .unwrap()
+            .screen
+            .unwrap();
+        assert_eq!(
+            (s.form, s.width_mm, s.reflective, s.depth_bits),
+            (None, 0, true, 2)
+        );
+        for (text, says) in [
+            ("preset = \"toaster\"", "preset 'toaster'"),
+            ("form = \"fridge\"", "form 'fridge'"),
+            ("kind = \"crt\"", "kind 'crt'"),
+            ("depth = 3", "depth 3"),
+            ("inputs = [\"voice\"]", "input 'voice'"),
+            ("width_mm = 40", "go together"),
+            ("width_mm = 9000\nheight_mm = 4", "at most 5000"),
+            ("refresh_ms = 70000", "at most 60000"),
+            ("colour = 1", "colour"),
+        ] {
+            let e = with_screen(text).expect_err(text).0;
+            assert!(
+                e.starts_with("board.toml: ") && e.contains(says),
+                "{text}: {e}"
+            );
+        }
+        let e = read("name = \"x\"\n[screen]\nform = \"micro\"")
+            .unwrap_err()
+            .0;
+        assert!(e.contains("[screen] needs a [display]"), "{e}");
+        // Every preset is a valid screen of its own.
+        for p in SCREEN_PRESETS {
+            let s = with_screen(&format!("preset = \"{}\"", p.name))
+                .unwrap()
+                .screen
+                .unwrap();
+            assert!(FORMS.contains(&s.form.as_deref().unwrap()), "{}", p.name);
+            assert!(p.inputs.iter().all(|i| INPUTS.contains(i)), "{}", p.name);
+            assert!(p.width_mm > 0 && p.height_mm > 0 && !p.about.is_empty());
+        }
     }
 
     #[test]

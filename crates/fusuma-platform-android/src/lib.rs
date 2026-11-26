@@ -39,6 +39,46 @@ fn at(x: f32, y: f32) -> Point {
     )
 }
 
+/// Millimetres for `pixels` at `dpi` pixels per inch (`DisplayMetrics.xdpi` and `ydpi`), or 0 when the system reports none.
+#[must_use]
+pub fn millimetres(pixels: u32, dpi: f32) -> u32 {
+    if !dpi.is_finite() || dpi < 1.0 {
+        return 0;
+    }
+    let mm = f64::from(pixels) * 25.4 / f64::from(dpi);
+    if mm >= f64::from(u32::MAX) {
+        u32::MAX
+    } else {
+        (mm + 0.5) as u32
+    }
+}
+
+/// The display for `DisplayMetrics` (`widthPixels`, `heightPixels`, `density`, `xdpi`, `ydpi`): the scale is the density
+/// (1.0 is 160 dpi), the size in millimetres comes from the real dpi, so a phone and a watch with the same logical width
+/// are told apart. Insets and the keyboard are the host's to add.
+#[must_use]
+pub fn display(
+    width: u32,
+    height: u32,
+    density: f32,
+    xdpi: f32,
+    ydpi: f32,
+) -> fusuma_platform_mobile::Display {
+    let percent = if density.is_finite() && density > 0.0 {
+        (density * 100.0 + 0.5).min(100_000.0) as u32
+    } else {
+        100
+    };
+    fusuma_platform_mobile::Display {
+        width,
+        height,
+        scale_percent: percent,
+        width_mm: millimetres(width, xdpi),
+        height_mm: millimetres(height, ydpi),
+        ..fusuma_platform_mobile::Display::default()
+    }
+}
+
 /// The pointer event of the **first finger** for a `MotionEvent` action (the masked action, `getActionMasked`) at `(x, y)`.
 /// A second finger's down and up (`ACTION_POINTER_DOWN` and `_UP`, 5 and 6) are not this finger's: they give `None`.
 #[must_use]
@@ -165,6 +205,28 @@ mod tests {
         assert_eq!(edit(122, false), Some(Edit::Home(false)));
         assert_eq!(edit(123, true), Some(Edit::End(true)));
         assert_eq!(edit(66, false), None);
+    }
+
+    #[test]
+    fn metrics_become_a_display_that_knows_its_glass() {
+        // A 1080x2400 phone at 420 dpi (density 2.625): 65 x 145 mm, a phone, not a watch.
+        let d = display(1080, 2400, 2.625, 420.0, 420.0);
+        assert_eq!((d.scale_percent, d.width_mm, d.height_mm), (263, 65, 145));
+        assert_eq!(d.screen().form_factor(), fusuma_ui::FormFactor::Phone);
+        assert_eq!(d.screen().class(), fusuma_ui::Class::Phone);
+        // A 1.4 inch round watch, 454 px at 326 dpi: 35 mm, a watch.
+        let w = display(454, 454, 2.0, 326.0, 326.0);
+        assert_eq!(w.screen().form_factor(), fusuma_ui::FormFactor::Watch);
+        // A system that reports nothing useful leaves the size unknown and the scale at 1x.
+        for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            let d = display(100, 100, bad, bad, bad);
+            assert_eq!(
+                (d.scale_percent, d.width_mm, d.height_mm),
+                (100, 0, 0),
+                "{bad}"
+            );
+        }
+        assert_eq!(millimetres(u32::MAX, 1.0), u32::MAX);
     }
 
     #[test]

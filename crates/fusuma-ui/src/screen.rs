@@ -7,7 +7,7 @@
 use fusuma_render::Rect;
 
 use crate::shape::{Insets, Shape};
-use crate::theme::Theme;
+use crate::theme::{MotionBudget, Theme};
 
 /// Screens narrower than this, in logical pixels, are a watch: a grid of big tiles, one small page at a time.
 pub const WATCH_BELOW: u32 = 480;
@@ -25,11 +25,20 @@ pub const WATCH_SHORT_SIDE_MM: u32 = 55;
 /// side, the biggest phones about 80.
 pub const PHONE_SHORT_SIDE_MM: u32 = 85;
 
+/// Screens narrower than this, in logical pixels, and told nothing else, are guessed to be a [`FormFactor::Micro`] board.
+pub const MICRO_BELOW: u32 = 260;
+
 /// What kind of device a screen is. Unlike [`Class`] it does not change when a window is resized: a watch stays a watch.
-/// A host that knows says so ([`Screen::with_form_factor`]); else the physical size decides ([`Screen::with_size_mm`]); else
-/// the logical width does, as [`Class`] always has.
+/// A host that knows says so ([`Screen::with_form_factor`], `form` in a board file); else the physical size decides
+/// ([`Screen::with_size_mm`]); else the logical width does. Size alone cannot tell a small round board from a watch, so
+/// the small ones are declared.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FormFactor {
+    /// A tiny display, often without touch (128x64 and 240x135 boards, e-paper tags): one value or a short list per
+    /// screen, driven by a button or an encoder.
+    Micro,
+    /// A small touch board that is not worn (a 1.28 to 2.8 inch dev board, a smart knob).
+    Panel,
     /// A watch: a grid of tiles, one small page at a time.
     Watch,
     /// A phone.
@@ -41,20 +50,41 @@ pub enum FormFactor {
 }
 
 impl FormFactor {
-    /// The layout class that belongs to this form factor when nothing else says otherwise.
+    /// The layout class that belongs to this form factor: the small ones (micro, panel, watch) are all the watch layout.
     #[must_use]
     pub const fn class(self) -> Class {
         match self {
-            Self::Watch => Class::Watch,
+            Self::Micro | Self::Panel | Self::Watch => Class::Watch,
             Self::Phone => Class::Phone,
             Self::Tablet => Class::Tablet,
             Self::Desktop => Class::Desktop,
         }
     }
 
+    /// Whether the screen is too small for a sidebar (everything up to a phone).
+    #[must_use]
+    pub const fn is_compact(self) -> bool {
+        self.class().is_compact()
+    }
+
+    /// The form factor named in a board file (`micro`, `panel`, `watch`, `phone`, `tablet`, `desktop`).
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "micro" => Self::Micro,
+            "panel" => Self::Panel,
+            "watch" => Self::Watch,
+            "phone" => Self::Phone,
+            "tablet" => Self::Tablet,
+            "desktop" => Self::Desktop,
+            _ => return None,
+        })
+    }
+
     /// The form factor of a physical short side in millimetres, if that alone says: under [`WATCH_SHORT_SIDE_MM`] a watch,
     /// under [`PHONE_SHORT_SIDE_MM`] a phone. Bigger screens (a tablet, a laptop, a monitor) are told apart by their window,
-    /// not their glass, so they give `None`; so does 0, which is "unknown".
+    /// not their glass, so they give `None`; so does 0, which is "unknown". A micro board or a panel is never found this
+    /// way (it is declared).
     #[must_use]
     pub const fn of_short_side_mm(mm: u32) -> Option<Self> {
         if mm == 0 {
@@ -65,6 +95,138 @@ impl FormFactor {
             Some(Self::Phone)
         } else {
             None
+        }
+    }
+}
+
+/// How the glass makes its picture.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DisplayKind {
+    /// It gives off light (LCD, OLED, AMOLED): fast, any colour.
+    #[default]
+    Emissive,
+    /// It reflects light (e-ink, memory LCD): slow to refresh, few levels, no animation.
+    Reflective,
+}
+
+impl DisplayKind {
+    /// The kind named in a board file (`emissive`, `reflective`; `eink` too).
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "emissive" => Some(Self::Emissive),
+            "reflective" | "eink" | "epaper" => Some(Self::Reflective),
+            _ => None,
+        }
+    }
+}
+
+/// How the person drives the device: a set of these (a micro board with touch and a button has two).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Inputs(u8);
+
+impl Inputs {
+    /// A touch screen.
+    pub const TOUCH: Self = Self(1);
+    /// Keys or buttons that move the focus and press.
+    pub const KEYS: Self = Self(2);
+    /// A rotary encoder or a crown.
+    pub const ENCODER: Self = Self(4);
+    /// A mouse or a trackpad.
+    pub const POINTER: Self = Self(8);
+    /// Nothing known.
+    pub const NONE: Self = Self(0);
+
+    /// These and `other`.
+    #[must_use]
+    pub const fn with(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Whether all of `other` is in this.
+    #[must_use]
+    pub const fn has(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Whether nothing is in it.
+    #[must_use]
+    pub const fn is_none(self) -> bool {
+        self.0 == 0
+    }
+
+    /// One input named in a board file (`touch`, `keys`, `encoder`, `pointer`).
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "touch" => Self::TOUCH,
+            "keys" | "buttons" => Self::KEYS,
+            "encoder" | "crown" => Self::ENCODER,
+            "pointer" | "mouse" => Self::POINTER,
+            _ => return None,
+        })
+    }
+}
+
+/// Size class by window width, for resizing: unlike the form factor it follows the window (Android's window size classes).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SizeClass {
+    /// Under 600 logical px: one column.
+    Compact,
+    /// 600 to 839: a phone in landscape, a small tablet; two columns at most.
+    Medium,
+    /// 840 and wider: a sidebar and a page.
+    Expanded,
+}
+
+impl SizeClass {
+    /// Wider than this is not compact.
+    pub const MEDIUM_FROM: u32 = 600;
+    /// Wider than this is expanded.
+    pub const EXPANDED_FROM: u32 = 840;
+
+    /// The size class of `logical_width`.
+    #[must_use]
+    pub const fn of(logical_width: u32) -> Self {
+        if logical_width < Self::MEDIUM_FROM {
+            Self::Compact
+        } else if logical_width < Self::EXPANDED_FROM {
+            Self::Medium
+        } else {
+            Self::Expanded
+        }
+    }
+}
+
+/// What a layout needs to know to size its parts for a device, in **pixels** (already scaled).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Metrics {
+    /// The smallest a thing that is pressed should be, on both sides.
+    pub min_target: u32,
+    /// The gap to keep between things that are pressed.
+    pub gap: u32,
+    /// Columns a grid of tiles may have.
+    pub columns: u32,
+}
+
+impl Metrics {
+    /// The metrics for a form factor at a display scale in percent: targets are 48 logical px on a phone or a watch (a
+    /// finger), 40 on a small touch panel, 32 for a pointer, and 24 on a micro board, where focus and not touch drives it.
+    #[must_use]
+    pub const fn of(form: FormFactor, scale_percent: u32) -> Self {
+        let (target, gap, columns) = match form {
+            FormFactor::Micro => (24, 2, 1),
+            FormFactor::Panel => (40, 4, 2),
+            FormFactor::Watch => (48, 6, 2),
+            FormFactor::Phone => (48, 8, 2),
+            FormFactor::Tablet => (44, 12, 3),
+            FormFactor::Desktop => (32, 12, 4),
+        };
+        let sc = clamp_scale(scale_percent);
+        Self {
+            min_target: target * sc / 100,
+            gap: gap * sc / 100,
+            columns,
         }
     }
 }
@@ -119,6 +281,14 @@ pub struct Screen {
     pub size_mm: (u32, u32),
     /// The form factor the host declares (a board file, an app), which beats everything measured.
     pub form: Option<FormFactor>,
+    /// How the glass makes its picture.
+    pub kind: DisplayKind,
+    /// Levels the glass shows, as bits per pixel (1 for black and white, 2 for four grays, 4 for sixteen); 0 for "any".
+    pub depth_bits: u8,
+    /// How long a refresh takes in milliseconds (an e-ink panel 150 to 2000); 0 for "as fast as asked".
+    pub refresh_ms: u32,
+    /// How it is driven.
+    pub inputs: Inputs,
 }
 
 impl Screen {
@@ -132,7 +302,56 @@ impl Screen {
             shape: Shape::Rect,
             size_mm: (0, 0),
             form: None,
+            kind: DisplayKind::Emissive,
+            depth_bits: 0,
+            refresh_ms: 0,
+            inputs: Inputs::NONE,
         }
+    }
+
+    /// With the kind of glass, its depth in bits per pixel and its refresh time in milliseconds.
+    #[must_use]
+    pub const fn with_glass(self, kind: DisplayKind, depth_bits: u8, refresh_ms: u32) -> Self {
+        Self {
+            kind,
+            depth_bits,
+            refresh_ms,
+            ..self
+        }
+    }
+
+    /// With how it is driven.
+    #[must_use]
+    pub const fn with_inputs(self, inputs: Inputs) -> Self {
+        Self { inputs, ..self }
+    }
+
+    /// Whether the glass reflects light and is slow (e-ink): no animation, a mono or gray theme, one update per refresh.
+    #[must_use]
+    pub const fn is_reflective(&self) -> bool {
+        matches!(self.kind, DisplayKind::Reflective)
+    }
+
+    /// The motion the glass can bear: none on a reflective one, full on any other.
+    #[must_use]
+    pub const fn motion(&self) -> MotionBudget {
+        if self.is_reflective() {
+            MotionBudget::Off
+        } else {
+            MotionBudget::Full
+        }
+    }
+
+    /// The size class by window width, which follows a resize.
+    #[must_use]
+    pub const fn size_class(&self) -> SizeClass {
+        SizeClass::of(self.logical_width())
+    }
+
+    /// The sizes for a layout, in pixels.
+    #[must_use]
+    pub const fn metrics(&self) -> Metrics {
+        Metrics::of(self.form_factor(), self.scale())
     }
 
     /// With the physical size of the glass in millimetres (width, height; 0 for unknown). A watch and a phone with the
@@ -188,6 +407,9 @@ impl Screen {
         if let Some(f) = FormFactor::of_short_side_mm(self.short_side_mm()) {
             return f;
         }
+        if self.logical_width() < MICRO_BELOW {
+            return FormFactor::Micro;
+        }
         match Class::of(self.logical_width()) {
             Class::Watch => FormFactor::Watch,
             Class::Phone => FormFactor::Phone,
@@ -238,7 +460,7 @@ impl Screen {
             None => FormFactor::of_short_side_mm(self.short_side_mm()),
         };
         match (known, by_width) {
-            (Some(FormFactor::Watch), _) => Class::Watch,
+            (Some(f), _) if f.is_compact() && !matches!(f, FormFactor::Phone) => Class::Watch,
             (Some(_), Class::Watch) => Class::Phone,
             _ => by_width,
         }
@@ -274,7 +496,7 @@ impl Screen {
     /// `base` for this screen's scale: every length multiplied (see [`Theme::scaled`]).
     #[must_use]
     pub const fn theme(&self, base: &Theme) -> Theme {
-        base.scaled(self.scale())
+        base.scaled(self.scale()).with_motion(self.motion())
     }
 }
 
@@ -384,6 +606,100 @@ mod tests {
         assert_eq!(Screen::new(10, 10).with_size_mm(0, 5).short_side_mm(), 0);
         // 410 px over 35 mm is about 297 dpi.
         assert_eq!(Screen::new(410, 502).with_size_mm(35, 43).dpi(), Some(297));
+    }
+
+    #[test]
+    fn small_boards_are_declared_micro_or_panel_and_are_never_watches() {
+        // A 1.28 inch round board has a watch's glass (33 mm) but is not worn: declared, it is a panel.
+        let board = Screen::new(240, 240)
+            .with_size_mm(33, 33)
+            .with_form_factor(FormFactor::Panel);
+        assert_eq!(board.form_factor(), FormFactor::Panel);
+        assert_eq!(board.class(), Class::Watch, "the small layout");
+        // Undeclared, the same glass is a watch by size: that is why boards declare.
+        assert_eq!(
+            Screen::new(240, 240).with_size_mm(33, 33).form_factor(),
+            FormFactor::Watch
+        );
+        // Nothing known and very few pixels: a micro board.
+        for (w, h) in [(128, 64), (240, 135), (200, 200)] {
+            assert_eq!(
+                Screen::new(w, h).form_factor(),
+                FormFactor::Micro,
+                "{w}x{h}"
+            );
+        }
+        assert_eq!(Screen::new(410, 502).form_factor(), FormFactor::Watch);
+        assert_eq!(FormFactor::from_name("micro"), Some(FormFactor::Micro));
+        assert_eq!(FormFactor::from_name("panel"), Some(FormFactor::Panel));
+        assert_eq!(FormFactor::from_name("toaster"), None);
+        assert!(FormFactor::Micro.is_compact() && !FormFactor::Tablet.is_compact());
+    }
+
+    #[test]
+    fn a_reflective_glass_has_no_motion_and_the_theme_follows_without_the_app_asking() {
+        let eink = Screen::new(296, 128).with_glass(DisplayKind::Reflective, 2, 300);
+        assert!(eink.is_reflective());
+        assert_eq!(eink.motion(), MotionBudget::Off);
+        let t = eink.theme(&Theme::DARK);
+        assert_eq!(
+            (t.motion.fast_ms, t.motion.normal_ms, t.motion.slow_ms),
+            (0, 0, 0)
+        );
+        assert_eq!((eink.depth_bits, eink.refresh_ms), (2, 300));
+        let lcd = Screen::new(800, 600);
+        assert_eq!(lcd.motion(), MotionBudget::Full);
+        assert_eq!(lcd.theme(&Theme::DARK), Theme::DARK, "nothing changed");
+        assert_eq!(
+            DisplayKind::from_name("eink"),
+            Some(DisplayKind::Reflective)
+        );
+        assert_eq!(DisplayKind::from_name("lcd"), None);
+    }
+
+    #[test]
+    fn inputs_are_a_set_of_how_the_device_is_driven() {
+        let i = Inputs::TOUCH.with(Inputs::KEYS);
+        assert!(i.has(Inputs::TOUCH) && i.has(Inputs::KEYS) && !i.has(Inputs::ENCODER));
+        assert!(Inputs::NONE.is_none() && !i.is_none());
+        assert!(i.has(Inputs::NONE), "everything has nothing");
+        assert_eq!(Inputs::from_name("crown"), Some(Inputs::ENCODER));
+        assert_eq!(Inputs::from_name("voice"), None);
+        let s = Screen::new(240, 240).with_inputs(i);
+        assert_eq!(s.inputs, i);
+    }
+
+    #[test]
+    fn the_size_class_follows_the_window_and_the_metrics_follow_the_device() {
+        for (w, c) in [
+            (0, SizeClass::Compact),
+            (599, SizeClass::Compact),
+            (600, SizeClass::Medium),
+            (839, SizeClass::Medium),
+            (840, SizeClass::Expanded),
+            (u32::MAX, SizeClass::Expanded),
+        ] {
+            assert_eq!(SizeClass::of(w), c, "{w}");
+        }
+        assert!(SizeClass::Compact < SizeClass::Expanded);
+        // A watch stays a watch at any width; its size class is only the window's.
+        let watch = Screen::new(410, 502).with_form_factor(FormFactor::Watch);
+        assert_eq!(watch.size_class(), SizeClass::Compact);
+        let m = watch.metrics();
+        assert_eq!((m.min_target, m.columns), (48, 2));
+        // At 3x the targets are three times the pixels.
+        let phone = Screen::new(1080, 2400)
+            .with_scale(300)
+            .with_form_factor(FormFactor::Phone);
+        assert_eq!(phone.metrics().min_target, 144);
+        assert!(
+            Metrics::of(FormFactor::Micro, 100).min_target
+                < Metrics::of(FormFactor::Phone, 100).min_target
+        );
+        assert!(
+            Metrics::of(FormFactor::Desktop, 100).columns
+                > Metrics::of(FormFactor::Watch, 100).columns
+        );
     }
 
     #[test]
