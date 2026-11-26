@@ -44,13 +44,13 @@ preset and no driver.
 |---|---|---|---|
 | `s3-sticky` | Seeed reTerminal Sticky | 3.97" 800x480, SSD1677 or SSD2677, GT911 touch, three keys | file, built |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 1.54" 200x200, SSD1681 | file from vendor firmware, built, not run |
+| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: DC1 and ALDO1..3 at 3.3 V as the vendor sets them) | file from vendor firmware, built, not run; orientation and the PMIC enables unverified |
 | `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 1.54" 200x200, SSD1681; panel power and battery latch on a TCA9554 (`[power.i2c]`) | file from vendor firmware, built and linked for the C6, not run |
 
 Not boards yet:
 
 | Board | Why not |
 |---|---|
-| Waveshare ESP32-S3-ePaper-3.97 | read: SSD1677 800x480 (the init is the Sticky's `0x0C 0xAE 0xC7 0xC3 0xC0 0x80`), SCK 11, MOSI 12, CS 10, DC 9, RST 46, BUSY 3, I2C SDA 41 / SCL 42, 16 MB flash, 8 MB octal PSRAM. The rails come from an **AXP2101 PMIC** (0x34): the vendor sets ALDO1..3 to 3.3 V (registers 0x92..0x94 = 0x1C) and enables them in 0x90. `[power.i2c]` only writes whole registers; 0x90 also holds other rails, so it needs a read-modify-write (a mask) before a board file is safe. Which ALDO feeds the panel is not stated |
 | Waveshare ESP32-S3-ePaper-1.54G | read: a **four-colour** (black, white, red, yellow) 1.54" 200x200 panel; the init (`0x4D`, PSR `0x00` = `0x0F 0x29`, ...) is the UC81xx colour family, not SSD168x, and the app would need a four-colour pipeline (palette quantiser), not the one-bit one. Not supported |
 | Waveshare ESP32-S3-ePaper-13.3E6, S3-PhotoPainter | not read; the 13.3" is an IT8951-class or six-colour controller (a different driver) |
 | Waveshare ESP32-S3-RLCD-4.2, S3-LR1121-ePaper-2.9 | not read yet (RLCD is a reflective LCD, not e-paper) |

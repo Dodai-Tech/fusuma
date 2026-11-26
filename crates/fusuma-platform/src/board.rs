@@ -1633,6 +1633,10 @@ flash_mb = 32
                 include_str!("../../fusuma-platform-esp/boards/c6-epaper-154/board.toml"),
             ),
             (
+                "s3-epaper-397",
+                include_str!("../../fusuma-platform-esp/boards/s3-epaper-397/board.toml"),
+            ),
+            (
                 "s3-epaper-154",
                 include_str!("../../fusuma-platform-esp/boards/s3-epaper-154/board.toml"),
             ),

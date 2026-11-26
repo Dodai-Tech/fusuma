@@ -46,6 +46,7 @@ now and then).
 |---|---|
 | `p4-7in`: Waveshare ESP32-P4 7" touch board | `ek79007`, `gt911`, `ledc` |
 | `c6-epaper-154`: Waveshare ESP32-C6-ePaper-1.54 (200x200 e-paper, TCA9554 rail switch) | `ssd1680`, `[power.i2c]`; from vendor firmware, built, not run; see docs/EINK.md |
+| `s3-epaper-397`: Waveshare ESP32-S3-ePaper-3.97 (800x480 e-paper, AXP2101) | `ssd1677`, `[power.i2c]`; from vendor firmware, built, not run; see docs/EINK.md |
 | `s3-epaper-154`: Waveshare ESP32-S3-ePaper-1.54 (200x200 e-paper) | `ssd1680`; from vendor firmware, built, not run; see docs/EINK.md |
 | `s3-amoled-143`: Waveshare ESP32-S3-Touch-AMOLED-1.43 (466x466 round, CO5300 variant) | `co5300`, `ft3168`; read from the vendor's firmware, not run on a board; see docs/BOARDS.md |
 | `s3-amoled-164`: Waveshare ESP32-S3-Touch-AMOLED-1.64 (280x456) | `co5300`, `ft3168`; pins verified on a real board, CS is GPIO46 on this V2 board (9 on a V1) |

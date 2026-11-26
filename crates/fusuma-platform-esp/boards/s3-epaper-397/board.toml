@@ -1,0 +1,44 @@
+# The Waveshare ESP32-S3-ePaper-3.97: a 3.97 inch 800x480 black and white e-paper (SSD1677) on an ESP32-S3 with 16 MB flash
+# and 8 MB octal PSRAM, an AXP2101 power chip, PCF85063 RTC, SHTC3, ES8311 codec and a TF slot. NOT RUN ON A BOARD: the pins and
+# the PMIC writes are read from Waveshare's ESP-IDF firmware (waveshareteam/ESP32-S3-ePaper-3.97). Two things are unverified:
+# the picture's orientation (the Sticky needs `mirror_x`; this board's vendor sequence was not compared byte by byte) and
+# whether the panel's rail is on without more than the voltages below (the vendor sets only voltages and relies on the PMIC's
+# defaults for the enables). Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-epaper-397"
+title = "Waveshare ESP32-S3-ePaper-3.97"
+about = "Waveshare ESP32-S3-ePaper-3.97, 3.97 inch e-paper (800x480), AXP2101, RTC, SHTC3, ES8311 codec, TF slot"
+capabilities = ["display", "button", "wifi", "ble", "battery", "rtc", "storage", "audio", "eink"]
+
+[display]
+width = 800
+height = 480
+controller = "ssd1677"
+bus = "spi"
+# The busy line is high while the panel works. The rail is the PMIC's (below), so there is no `en`.
+pins = { sck = 11, mosi = 12, cs = 10, dc = 9, rst = 46, busy = 3 }
+options = { data_rate_mhz = 10 }
+
+[screen]
+preset = "epaper-3in97"
+
+# The AXP2101 (0x34) on GPIO41/42, as the vendor's `axp_init` sets it: DC1 3.3 V (register 0x82 = 0x12) and ALDO1..3 3.3 V
+# (0x92..0x94 = 0x1C, i.e. (3300 - 500) / 100). The enables are left as the chip has them.
+[power.i2c]
+sda = 41
+scl = 42
+writes = [[0x34, 0x82, 0x12], [0x34, 0x92, 0x1C], [0x34, 0x93, 0x1C], [0x34, 0x94, 0x1C]]
+
+# The three side keys and BOOT; pressed pulls the pin low (pull-ups on).
+[buttons]
+pins = { ok = 5, up = 4, down = 6 }
+active_low = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false
