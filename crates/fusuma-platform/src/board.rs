@@ -174,7 +174,7 @@ const TOUCH_I2C_PINS: &[PinSpec] = &[
 ];
 
 /// The controllers Fusuma's ESP drivers know (`fusuma-platform-esp`). A board made of these is one file.
-pub const CONTROLLERS: [Controller; 16] = [
+pub const CONTROLLERS: [Controller; 17] = [
     Controller {
         name: "co5300",
         kind: PartKind::Display,
@@ -319,6 +319,28 @@ pub const CONTROLLERS: [Controller; 16] = [
         options: &[opt("data_rate_mhz", 10, 1, 20)],
         chips: &[],
         sizes: &[(200, 200)],
+        offset: false,
+    },
+    Controller {
+        name: "epd13e6",
+        kind: PartKind::Display,
+        bus: "spi",
+        // Waveshare's 13.3 inch six-colour e-paper, 1200x1600: two controllers sharing the bus, each with its own chip select (`cs` the
+        // master's, `cs2` the slave's); `en` switches the panel's power, which the driver does for every picture. A busy line that is
+        // high when idle, whole refreshes only, tens of seconds each.
+        pins: &[
+            pin("sck", 1, true),
+            pin("mosi", 1, true),
+            pin("cs", 1, true),
+            pin("cs2", 1, true),
+            pin("dc", 1, true),
+            pin("rst", 1, true),
+            pin("busy", 1, true),
+            pin("en", 1, false),
+        ],
+        options: &[opt("data_rate_mhz", 10, 1, 20)],
+        chips: &[],
+        sizes: &[(1200, 1600)],
         offset: false,
     },
     Controller {
@@ -1806,6 +1828,10 @@ flash_mb = 32
             (
                 "s3-epaper-154g",
                 include_str!("../../fusuma-platform-esp/boards/s3-epaper-154g/board.toml"),
+            ),
+            (
+                "s3-epaper-133e6",
+                include_str!("../../fusuma-platform-esp/boards/s3-epaper-133e6/board.toml"),
             ),
             (
                 "s3-amoled-143",

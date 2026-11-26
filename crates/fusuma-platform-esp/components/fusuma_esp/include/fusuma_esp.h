@@ -143,3 +143,25 @@ int fusuma_gpio_read(int pin);
 // released for the read and restored after (the controller has no separate read line). `sck` and `mosi` are the pins of
 // the config. Used for the chip id and the temperature.
 esp_err_t fusuma_epd_read_byte(uint8_t *value);
+
+// ── Two-controller e-paper (Waveshare's 13.3 inch six-colour panel): a master and a slave, each with its own chip select, sharing the clock, data,
+// data/command, reset and busy lines. A command and its data are one chip-select frame. ───────────────────────────────────────────────────────
+typedef struct {
+    int sck, mosi, cs_master, cs_slave, dc, rst, busy;
+    // A pin that switches the panel's power (driven high); -1 for none.
+    int pwr;
+    uint32_t hz;
+} fusuma_epd2_config_t;
+
+esp_err_t fusuma_epd2_init(const fusuma_epd2_config_t *cfg);
+esp_err_t fusuma_epd2_power(int on);
+// The vendor's reset: high, low, high, low, high, 30 ms each.
+esp_err_t fusuma_epd2_reset(void);
+// Starts a frame: selects the controllers in `chips` (bit 0 the master, bit 1 the slave), then sends `command` with the data/command line low.
+esp_err_t fusuma_epd2_begin(int chips, uint8_t command);
+// Data bytes in the open frame (the data/command line high); `data` may be in PSRAM.
+esp_err_t fusuma_epd2_data(const uint8_t *data, size_t len);
+// Deselects both.
+esp_err_t fusuma_epd2_end(void);
+// Waits until the busy line is high (idle); ESP_ERR_TIMEOUT after `timeout_ms`.
+esp_err_t fusuma_epd2_wait_idle(uint32_t timeout_ms);

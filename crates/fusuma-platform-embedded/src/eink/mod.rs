@@ -13,6 +13,7 @@ use fusuma::{App, DisplayKind, Input, Screen, Shell};
 use crate::{DriverError, Pixels, Surface};
 
 pub mod bus;
+pub mod epd13e6;
 pub mod epd4g;
 pub mod ssd1677;
 pub mod ssd1680;
@@ -88,71 +89,113 @@ pub fn pack_gray4<P: Pixels + ?Sized>(
     }
 }
 
-/// The code (an index into `palette`) of the colour nearest to the RGB565 pixel `p` at `(x, y)`. With an ordered dither the pixel
-/// is first moved by the 4x4 pattern, up to about a quarter of the range either way, so a colour between two inks becomes dots of both.
-#[must_use]
-pub fn color_code(dither: Dither, x: u32, y: u32, p: u16, palette: &[u16; 4]) -> u8 {
-    let split = |p: u16| {
-        (
-            i32::from((p >> 11) & 0x1F) * 255 / 31,
-            i32::from((p >> 5) & 0x3F) * 255 / 63,
-            i32::from(p & 0x1F) * 255 / 31,
-        )
-    };
-    let bias = match dither {
-        Dither::Threshold(_) => 0,
-        Dither::Ordered => (Dither::bayer(x, y) as i32 - 8) * 8,
-    };
-    let (r, g, b) = split(p);
-    let (r, g, b) = (r + bias, g + bias, b + bias);
-    let mut best = (u8::MAX, i32::MAX);
-    for (code, &c) in palette.iter().enumerate() {
-        let (cr, cg, cb) = split(c);
-        // Green counts most and blue least, as the eye does.
-        let d = 3 * (r - cr).pow(2) + 4 * (g - cg).pow(2) + 2 * (b - cb).pow(2);
-        if d < best.1 {
-            best = (code as u8, d);
-        }
-    }
-    best.0
+/// The inks of a colour e-paper panel and how the panel codes them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    /// What each ink looks like to the quantiser, RGB565 (not what the glass is exactly).
+    pub colors: &'static [u16],
+    /// The panel's code for each ink, parallel to `colors`.
+    pub codes: &'static [u8],
+    /// Bits a pixel takes in the panel's memory: 2 (four to a byte) or 4 (two to a byte), the first pixel in the top bits.
+    pub bits: u8,
 }
 
-/// Packs `region` (the whole width, from [`byte_region`]) of the picture in `src` for a four-colour panel: two bits a pixel, four to a
-/// byte, the first in the top bits, each the code of the nearest of `palette` ([`color_code`]). The layout of [`pack_gray4`]; a pixel
-/// past the picture's edge is the colour nearest white.
-pub fn pack_color4<P: Pixels + ?Sized>(
+impl Palette {
+    /// The code of the ink nearest to the RGB565 pixel `p` at `(x, y)`. With an ordered dither the pixel is first moved by the 4x4
+    /// pattern, up to about a quarter of the range either way, so a colour between two inks becomes dots of both.
+    #[must_use]
+    pub fn code(&self, dither: Dither, x: u32, y: u32, p: u16) -> u8 {
+        let split = |p: u16| {
+            (
+                i32::from((p >> 11) & 0x1F) * 255 / 31,
+                i32::from((p >> 5) & 0x3F) * 255 / 63,
+                i32::from(p & 0x1F) * 255 / 31,
+            )
+        };
+        let bias = match dither {
+            Dither::Threshold(_) => 0,
+            Dither::Ordered => (Dither::bayer(x, y) as i32 - 8) * 8,
+        };
+        let (r, g, b) = split(p);
+        let (r, g, b) = (r + bias, g + bias, b + bias);
+        let mut best = (0u8, i32::MAX);
+        for (&c, &code) in self.colors.iter().zip(self.codes) {
+            let (cr, cg, cb) = split(c);
+            // Green counts most and blue least, as the eye does.
+            let d = 3 * (r - cr).pow(2) + 4 * (g - cg).pow(2) + 2 * (b - cb).pow(2);
+            if d < best.1 {
+                best = (code, d);
+            }
+        }
+        best.0
+    }
+
+    /// The code of white (the paper), for the pixels past a picture's edge.
+    #[must_use]
+    pub fn white(&self) -> u8 {
+        self.code(Dither::Threshold(0), 0, 0, 0xFFFF)
+    }
+
+    /// The code of black.
+    #[must_use]
+    pub fn black(&self) -> u8 {
+        self.code(Dither::Threshold(0), 0, 0, 0x0000)
+    }
+
+    /// `code` in every slot of a byte.
+    const fn repeat(&self, code: u8) -> u8 {
+        let mut b = 0u8;
+        let mut i = 0;
+        while i < 8 / self.bits {
+            b = (b << self.bits) | code;
+            i += 1;
+        }
+        b
+    }
+}
+
+/// Packs `region` (the whole width, from [`byte_region`]) of the picture in `src` for a colour panel: `palette.bits` a pixel, the
+/// first in the top bits, each the code of the nearest ink ([`Palette::code`]). Rows follow one another. `out` is cleared first;
+/// pixels past the picture's edge are white.
+pub fn pack_color<P: Pixels + ?Sized>(
     src: &mut P,
     screen: (u32, u32),
     region: Rect,
     dither: Dither,
-    palette: &[u16; 4],
+    palette: &Palette,
     out: &mut Vec<u8>,
 ) {
     out.clear();
-    if region.w == 0 || region.h == 0 || region.x < 0 || region.y < 0 {
+    if region.w == 0
+        || region.h == 0
+        || region.x < 0
+        || region.y < 0
+        || !matches!(palette.bits, 2 | 4)
+    {
         return;
     }
-    let white = color_code(Dither::Threshold(0), 0, 0, 0xFFFF, palette);
+    let white = palette.white();
     let (x0, y0) = (region.x as u32, region.y as u32);
-    let per_row = (region.w as usize).div_ceil(4);
+    let per_byte = usize::from(8 / palette.bits);
+    let per_row = (region.w as usize).div_ceil(per_byte);
     out.reserve(per_row * region.h as usize);
     let on = region.w.min(screen.0.saturating_sub(x0)) as usize;
     let mut line = vec![0u16; on];
     for row in 0..region.h {
         let y = y0 + row;
         if y >= screen.1 {
-            out.extend(core::iter::repeat_n(white * 0x55, per_row));
+            out.extend(core::iter::repeat_n(palette.repeat(white), per_row));
             continue;
         }
         src.row(y, x0, &mut line);
         for byte in 0..per_row {
             let mut b = 0u8;
-            for k in 0..4 {
-                let i = byte * 4 + k;
+            for k in 0..per_byte {
+                let i = byte * per_byte + k;
                 let code = line
                     .get(i)
-                    .map_or(white, |&p| color_code(dither, x0 + i as u32, y, p, palette));
-                b = (b << 2) | code;
+                    .map_or(white, |&p| palette.code(dither, x0 + i as u32, y, p));
+                b = (b << palette.bits) | code;
             }
             out.push(b);
         }
@@ -388,11 +431,21 @@ pub trait Panel {
         false
     }
 
-    /// The colours the four two-bit codes show (RGB565, in code order), for a panel with four inks: the codes are what
-    /// [`full_gray4`](Self::full_gray4) takes, packed by [`pack_color4`] instead of [`pack_gray4`]. `None`, the default, is
-    /// a panel with no colour.
-    fn colors4(&self) -> Option<[u16; 4]> {
+    /// The inks of a colour panel ([`Palette`]); `None`, the default, is a panel with no colour. A driver made for it
+    /// ([`EinkDriver::new_color`]) draws in colour, packs the nearest ink of each pixel and shows it with
+    /// [`full_color`](Self::full_color).
+    fn palette(&self) -> Option<Palette> {
         None
+    }
+
+    /// The whole picture as [`pack_color`] makes it for [`palette`](Self::palette), shown with the panel's colour refresh. A
+    /// panel with no colours never has this called.
+    ///
+    /// # Errors
+    /// The bus error.
+    fn full_color(&mut self, packed: &[u8]) -> Result<(), Self::Error> {
+        let _ = packed;
+        Ok(())
     }
 
     /// The whole picture in four grays, as [`pack_gray4`] makes it (two bits a pixel, four to a byte), shown with the panel's gray
@@ -434,9 +487,9 @@ pub struct EinkDriver<A, P> {
     packed: Vec<u8>,
     /// The panel shows four grays and this driver was made for them ([`EinkDriver::new_gray4`]): every refresh is a whole gray one.
     gray: bool,
-    /// The panel has four inks and this driver was made for them ([`EinkDriver::new_color4`]): the codes of the whole picture go out
-    /// the way the grays do, but are the nearest of these colours.
-    palette: Option<[u16; 4]>,
+    /// The panel has inks and this driver was made for them ([`EinkDriver::new_color`]): the codes of the whole picture are the nearest
+    /// of these colours and go out as a whole refresh.
+    palette: Option<Palette>,
 }
 
 /// What the app draws on: an RGB565 surface (either renderer) that is quantised for the panel when it is shown, or a one-bit
@@ -477,30 +530,12 @@ impl Canvas {
 
     /// The whole picture in four grays (see [`pack_gray4`]). Only the colour surface has grays to give: the one-bit frame has none, so
     /// it gives its black and white as levels 0 and 3.
-    fn pack_gray(
-        &mut self,
-        screen: (u32, u32),
-        region: Rect,
-        dither: Dither,
-        palette: Option<&[u16; 4]>,
-        out: &mut Vec<u8>,
-    ) {
+    fn pack_gray(&mut self, screen: (u32, u32), region: Rect, dither: Dither, out: &mut Vec<u8>) {
         match self {
-            Self::Rgb(s) => match palette {
-                Some(p) => pack_color4(s, screen, region, dither, p, out),
-                None => pack_gray4(s, screen, region, dither, out),
-            },
+            Self::Rgb(s) => pack_gray4(s, screen, region, dither, out),
             Self::Mono(r) => {
                 out.clear();
                 let f = r.target();
-                // Black and white are levels 0 and 3, or the codes of the nearest inks on a colour panel.
-                let (black, white_code) = palette.map_or((0, 3), |p| {
-                    let t = Dither::Threshold(0);
-                    (
-                        color_code(t, 0, 0, 0x0000, p),
-                        color_code(t, 0, 0, 0xFFFF, p),
-                    )
-                });
                 let per_row = (region.w as usize).div_ceil(4);
                 for y in 0..region.h as i32 {
                     for byte in 0..per_row {
@@ -508,7 +543,44 @@ impl Canvas {
                         for k in 0..4 {
                             let x = (byte * 4 + k) as i32;
                             let white = f.white_at(region.x + x, region.y + y).unwrap_or(true);
-                            b = (b << 2) | if white { white_code } else { black };
+                            b = (b << 2) | if white { 3 } else { 0 };
+                        }
+                        out.push(b);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The whole picture in a colour panel's inks (see [`pack_color`]). Only the colour surface has colours to give: the one-bit frame
+    /// gives the nearest inks to black and white.
+    fn pack_ink(
+        &mut self,
+        screen: (u32, u32),
+        region: Rect,
+        dither: Dither,
+        palette: &Palette,
+        out: &mut Vec<u8>,
+    ) {
+        match self {
+            Self::Rgb(s) => pack_color(s, screen, region, dither, palette, out),
+            Self::Mono(r) => {
+                out.clear();
+                let f = r.target();
+                let per_byte = usize::from(8 / palette.bits.max(1));
+                let per_row = (region.w as usize).div_ceil(per_byte);
+                for y in 0..region.h as i32 {
+                    for byte in 0..per_row {
+                        let mut b = 0u8;
+                        for k in 0..per_byte {
+                            let x = (byte * per_byte + k) as i32;
+                            let white = f.white_at(region.x + x, region.y + y).unwrap_or(true);
+                            b = (b << palette.bits)
+                                | if white {
+                                    palette.white()
+                                } else {
+                                    palette.black()
+                                };
                         }
                         out.push(b);
                     }
@@ -589,13 +661,21 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
         Some(d)
     }
 
-    /// Like [`new`](Self::new) for a panel with four inks ([`Panel::colors4`]): the picture is drawn in colour and quantised to the
-    /// nearest ink, and every refresh is a whole one (these panels have no partial refresh, and take seconds). `None` when the panel has
-    /// no colours or the surface cannot be made. It needs the colour surface, so a chip with PSRAM for anything large.
-    pub fn new_color4(app: A, panel: P, backend: Backend, policy: RefreshPolicy) -> Option<Self> {
-        let palette = panel.colors4()?;
-        let mut d = Self::new_gray4(app, panel, backend, policy)?;
+    /// Like [`new`](Self::new) for a colour panel ([`Panel::palette`]): the picture is drawn in colour and each pixel becomes the nearest
+    /// ink, and every refresh is a whole one (these panels have no partial refresh, and take seconds). `None` when the panel has no
+    /// colours or the surface cannot be made. It needs the colour surface, so a chip with PSRAM for anything large.
+    pub fn new_color(app: A, panel: P, backend: Backend, policy: RefreshPolicy) -> Option<Self> {
+        let palette = panel.palette()?;
+        let mut d = Self::new(app, panel, backend, policy)?;
+        d.gray = true;
         d.palette = Some(palette);
+        // The app is told the glass has few levels: paper-like drawing with a splash of ink colours.
+        let s = d.panel.screen();
+        d.shell.input(Input::Screen(s.with_glass(
+            DisplayKind::Reflective,
+            palette.bits.min(2),
+            s.refresh_ms,
+        )));
         Some(d)
     }
 
@@ -670,18 +750,21 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
             let (w, h) = self.panel.size();
             let dither = self.planner.policy().dither;
             if self.gray {
-                // Whatever was asked, the gray mode shows the whole picture: pack it in four levels and send that.
+                // Whatever was asked, the gray or colour mode shows the whole picture: pack it in levels or inks and send that.
                 let whole = Rect::new(0, 0, w.next_multiple_of(8), h);
-                self.canvas.pack_gray(
-                    (w, h),
-                    whole,
-                    self.planner.policy().dither,
-                    self.palette.as_ref(),
-                    &mut self.packed,
-                );
-                self.panel
-                    .full_gray4(&self.packed)
-                    .map_err(DriverError::Board)?;
+                if let Some(palette) = self.palette {
+                    self.canvas
+                        .pack_ink((w, h), whole, dither, &palette, &mut self.packed);
+                    self.panel
+                        .full_color(&self.packed)
+                        .map_err(DriverError::Board)?;
+                } else {
+                    self.canvas
+                        .pack_gray((w, h), whole, dither, &mut self.packed);
+                    self.panel
+                        .full_gray4(&self.packed)
+                        .map_err(DriverError::Board)?;
+                }
                 return Ok(EinkStep {
                     refreshed: Some(Refresh::Full),
                     wake: self.wake_after(now_ms),
@@ -841,7 +924,18 @@ mod tests {
     }
 
     /// Black, white, yellow, red: the codes 0 to 3 of Waveshare's four-colour panels.
-    const INKS: [u16; 4] = [0x0000, 0xFFFF, 0xFFE0, 0xF800];
+    const INKS: Palette = Palette {
+        colors: &[0x0000, 0xFFFF, 0xFFE0, 0xF800],
+        codes: &[0, 1, 2, 3],
+        bits: 2,
+    };
+
+    /// Black, white, yellow, red, blue, green: the codes of Waveshare's six-colour panels (code 4 is not used), four bits a pixel.
+    const SIX: Palette = Palette {
+        colors: &[0x0000, 0xFFFF, 0xFFE0, 0xF800, 0x001F, 0x07E0],
+        codes: &[0, 1, 2, 3, 5, 6],
+        bits: 4,
+    };
 
     #[test]
     fn a_colour_is_the_code_of_the_nearest_ink() {
@@ -859,13 +953,13 @@ mod tests {
             // Blue and green have no ink: black for the dark one, white (or yellow) for the light one.
             (0x001F, 0),
         ] {
-            assert_eq!(color_code(t, 3, 4, pixel, &INKS), code, "{pixel:#06x}");
+            assert_eq!(INKS.code(t, 3, 4, pixel), code, "{pixel:#06x}");
         }
         // An ordered dither turns a colour between two inks into dots of both, and the dots average to the middle.
         let mut counts = [0u32; 4];
         for y in 0..4 {
             for x in 0..4 {
-                counts[usize::from(color_code(Dither::Ordered, x, y, 0xFD20, &INKS))] += 1;
+                counts[usize::from(INKS.code(Dither::Ordered, x, y, 0xFD20))] += 1;
             }
         }
         assert!(counts[2] > 0 && counts[3] > 0, "{counts:?}");
@@ -878,7 +972,7 @@ mod tests {
             px: vec![0x0000, 0xFFFF, 0xFFE0, 0xF800, 0x0000, 0xFFFF],
         };
         let mut out = Vec::new();
-        pack_color4(
+        pack_color(
             &mut pic,
             (6, 1),
             Rect::new(0, 0, 8, 1),
@@ -888,7 +982,7 @@ mod tests {
         );
         // Codes 0, 1, 2, 3 | 0, 1, then two past the edge: white (code 1).
         assert_eq!(out, [0b00_01_10_11, 0b00_01_01_01]);
-        pack_color4(
+        pack_color(
             &mut pic,
             (6, 1),
             Rect::new(0, 0, 8, 3),
@@ -899,7 +993,7 @@ mod tests {
         assert_eq!(out.len(), 2 * 3, "rows below the picture are white");
         assert_eq!(&out[2..], [0x55; 4]);
         let mut none = vec![9u8];
-        pack_color4(
+        pack_color(
             &mut pic,
             (6, 1),
             Rect::new(0, 0, 0, 1),
@@ -908,6 +1002,29 @@ mod tests {
             &mut none,
         );
         assert!(none.is_empty());
+    }
+
+    #[test]
+    fn six_inks_take_four_bits_two_pixels_to_a_byte_and_skip_code_four() {
+        let mut pic = Pic {
+            w: 4,
+            px: vec![0x0000, 0xFFFF, 0x001F, 0x07E0],
+        };
+        let mut out = Vec::new();
+        pack_color(
+            &mut pic,
+            (4, 1),
+            Rect::new(0, 0, 6, 1),
+            Dither::Threshold(0),
+            &SIX,
+            &mut out,
+        );
+        // Black 0, white 1 | blue 5, green 6 | two past the edge: white, white.
+        assert_eq!(out, [0x01, 0x56, 0x11]);
+        assert_eq!((SIX.black(), SIX.white()), (0, 1));
+        for (pixel, code) in [(0xFFE0, 2), (0xF800, 3)] {
+            assert_eq!(SIX.code(Dither::Threshold(0), 0, 0, pixel), code);
+        }
     }
 
     #[test]

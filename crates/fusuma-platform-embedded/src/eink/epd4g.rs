@@ -8,19 +8,19 @@
 //! panel. What this panel is:
 //!
 //! * a picture is **one** plane of two bits a pixel, four pixels to a byte with the first in the top bits, written with `0x10`;
-//!   the codes are 0 black, 1 white, 2 yellow, 3 red ([`COLORS`]);
+//!   the codes are 0 black, 1 white, 2 yellow, 3 red ([`INKS`]);
 //! * a refresh (`0x12`) takes seconds and there is **no partial one**: every update is a whole picture. The driver therefore powers
 //!   the panel off and puts it to sleep after each one, as the vendor's example does, and runs the whole init again for the next;
 //! * the busy line is **high** when the chip is idle ([`Bus::wait_busy_low`]); unlike the UC8179 the vendor does not ask the
 //!   chip's status first.
 //!
-//! Drive it with [`EinkDriver::new_color4`](super::EinkDriver::new_color4): the picture is drawn in colour and quantised to the four
+//! Drive it with [`EinkDriver::new_color`](super::EinkDriver::new_color): the picture is drawn in colour and quantised to the four
 //! inks. Used as a plain black and white [`Panel`] it shows [`Panel::full`]'s picture in black and white.
 
 use fusuma::render::Rect;
 
 use super::bus::Bus;
-use super::{Panel, row_bytes};
+use super::{Palette, Panel, row_bytes};
 
 mod cmd {
     pub const PANEL_SETTING: u8 = 0x00;
@@ -37,9 +37,12 @@ mod cmd {
     pub const UNDOCUMENTED_E9: u8 = 0xE9;
 }
 
-/// The colours the two-bit codes show, in code order (black, white, yellow, red), as RGB565: what the inks look like to the
-/// quantiser, not what the glass is exactly.
-pub const COLORS: [u16; 4] = [0x0000, 0xFFFF, 0xFFE0, 0xF800];
+/// The inks, in code order (black, white, yellow, red), as RGB565: what they look like to the quantiser, not what the glass is exactly.
+pub const INKS: Palette = Palette {
+    colors: &[0x0000, 0xFFFF, 0xFFE0, 0xF800],
+    codes: &[0, 1, 2, 3],
+    bits: 2,
+};
 
 /// The panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,7 +154,7 @@ impl<B: Bus> Panel for Epd4g<B> {
     }
 
     fn partial(&mut self, region: Rect, data: &[u8]) -> Result<(), B::Error> {
-        // The panel cannot refresh part of itself. A driver made for it ([`new_color4`](super::EinkDriver::new_color4)) never asks;
+        // The panel cannot refresh part of itself. A driver made for it ([`new_color`](super::EinkDriver::new_color)) never asks;
         // asked anyway, there is no whole picture here to show, so nothing is sent.
         let _ = (region, data, row_bytes(region));
         Ok(())
@@ -162,17 +165,13 @@ impl<B: Bus> Panel for Epd4g<B> {
         Ok(())
     }
 
-    fn gray4(&self) -> bool {
-        true
+    fn palette(&self) -> Option<Palette> {
+        Some(INKS)
     }
 
-    fn full_gray4(&mut self, levels: &[u8]) -> Result<(), B::Error> {
-        // The codes as the driver packed them for this panel's colours ([`Panel::colors4`]).
-        self.show(levels)
-    }
-
-    fn colors4(&self) -> Option<[u16; 4]> {
-        Some(COLORS)
+    fn full_color(&mut self, packed: &[u8]) -> Result<(), B::Error> {
+        // The codes as the driver packed them for this panel's inks.
+        self.show(packed)
     }
 
     fn screen(&self) -> fusuma::Screen {
@@ -248,8 +247,7 @@ mod tests {
     #[test]
     fn the_panel_says_it_has_four_inks_and_cannot_refresh_a_part() {
         let mut p = Epd4g::new(Recorder::default(), Config::EPD_1IN54G);
-        assert!(p.gray4());
-        assert_eq!(p.colors4(), Some(COLORS));
+        assert_eq!(p.palette(), Some(INKS));
         p.partial(Rect::new(0, 0, 8, 1), &[0]).unwrap();
         assert!(p.bus_mut().log.is_empty());
         let s = p.screen();

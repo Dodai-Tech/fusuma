@@ -22,6 +22,7 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 | `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 800x480 e-paper | ssd1677 | **file**; AXP2101 voltages and the ALDO3 enable (masked write) through `[power.i2c]`; built, not run; 16 MB flash; Y direction differs from the vendor (see EINK.md) |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file** from vendor firmware (GPIO6 low powers the panel); built, not run; 4 MB flash assumed |
 | `s3-epaper-154g` | Waveshare ESP32-S3-ePaper-1.54G | 200x200 four-colour e-paper | epd4g | **file** from vendor firmware; built, not run; 8 MB flash; whole refreshes only, seconds each |
+| `s3-epaper-133e6` | Waveshare ESP32-S3-ePaper-13.3E6 | 1200x1600 six-colour e-paper | epd13e6 | **file** from vendor firmware; built, not run; two panel controllers; 16 MB flash from the example's partition table, PSRAM assumed |
 | `s3-amoled-143` | Waveshare ESP32-S3-Touch-AMOLED-1.43 | 466x466 round | co5300 or sh8601 (read from the chip), ft3168 | **file**; the chip's ID is read at start-up (`probe_id`), bit-banged, not run |
 | `s3-amoled-18` | Waveshare ESP32-S3-Touch-AMOLED-1.8 | 368x448 | sh8601, ft3168 | **file**; reset and display power through `[power.i2c]` on the TCA9554; the modified CO5300 + CST816 variant is not a file |
 | `s3-amoled-241` | Waveshare ESP32-S3-Touch-AMOLED-2.41 | 450x600 | rm690b0, ft5x06 | **file**; resets through `[power.i2c]`; the column offset 16 is the convention of the chip, not stated by Waveshare |

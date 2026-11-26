@@ -10,11 +10,14 @@ use fusuma::{App, Input, Key, TouchTracker};
 use fusuma_platform_embedded::eink::bus::Bus;
 #[cfg_attr(not(fusuma_display = "epd4g"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::epd4g::{Config as Epd4gConfig, Epd4g};
+#[cfg_attr(not(fusuma_display = "epd13e6"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::epd13e6::{Chip, Config as Epd13e6Config, Epd13e6, Link};
 #[cfg_attr(
     any(
         fusuma_display = "uc8179",
         fusuma_display = "ssd1680",
-        fusuma_display = "epd4g"
+        fusuma_display = "epd4g",
+        fusuma_display = "epd13e6"
     ),
     allow(unused_imports)
 )]
@@ -25,7 +28,8 @@ use fusuma_platform_embedded::eink::ssd1680::{Config as Ssd1680Config, Ssd1680};
     any(
         fusuma_display = "uc8179",
         fusuma_display = "ssd1680",
-        fusuma_display = "epd4g"
+        fusuma_display = "epd4g",
+        fusuma_display = "epd13e6"
     ),
     allow(unused_imports)
 )]
@@ -48,6 +52,7 @@ pub(crate) struct EspError(pub i32);
 /// The panel's SPI bus and pins, through Fusuma's C component.
 pub(crate) struct EspBus;
 
+#[cfg_attr(fusuma_display = "epd13e6", allow(dead_code))]
 impl EspBus {
     fn open() -> anyhow::Result<Self> {
         let cfg = ffi::fusuma_epd_config_t {
@@ -116,13 +121,88 @@ impl Bus for EspBus {
     }
 }
 
+/// The two-controller panel's bus and pins, through Fusuma's C component.
+#[cfg_attr(not(fusuma_display = "epd13e6"), allow(dead_code))]
+pub(crate) struct EspLink;
+
+#[cfg_attr(not(fusuma_display = "epd13e6"), allow(dead_code))]
+impl EspLink {
+    fn open() -> anyhow::Result<Self> {
+        let cfg = ffi::fusuma_epd2_config_t {
+            sck: board::pin(PINS, "sck"),
+            mosi: board::pin(PINS, "mosi"),
+            cs_master: board::pin(PINS, "cs"),
+            cs_slave: board::pin(PINS, "cs2"),
+            dc: board::pin(PINS, "dc"),
+            rst: board::pin(PINS, "rst"),
+            busy: board::pin(PINS, "busy"),
+            pwr: board::pin(PINS, "en"),
+            hz: u32::try_from(board::option(OPTIONS, "data_rate_mhz") * 1_000_000)
+                .unwrap_or(10_000_000),
+        };
+        // SAFETY: called once at startup; `cfg` lives for the call.
+        let err = unsafe { ffi::fusuma_epd2_init(&cfg) };
+        anyhow::ensure!(
+            err == 0,
+            "two-controller e-paper init failed: esp_err {err}"
+        );
+        Ok(Self)
+    }
+}
+
+impl Link for EspLink {
+    type Error = EspError;
+
+    fn power(&mut self, on: bool) -> Result<(), EspError> {
+        // SAFETY: plain call after init.
+        check(unsafe { ffi::fusuma_epd2_power(i32::from(on)) })
+    }
+
+    fn reset(&mut self) -> Result<(), EspError> {
+        // SAFETY: plain call after init.
+        check(unsafe { ffi::fusuma_epd2_reset() })
+    }
+
+    fn begin(&mut self, chips: Chip, command: u8) -> Result<(), EspError> {
+        let mask = match chips {
+            Chip::Master => 1,
+            Chip::Slave => 2,
+            Chip::Both => 3,
+        };
+        // SAFETY: plain call after init.
+        check(unsafe { ffi::fusuma_epd2_begin(mask, command) })
+    }
+
+    fn data(&mut self, bytes: &[u8]) -> Result<(), EspError> {
+        // SAFETY: the slice is valid for the call; the C side copies it in pieces.
+        check(unsafe { ffi::fusuma_epd2_data(bytes.as_ptr(), bytes.len()) })
+    }
+
+    fn end(&mut self) -> Result<(), EspError> {
+        // SAFETY: plain call after init.
+        check(unsafe { ffi::fusuma_epd2_end() })
+    }
+
+    fn wait_idle(&mut self) -> Result<(), EspError> {
+        // A refresh of this panel takes tens of seconds.
+        // SAFETY: plain call after init.
+        check(unsafe { ffi::fusuma_epd2_wait_idle(120_000) })
+    }
+
+    fn delay_ms(&mut self, ms: u32) -> Result<(), EspError> {
+        std::thread::sleep(Duration::from_millis(u64::from(ms)));
+        Ok(())
+    }
+}
+
 /// The panel this firmware drives, by what the board file names.
 enum Chosen {
     #[cfg_attr(
         any(
             fusuma_display = "uc8179",
             fusuma_display = "ssd1680",
-            fusuma_display = "epd4g"
+            fusuma_display = "epd4g",
+            fusuma_display = "epd13e6"
         ),
         allow(dead_code)
     )]
@@ -133,6 +213,8 @@ enum Chosen {
     Ssd1680(Ssd1680<EspBus>),
     #[cfg_attr(not(fusuma_display = "epd4g"), allow(dead_code))]
     Epd4g(Epd4g<EspBus>),
+    #[cfg_attr(not(fusuma_display = "epd13e6"), allow(dead_code))]
+    Epd13e6(Epd13e6<EspLink>),
 }
 
 impl Panel for Chosen {
@@ -144,6 +226,7 @@ impl Panel for Chosen {
             Self::Uc8179(p) => p.size(),
             Self::Ssd1680(p) => p.size(),
             Self::Epd4g(p) => p.size(),
+            Self::Epd13e6(p) => p.size(),
         }
     }
 
@@ -153,6 +236,7 @@ impl Panel for Chosen {
             Self::Uc8179(p) => p.full(frame),
             Self::Ssd1680(p) => p.full(frame),
             Self::Epd4g(p) => p.full(frame),
+            Self::Epd13e6(p) => p.full(frame),
         }
     }
 
@@ -162,6 +246,7 @@ impl Panel for Chosen {
             Self::Uc8179(p) => p.partial(region, data),
             Self::Ssd1680(p) => p.partial(region, data),
             Self::Epd4g(p) => p.partial(region, data),
+            Self::Epd13e6(p) => p.partial(region, data),
         }
     }
 
@@ -171,6 +256,7 @@ impl Panel for Chosen {
             Self::Uc8179(p) => p.sleep(),
             Self::Ssd1680(p) => p.sleep(),
             Self::Epd4g(p) => p.sleep(),
+            Self::Epd13e6(p) => p.sleep(),
         }
     }
 
@@ -180,27 +266,23 @@ impl Panel for Chosen {
             Self::Uc8179(p) => p.screen(),
             Self::Ssd1680(p) => p.screen(),
             Self::Epd4g(p) => p.screen(),
+            Self::Epd13e6(p) => p.screen(),
         }
     }
 
-    fn gray4(&self) -> bool {
+    fn palette(&self) -> Option<fusuma_platform_embedded::eink::Palette> {
         match self {
-            Self::Epd4g(p) => p.gray4(),
-            _ => false,
-        }
-    }
-
-    fn full_gray4(&mut self, levels: &[u8]) -> Result<(), EspError> {
-        match self {
-            Self::Epd4g(p) => p.full_gray4(levels),
-            _ => Ok(()),
-        }
-    }
-
-    fn colors4(&self) -> Option<[u16; 4]> {
-        match self {
-            Self::Epd4g(p) => p.colors4(),
+            Self::Epd4g(p) => p.palette(),
+            Self::Epd13e6(p) => p.palette(),
             _ => None,
+        }
+    }
+
+    fn full_color(&mut self, packed: &[u8]) -> Result<(), EspError> {
+        match self {
+            Self::Epd4g(p) => p.full_color(packed),
+            Self::Epd13e6(p) => p.full_color(packed),
+            _ => Ok(()),
         }
     }
 }
@@ -267,7 +349,11 @@ pub(crate) fn run_here<A: App>(
     // anything talks to it.
     crate::power::rails()?;
 
+    #[cfg(not(fusuma_display = "epd13e6"))]
     let bus = EspBus::open()?;
+    #[cfg(fusuma_display = "epd13e6")]
+    let link = EspLink::open()?;
+    #[cfg_attr(fusuma_display = "epd13e6", allow(unused_variables))]
     let mirror = board::option(OPTIONS, "mirror_x") == 1;
     // Which controller the board file names decides the panel; an 800x480 SSD1677 board may be either of the Sticky's two.
     #[cfg(fusuma_display = "uc8179")]
@@ -304,6 +390,26 @@ pub(crate) fn run_here<A: App>(
             },
         )
     };
+    #[cfg(fusuma_display = "epd13e6")]
+    let (panel, policy) = {
+        let _ = mirror;
+        // The 13.3 inch six-colour panel: tens of seconds to a refresh and no partial one: settle for a long while, never clean up.
+        (
+            Chosen::Epd13e6(Epd13e6::new(
+                link,
+                Epd13e6Config {
+                    width: WIDTH,
+                    height: HEIGHT,
+                },
+            )),
+            RefreshPolicy {
+                min_interval_ms: 60_000,
+                settle_ms: 2_000,
+                full_every: 0,
+                ..RefreshPolicy::DEFAULT
+            },
+        )
+    };
     #[cfg(fusuma_display = "epd4g")]
     let (panel, policy) = {
         let _ = mirror;
@@ -328,7 +434,8 @@ pub(crate) fn run_here<A: App>(
     #[cfg(not(any(
         fusuma_display = "uc8179",
         fusuma_display = "ssd1680",
-        fusuma_display = "epd4g"
+        fusuma_display = "epd4g",
+        fusuma_display = "epd13e6"
     )))]
     let (panel, policy) = {
         let s = if (WIDTH, HEIGHT) == (800, 480) {
@@ -375,14 +482,14 @@ pub(crate) fn run_here<A: App>(
     // The integer renderer draws straight into a one-bit frame (48 KB for 800x480, where RGB565 is 768 KB and nothing is left
     // to pack); Vello, if the settings ask for it, draws RGB565 that is quantised when it is shown.
     let app = make(w, h);
-    #[cfg(fusuma_display = "epd4g")]
-    let mut driver = EinkDriver::new_color4(app, panel, plan.uses, policy).ok_or_else(|| {
+    #[cfg(any(fusuma_display = "epd4g", fusuma_display = "epd13e6"))]
+    let mut driver = EinkDriver::new_color(app, panel, plan.uses, policy).ok_or_else(|| {
         anyhow::anyhow!(
             "cannot make a {} surface for the four-colour panel",
             plan.uses.name()
         )
     })?;
-    #[cfg(not(fusuma_display = "epd4g"))]
+    #[cfg(not(any(fusuma_display = "epd4g", fusuma_display = "epd13e6")))]
     let mut driver = if plan.uses == fusuma::platform::Backend::Integer {
         EinkDriver::new_mono(app, panel, policy)
             .ok_or_else(|| anyhow::anyhow!("cannot make a {w}x{h} one-bit frame"))?

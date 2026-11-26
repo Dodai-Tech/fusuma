@@ -437,3 +437,292 @@ fn the_ssd1680_against_the_waveshare_1_54_firmware() {
         ]
     );
 }
+
+// ── Colour panels, through the whole driver ──────────────────────────────────────────────────────────────────────────────────────────────
+// The showcase drawn in colour by the integer renderer, quantised to the panel's inks by `EinkDriver::new_color`, sent through the panel's
+// driver to a model of the glass, and then read back from it: the picture on the glass must be the picture the driver packed, ink for ink,
+// with the halves of the 13.3 inch panel back in their places.
+use fusuma::platform::Backend;
+use fusuma_platform_embedded::eink::epd4g::{self, Config as Cfg4g, Epd4g};
+use fusuma_platform_embedded::eink::epd13e6::{self, Chip, Config as Cfg13, Epd13e6, Link};
+use fusuma_platform_embedded::eink::{EinkDriver, Palette, RefreshPolicy};
+use fusuma_showcase::Showcase;
+
+/// The two controllers of the 13.3 inch panel as a link: each keeps the plane it was given (command 0x10) and the refresh (0x12) puts the
+/// master's columns to the left and the slave's to the right of the glass.
+#[derive(Default)]
+struct DualGlass {
+    selected: Option<Chip>,
+    command: u8,
+    master: Vec<u8>,
+    slave: Vec<u8>,
+    /// The glass after the last refresh: rows of `width / 2` bytes of codes.
+    glass: Vec<u8>,
+    width: usize,
+    powered: bool,
+    refreshes: u32,
+    asleep: bool,
+    problems: Vec<String>,
+}
+
+impl Link for DualGlass {
+    type Error = std::convert::Infallible;
+
+    fn power(&mut self, on: bool) -> Result<(), Self::Error> {
+        self.powered = on;
+        Ok(())
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        self.asleep = false;
+        Ok(())
+    }
+    fn begin(&mut self, chips: Chip, command: u8) -> Result<(), Self::Error> {
+        if !self.powered {
+            self.problems
+                .push(format!("command {command:#x} with the rail off"));
+        }
+        if command == 0x10 {
+            match chips {
+                Chip::Master => self.master.clear(),
+                Chip::Slave => self.slave.clear(),
+                Chip::Both => self
+                    .problems
+                    .push("a picture sent to both controllers".into()),
+            }
+        }
+        if command == 0x07 {
+            self.asleep = true;
+        }
+        self.selected = Some(chips);
+        self.command = command;
+        Ok(())
+    }
+    fn data(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+        if self.command == 0x10 {
+            match self.selected {
+                Some(Chip::Master) => self.master.extend_from_slice(bytes),
+                Some(Chip::Slave) => self.slave.extend_from_slice(bytes),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+    fn end(&mut self) -> Result<(), Self::Error> {
+        if self.command == 0x12 {
+            self.refreshes += 1;
+            let half = self.width / 4;
+            let rows = self.master.len() / half;
+            if self.slave.len() != self.master.len() {
+                self.problems.push("the halves differ in size".into());
+            }
+            self.glass.clear();
+            for r in 0..rows {
+                self.glass
+                    .extend_from_slice(&self.master[r * half..(r + 1) * half]);
+                self.glass
+                    .extend_from_slice(&self.slave[r * half..(r + 1) * half]);
+            }
+        }
+        self.selected = None;
+        Ok(())
+    }
+    fn wait_idle(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn delay_ms(&mut self, _ms: u32) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+fn policy() -> RefreshPolicy {
+    RefreshPolicy {
+        min_interval_ms: 1_000,
+        settle_ms: 100,
+        full_every: 0,
+        ..RefreshPolicy::DEFAULT
+    }
+}
+
+/// How many pixels of each code a packed picture has.
+fn histogram(packed: &[u8], palette: &Palette) -> Vec<(u8, usize)> {
+    let per = usize::from(8 / palette.bits);
+    let mask = (1u16 << palette.bits) as u8 - 1;
+    let mut counts = vec![0usize; 16];
+    for &b in packed {
+        for k in 0..per {
+            let shift = palette.bits as usize * (per - 1 - k);
+            counts[usize::from((b >> shift) & mask)] += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .enumerate()
+        .filter(|(_, n)| *n > 0)
+        .map(|(c, n)| (c as u8, n))
+        .collect()
+}
+
+#[test]
+fn the_showcase_on_the_13_inch_six_colour_panel_comes_out_whole_and_in_its_inks() {
+    let cfg = Cfg13::EPD_13IN3E;
+    let panel = Epd13e6::new(
+        DualGlass {
+            width: cfg.width as usize,
+            ..DualGlass::default()
+        },
+        cfg,
+    );
+    let mut d = EinkDriver::new_color(
+        Showcase::new(cfg.width, cfg.height),
+        panel,
+        Backend::Integer,
+        policy(),
+    )
+    .unwrap();
+    let mut shown = false;
+    for t in (0..3_000).step_by(100) {
+        if d.step(t).unwrap().refreshed.is_some() {
+            shown = true;
+            break;
+        }
+    }
+    assert!(shown, "the first picture is shown");
+    let link = d.panel_mut().link_mut();
+    assert_eq!(link.problems, Vec::<String>::new());
+    assert_eq!(link.refreshes, 1);
+    assert!(
+        !link.powered && link.asleep,
+        "the panel is asleep and its rail off after a picture"
+    );
+    assert_eq!(
+        link.glass.len(),
+        600 * 1600,
+        "1200 x 1600 pixels, two to a byte"
+    );
+    let counts = histogram(&link.glass, &epd13e6::INKS);
+    // Only the six inks, never the unused code 4; most of the page is paper, and there is text.
+    assert!(
+        counts.iter().all(|(c, _)| [0, 1, 2, 3, 5, 6].contains(c)),
+        "{counts:?}"
+    );
+    let white = counts.iter().find(|(c, _)| *c == 1).map_or(0, |(_, n)| *n);
+    let black = counts.iter().find(|(c, _)| *c == 0).map_or(0, |(_, n)| *n);
+    assert!(
+        white > 1200 * 1600 / 2,
+        "most of a page is paper: {counts:?}"
+    );
+    assert!(black > 500, "there is text: {counts:?}");
+    // Both halves have content (a swapped or empty half would show here): the showcase fills the width.
+    let row = 600;
+    let (mut left, mut right) = (0usize, 0usize);
+    for r in link.glass.chunks_exact(row) {
+        left += r[..row / 2].iter().filter(|b| **b != 0x11).count();
+        right += r[row / 2..].iter().filter(|b| **b != 0x11).count();
+    }
+    assert!(left > 0 && right > 0, "left {left}, right {right}");
+}
+
+/// The 1.54 inch four-colour panel as a bus: the chip keeps what 0x10 gives it and the refresh shows it.
+#[derive(Default)]
+struct QuadGlass {
+    command: u8,
+    memory: Vec<u8>,
+    glass: Vec<u8>,
+    refreshes: u32,
+    asleep: bool,
+}
+
+impl fusuma_platform_embedded::eink::bus::Bus for QuadGlass {
+    type Error = std::convert::Infallible;
+
+    fn command(&mut self, command: u8) -> Result<(), Self::Error> {
+        self.command = command;
+        if command == 0x10 {
+            self.memory.clear();
+        }
+        if command == 0x12 {
+            self.refreshes += 1;
+            self.glass = self.memory.clone();
+        }
+        if command == 0x07 {
+            self.asleep = true;
+        }
+        Ok(())
+    }
+    fn data(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+        if self.command == 0x10 {
+            self.memory.extend_from_slice(data);
+        }
+        Ok(())
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        self.asleep = false;
+        Ok(())
+    }
+    fn wait_busy(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn the_showcase_on_the_four_colour_panel_comes_out_in_its_four_inks() {
+    let cfg = Cfg4g::EPD_1IN54G;
+    let panel = Epd4g::new(QuadGlass::default(), cfg);
+    let mut d = EinkDriver::new_color(
+        Showcase::new(cfg.width, cfg.height),
+        panel,
+        Backend::Integer,
+        policy(),
+    )
+    .unwrap();
+    let mut shown = false;
+    for t in (0..3_000).step_by(100) {
+        if d.step(t).unwrap().refreshed.is_some() {
+            shown = true;
+            break;
+        }
+    }
+    assert!(shown);
+    let g = d.panel_mut().bus_mut();
+    assert_eq!((g.refreshes, g.asleep), (1, true));
+    assert_eq!(g.glass.len(), 50 * 200, "200 x 200 pixels, four to a byte");
+    let counts = histogram(&g.glass, &epd4g::INKS);
+    assert!(counts.iter().all(|(c, _)| *c < 4), "{counts:?}");
+    let white = counts.iter().find(|(c, _)| *c == 1).map_or(0, |(_, n)| *n);
+    assert!(white > 200 * 200 / 2, "most of a page is paper: {counts:?}");
+    assert!(counts.len() >= 2, "there is text as well: {counts:?}");
+}
+
+#[test]
+fn a_picture_of_known_codes_lands_on_the_13_inch_glass_unchanged_and_a_swap_would_show() {
+    let cfg = Cfg13::EPD_13IN3E;
+    let mut panel = Epd13e6::new(
+        DualGlass {
+            width: cfg.width as usize,
+            ..DualGlass::default()
+        },
+        cfg,
+    );
+    // A different byte in every position that matters: the column byte (0..600) and the row, mixed.
+    let (row, rows) = (600usize, 1600usize);
+    let codes: Vec<u8> = (0..rows)
+        .flat_map(|r| (0..row).map(move |c| ((c * 7 + r * 13) % 251) as u8))
+        .collect();
+    panel.show(&codes).unwrap();
+    let link = panel.link_mut();
+    assert_eq!(link.problems, Vec::<String>::new());
+    assert_eq!(link.glass, codes);
+    // The model can tell: with the halves swapped (what a wrong chip select would do) the glass differs.
+    let swapped: Vec<u8> = link
+        .glass
+        .chunks_exact(row)
+        .flat_map(|r| {
+            r[row / 2..]
+                .iter()
+                .chain(&r[..row / 2])
+                .copied()
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_ne!(swapped, codes);
+}

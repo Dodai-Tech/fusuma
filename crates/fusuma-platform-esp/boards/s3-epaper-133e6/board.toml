@@ -1,0 +1,45 @@
+# The Waveshare ESP32-S3-ePaper-13.3E6: a 13.3 inch 1200x1600 six-colour (black, white, yellow, red, blue, green) e-paper on an ESP32-S3
+# (16 MB flash, 8 MB octal PSRAM assumed), with audio, an RTC and a TF slot. The panel has TWO controllers, a master and a slave with a
+# chip select each (`cs`, `cs2`). NOT RUN ON A BOARD: pins, power and sequences are read from Waveshare's firmware
+# (waveshareteam/ESP32-S3-ePaper-13.3E6, ESP-IDF 04_E-Paper_Example); the flash size comes from that example's partition table (a 15 MB app
+# and a 1 MB store) and the PSRAM size is an assumption (the example's picture buffers need PSRAM; Waveshare's page says 8 MB).
+# A refresh takes tens of seconds and there is no partial one. Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-epaper-133e6"
+title = "Waveshare ESP32-S3-ePaper-13.3E6"
+about = "Waveshare ESP32-S3-ePaper-13.3E6, 13.3 inch six-colour e-paper (1200x1600), two panel controllers"
+capabilities = ["display", "button", "wifi", "ble", "battery", "rtc", "storage", "audio", "eink"]
+
+[display]
+width = 1200
+height = 1600
+controller = "epd13e6"
+bus = "spi"
+# `cs` is the master's chip select (the left half), `cs2` the slave's (the right half); `en` (GPIO1) switches the panel's power, which the
+# driver does around every picture. The busy line is high when the panel is idle.
+pins = { sck = 9, mosi = 46, cs = 10, cs2 = 3, dc = 11, rst = 2, busy = 12, en = 1 }
+options = { data_rate_mhz = 10 }
+
+[screen]
+form = "tablet"
+width_mm = 203
+height_mm = 270
+kind = "eink"
+# Six inks; the app is told two bits a pixel, which is what paper-like drawing counts on.
+depth = 2
+refresh_ms = 30000
+inputs = ["keys"]
+
+# BOOT. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 0 }
+active_low = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

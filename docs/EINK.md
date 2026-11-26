@@ -35,6 +35,7 @@ A board file names them (`display.pins`, `[power]` for rails that must be high o
 | `ssd1677` | 3.97" and other 800x480 | yes, `s3-sticky` | `mirror_x` for the Sticky's wiring |
 | `ssd2677` | the Sticky's newer 3.97" panel | through `Sticky::detect` (reads register 0x70) | full refresh only, waveform from the temperature |
 | `uc8179` | Waveshare 7.5" 800x480 | yes (controller name) | busy low while working, partial refresh |
+| `epd13e6` | Waveshare 13.3" six-colour (1200x1600: black, white, yellow, red, blue, green) | yes, `s3-epaper-133e6` | **two controllers**, a master for the left 600 columns and a slave for the right, each with its own chip select (`cs`, `cs2`); a command and its data are one chip-select frame, so it has its own bus trait (`eink::epd13e6::Link`) and C file (`epaper_dual.c`). Four bits a pixel, busy high when idle, whole refreshes only (tens of seconds); the panel is powered up, set up, refreshed, put to sleep and powered off for every picture |
 | `epd4g` | Waveshare 1.54" four-colour "G" (200x200: black, white, yellow, red) | yes, `s3-epaper-154g` | the chip is not named in Waveshare's repository; two bits a pixel, busy high when idle, **no partial refresh** and each one takes seconds: the driver powers the panel off after every picture. Drawn in colour and quantised to the four inks (`EinkDriver::new_color4`, `pack_color4`) |
 
 Screen presets in `fusuma-platform`: `epaper-1in54`, `-2in13`, `-2in9`, `-4in2`, `-7in5`, `-3in97`. The 4.2" (UC8176) has a
@@ -47,6 +48,7 @@ preset and no driver.
 | `s3-sticky` | Seeed reTerminal Sticky | 3.97" 800x480, SSD1677 or SSD2677, GT911 touch, three keys | file, built |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 1.54" 200x200, SSD1681 | file from vendor firmware, built, not run |
 | `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: voltages as the vendor sets them, ALDO3 switched on with a masked write) | file from vendor firmware, built, not run; the vendor counts Y down, the driver up: the picture may be upside down |
+| `s3-epaper-133e6` | Waveshare ESP32-S3-ePaper-13.3E6 | 13.3" 1200x1600 six-colour, `epd13e6` | file from vendor firmware, built, not run; flash 16 MB from the example's partition table, PSRAM 8 MB assumed; needs the colour surface (3.8 MB) |
 | `s3-epaper-154g` | Waveshare ESP32-S3-ePaper-1.54G | 1.54" 200x200 four-colour, `epd4g` | file from vendor firmware, built, not run; 8 MB flash; each refresh is a whole picture and takes seconds |
 | `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 1.54" 200x200, SSD1681; panel power and battery latch on a TCA9554 (`[power.i2c]`) | file from vendor firmware, built and linked for the C6, not run |
 
@@ -54,7 +56,7 @@ Not boards yet:
 
 | Board | Why not |
 |---|---|
-| Waveshare ESP32-S3-ePaper-13.3E6, S3-PhotoPainter | not read; the 13.3" is an IT8951-class or six-colour controller (a different driver) |
+| Waveshare ESP32-S3-PhotoPainter | see docs/BOARDS.md |
 | Waveshare ESP32-S3-RLCD-4.2, S3-LR1121-ePaper-2.9 | not read yet (RLCD is a reflective LCD, not e-paper) |
 | Raspberry Pi Pico / RP2040 e-paper hats | not an ESP; needs the Cortex-M target |
 
@@ -88,6 +90,14 @@ What it found so far, and cannot settle without a panel:
 
 The model is built from the same data sheets and vendor code as the drivers, so it finds the driver's own mistakes, not a wrong
 reading of the chip.
+
+## Colour
+
+`Panel::palette` names the inks of a colour panel (`Palette`: the colours the quantiser sees, the panel's codes, 2 or 4 bits a pixel);
+`EinkDriver::new_color` draws in colour, `pack_color` turns each pixel into the nearest ink's code (an ordered dither mixes two inks for a
+colour between them) and `Panel::full_color` shows the packed picture. The panel's own driver decides the memory layout; the 13.3" splits
+every row between its two controllers. `tests/eink_sim.rs` runs the showcase through both colour drivers into a model of the glass and
+checks the picture, the halves of the 13.3" and that the panel is asleep afterwards.
 
 ## Ghosting, temperature, power
 

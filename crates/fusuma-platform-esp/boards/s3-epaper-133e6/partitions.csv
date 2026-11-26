@@ -1,0 +1,6 @@
+# Waveshare ESP32-S3-ePaper-13.3E6, 16 MB. Not read from a board: the vendor example's layout with explicit offsets. Read the real table
+# first (`espflash read-flash 0x8000 0xc00`); there is no OTA slot, so `showcase install` needs --backup.
+# Name,     Type, SubType, Offset,    Size,     Flags
+nvs,        data, nvs,     0x9000,    0x6000,
+phy_init,   data, phy,     0xf000,    0x1000,
+factory,    app,  factory, 0x10000,   0x300000,
