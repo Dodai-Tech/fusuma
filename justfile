@@ -335,6 +335,14 @@ showcase-esp-build board features="":
 showcase-esp port="" features="" board="":
     nu scripts/showcase.nu install --port "{{ port }}" --features "{{ features }}" --board "{{ board }}"
 
+# Read the whole flash of the connected board to ~/.fusuma/backups (with a checksum), before flashing anything over it
+showcase-esp-backup port="" board="":
+    nu scripts/showcase.nu backup --port "{{ port }}" --board "{{ board }}"
+
+# Write a backup made by showcase-esp-backup over the whole flash again
+showcase-esp-restore-flash file port="":
+    nu scripts/showcase.nu restore-flash --file "{{ file }}" --port "{{ port }}"
+
 # Boot the board's factory app again
 showcase-esp-restore port="":
     nu scripts/showcase.nu restore --port "{{ port }}"

@@ -260,7 +260,53 @@ def "main build" [--board: string, --features: string = ""] {
     with-env (esp_env $nu.home-dir $b) { ^cargo ...(build_args $b $features (target_dir $b)) }
 }
 
-def "main install" [--board: string = "", --slot: string = "ota_0", --port: string = "", --features: string = ""] {
+# Where a backup of `board`'s whole flash goes: ~/.fusuma/backups/<board>-<stamp>.bin (`stamp` like 20261126-0130).
+export def backup_path [board: record, stamp: string, home: string]: nothing -> path {
+    $home | path join ".fusuma" "backups" $"($board.name)-($stamp).bin"
+}
+
+# The espflash arguments that read the whole flash of `board` into `file`.
+export def backup_args [board: record, port: string, file: string]: nothing -> list<string> {
+    ["read-flash" ...(port_args $port) "0" $"(($board.flash_mb | into int) * 1048576)" $file]
+}
+
+# The arguments that write a backup `file` back over the whole flash.
+export def restore_args [port: string, file: string]: nothing -> list<string> {
+    ["write-bin" ...(port_args $port) "0" $file]
+}
+
+# Reads the whole flash of the connected board (the factory firmware, its partitions, its settings) into a file with a
+# checksum next to it, before anything is written. A board that ships with firmware you want back (the Sticky's, the
+# watch's) is backed up once, here.
+def "main backup" [--board: string = "", --port: string = "", --out: string = ""] {
+    let b = if ($board | is-empty) { detect $port } else { board_named $board }
+    let file = if ($out | is-empty) { backup_path $b (date now | format date "%Y%m%d-%H%M") $nu.home-dir } else { $out }
+    mkdir ($file | path dirname)
+    print -e $"Reading ($b.flash_mb) MB of ($b.name) into ($file) ..."
+    ^espflash ...(backup_args $b $port $file)
+    let sum = open --raw $file | hash sha256
+    $"($sum)  ($file | path basename)\n" | save -f $"($file).sha256"
+    print -e $"Backup done: ($file) \(sha256 ($sum | str substring 0..11)...). `nu scripts/showcase.nu restore-flash --file ($file)` writes it back."
+}
+
+# Writes a backup made by `backup` over the whole flash again (the board is back as it was shipped), after checking the
+# checksum next to the file.
+def "main restore-flash" [--file: string, --port: string = ""] {
+    let sumfile = $"($file).sha256"
+    if ($sumfile | path exists) {
+        let want = open $sumfile | split row " " | first
+        let got = open --raw $file | hash sha256
+        if $want != $got { error make { msg: $"($file) does not match its checksum: the backup is damaged" } }
+    } else {
+        print -e $"No checksum next to ($file): writing it unchecked."
+    }
+    ^espflash ...(restore_args $port $file)
+    ^espflash reset ...(port_args $port)
+    print -e "Whole flash restored."
+}
+
+def "main install" [--board: string = "", --slot: string = "ota_0", --port: string = "", --features: string = "", --backup] {
+    if $backup { main backup --board $board --port $port }
     let seq = slot_seq $slot
     let b = if ($board | is-empty) { detect $port } else { board_named $board }
     print -e $"Board: ($b.name), ($b.about)"
@@ -295,4 +341,4 @@ def "main monitor" [--port: string = ""] {
     ^espflash monitor ...(port_args $port)
 }
 
-def main [] { print -e "usage: nu scripts/showcase.nu <detect|gen-sdkconfig|build|install|restore|monitor>" }
+def main [] { print -e "usage: nu scripts/showcase.nu <detect|gen-sdkconfig|build|backup|restore-flash|install|restore|monitor>" }

@@ -5,7 +5,7 @@
 
 use std/assert
 use runner.nu *
-use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args BOARDS_DIR CHIPS board_from load_boards board_named parse_board_info pick_board check_bootable espup_env build_args]
+use ../showcase.nu [sdkconfig crc32 le_bytes otadata_entry slot_seq parse_ptable partition check_fits port_args feature_args BOARDS_DIR CHIPS board_from load_boards board_named parse_board_info pick_board check_bootable espup_env build_args backup_path backup_args restore_args]
 
 def "test showcase: the partition path is filled in everywhere" [] {
     let out = sdkconfig "A=1\nP=\"@PARTITIONS@\"\nQ=\"@PARTITIONS@\"\n" "/x/p.csv"
@@ -156,3 +156,12 @@ def "test showcase: a board builds with its toolchain, target, directory and fea
 }
 
 def main [] { run-tests }
+
+def "test showcase: a backup reads the whole flash of the board into a named file and a restore writes it back" [] {
+    let b = { name: "s3-sticky", flash_mb: 32 }
+    assert equal (backup_path $b "20261126-0130" "/home/x") "/home/x/.fusuma/backups/s3-sticky-20261126-0130.bin"
+    assert equal (backup_args $b "" "f.bin") ["read-flash" "0" "33554432" "f.bin"]
+    assert equal (backup_args $b "/dev/ttyACM0" "f.bin") ["read-flash" "--port" "/dev/ttyACM0" "0" "33554432" "f.bin"]
+    assert equal (restore_args "" "f.bin") ["write-bin" "0" "f.bin"]
+    assert equal (restore_args "/dev/ttyACM0" "f.bin") ["write-bin" "--port" "/dev/ttyACM0" "0" "f.bin"]
+}
