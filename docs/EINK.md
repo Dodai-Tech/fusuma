@@ -19,6 +19,10 @@ that follows the vendor's sequences and has run against the recording bus only.
 Always: SCK, MOSI, CS, DC (data or command), RST, BUSY. Often: a pin or expander output that switches the panel's power. The
 controller's busy polarity differs (SSD1677, SSD1680: high while working; UC8179: low). Voltage is 3.3 V.
 
+A rail behind an I2C chip (an I/O expander, a PMIC) is `[power.i2c]`: the bus pins and `[address, register, value]` writes done
+at boot, after the `[power]` pins (the C6 board's TCA9554: output register 1, direction register 3). The bus is freed after
+the writes, so a touch driver may open its own on the same pins.
+
 A board file names them (`display.pins`, `[power]` for rails that must be high or low at boot); see
 `crates/fusuma-platform-esp/boards/*/board.toml`.
 
@@ -40,13 +44,15 @@ preset and no driver.
 |---|---|---|---|
 | `s3-sticky` | Seeed reTerminal Sticky | 3.97" 800x480, SSD1677 or SSD2677, GT911 touch, three keys | file, built |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 1.54" 200x200, SSD1681 | file from vendor firmware, built, not run |
+| `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 1.54" 200x200, SSD1681; panel power and battery latch on a TCA9554 (`[power.i2c]`) | file from vendor firmware, built and linked for the C6, not run |
 
 Not boards yet:
 
 | Board | Why not |
 |---|---|
-| Waveshare ESP32-C6-ePaper-1.54 | the panel's power switch is on a TCA9554 I/O expander (output 0); needs expander support. Wiring in `BOARDS.md` |
-| Waveshare ESP32-S3-ePaper-3.97, -1.54G, -13.3E6, S3-PhotoPainter | not read yet; the 13.3" is an IT8951-class controller (a different driver), the 1.54G is a gray/colour panel |
+| Waveshare ESP32-S3-ePaper-3.97 | read: SSD1677 800x480 (the init is the Sticky's `0x0C 0xAE 0xC7 0xC3 0xC0 0x80`), SCK 11, MOSI 12, CS 10, DC 9, RST 46, BUSY 3, I2C SDA 41 / SCL 42, 16 MB flash, 8 MB octal PSRAM. The rails come from an **AXP2101 PMIC** (0x34): the vendor sets ALDO1..3 to 3.3 V (registers 0x92..0x94 = 0x1C) and enables them in 0x90. `[power.i2c]` only writes whole registers; 0x90 also holds other rails, so it needs a read-modify-write (a mask) before a board file is safe. Which ALDO feeds the panel is not stated |
+| Waveshare ESP32-S3-ePaper-1.54G | read: a **four-colour** (black, white, red, yellow) 1.54" 200x200 panel; the init (`0x4D`, PSR `0x00` = `0x0F 0x29`, ...) is the UC81xx colour family, not SSD168x, and the app would need a four-colour pipeline (palette quantiser), not the one-bit one. Not supported |
+| Waveshare ESP32-S3-ePaper-13.3E6, S3-PhotoPainter | not read; the 13.3" is an IT8951-class or six-colour controller (a different driver) |
 | Waveshare ESP32-S3-RLCD-4.2, S3-LR1121-ePaper-2.9 | not read yet (RLCD is a reflective LCD, not e-paper) |
 | Raspberry Pi Pico / RP2040 e-paper hats | not an ESP; needs the Cortex-M target |
 

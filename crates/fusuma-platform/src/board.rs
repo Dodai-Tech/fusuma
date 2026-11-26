@@ -552,6 +552,20 @@ pub struct Power {
     /// GPIO numbers set low at boot (a rail enable that is active high and must start off, a shared bus's other device
     /// parked), after the high ones.
     pub low: Vec<u8>,
+    /// Register writes to a chip on an I2C bus (an I/O expander, a power-management chip) that switches the board's rails,
+    /// done after the pins above.
+    pub i2c: Option<PowerI2c>,
+}
+
+/// A bus and the writes that switch rails on through a chip on it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PowerI2c {
+    /// The bus's data pin.
+    pub sda: u8,
+    /// The bus's clock pin.
+    pub scl: u8,
+    /// `[address, register, value]`, in order, each one write of the register then the value.
+    pub writes: Vec<[u8; 3]>,
 }
 
 /// The keys a board can have, and what the toolkit does with each (`ok` presses, `up` and `down` move the focus).
@@ -659,6 +673,16 @@ struct RawPower {
     high: Vec<i64>,
     #[serde(default)]
     low: Vec<i64>,
+    i2c: Option<RawPowerI2c>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPowerI2c {
+    sda: i64,
+    scl: i64,
+    #[serde(default)]
+    writes: Vec<Vec<i64>>,
 }
 
 #[derive(Deserialize)]
@@ -817,7 +841,38 @@ impl BoardFile {
                 if let Some(g) = high.iter().find(|g| low.contains(g)) {
                     return Err(format!("[power] GPIO {g} is both high and low"));
                 }
-                Ok(Power { high, low })
+                let i2c = p
+                    .i2c
+                    .map(|i| {
+                        let pin = |n: &str, g: i64| {
+                            gpio(g).ok_or_else(|| format!("[power.i2c] {n}: GPIO {g} is not 0 to 255"))
+                        };
+                        let (sda, scl) = (pin("sda", i.sda)?, pin("scl", i.scl)?);
+                        if sda == scl {
+                            return Err("[power.i2c] sda and scl are the same pin".to_string());
+                        }
+                        let writes = i
+                            .writes
+                            .iter()
+                            .map(|w| {
+                                let [a, r, v] = w[..] else {
+                                    return Err(format!(
+                                        "[power.i2c] a write is three numbers (address, register, value), not {w:?}"
+                                    ));
+                                };
+                                if !(0..0x80).contains(&a) {
+                                    return Err(format!("[power.i2c] address {a:#x} is not a 7-bit address"));
+                                }
+                                let byte = |n: &str, x: i64| {
+                                    u8::try_from(x).map_err(|_| format!("[power.i2c] {n} {x} is not 0 to 255"))
+                                };
+                                Ok([byte("address", a)?, byte("register", r)?, byte("value", v)?])
+                            })
+                            .collect::<Result<Vec<_>, String>>()?;
+                        Ok(PowerI2c { sda, scl, writes })
+                    })
+                    .transpose()?;
+                Ok(Power { high, low, i2c })
             })
             .transpose()
             .map_err(err)?;
@@ -1261,6 +1316,36 @@ fpu = true
     }
 
     #[test]
+    fn a_rail_behind_an_i2c_chip_is_a_list_of_register_writes() {
+        let with_tables = |t: &str| with("[touch]", &format!("{t}\n\n[touch]"));
+        let b = with_tables(
+            "[power.i2c]\nsda = 18\nscl = 8\nwrites = [[0x20, 3, 0xFE], [0x20, 1, 0x01]]",
+        )
+        .unwrap();
+        let i = b.power.unwrap().i2c.unwrap();
+        assert_eq!((i.sda, i.scl), (18, 8));
+        assert_eq!(i.writes, [[0x20, 3, 0xFE], [0x20, 1, 0x01]]);
+        for (text, says) in [
+            ("[power.i2c]\nsda = 1\nscl = 1\nwrites = []", "same pin"),
+            (
+                "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x20, 3]]",
+                "three numbers",
+            ),
+            (
+                "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x80, 3, 1]]",
+                "address 0x80",
+            ),
+            (
+                "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x20, 256, 1]]",
+                "0 to 255",
+            ),
+        ] {
+            let e = with_tables(text).expect_err(text).0;
+            assert!(e.contains(says), "{text}: {e}");
+        }
+    }
+
+    #[test]
     fn power_pins_and_keys_are_checked() {
         let with_tables = |t: &str| with("[touch]", &format!("{t}\n\n[touch]"));
         let b =
@@ -1542,6 +1627,10 @@ flash_mb = 32
             (
                 "s3-amoled-206",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-206/board.toml"),
+            ),
+            (
+                "c6-epaper-154",
+                include_str!("../../fusuma-platform-esp/boards/c6-epaper-154/board.toml"),
             ),
             (
                 "s3-epaper-154",

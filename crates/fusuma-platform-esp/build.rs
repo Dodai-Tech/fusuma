@@ -199,6 +199,15 @@ fn main() {
         "/// GPIOs driven low at boot, after the high ones.\n#[allow(dead_code)]\npub(crate) const POWER_LOW: &[i32] = &{:?};",
         low.iter().map(|&g| i32::from(g)).collect::<Vec<_>>()
     ));
+    let writes = board
+        .power
+        .as_ref()
+        .and_then(|p| p.i2c.as_ref())
+        .map_or((-1, -1, vec![]), |i| (i32::from(i.sda), i32::from(i.scl), i.writes.clone()));
+    line(format!(
+        "/// The I2C bus (SDA, SCL; -1 for none) a rail chip is on, and its `[address, register, value]` writes.\n#[allow(dead_code)]\npub(crate) const POWER_I2C: (i32, i32) = ({}, {});\n#[allow(dead_code)]\npub(crate) const POWER_I2C_WRITES: &[[u8; 3]] = &{:?};",
+        writes.0, writes.1, writes.2
+    ));
     let (keys, active_low) = board
         .buttons
         .as_ref()

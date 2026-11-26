@@ -48,7 +48,22 @@
       "additionalProperties": false,
       "properties": {
         "high": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "uniqueItems": true },
-        "low": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "uniqueItems": true }
+        "low": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "uniqueItems": true },
+        "i2c": {
+          "type": "object",
+          "description": "Register writes to a chip on an I2C bus (an I/O expander, a PMIC) that switches rails, after the pins.",
+          "additionalProperties": false,
+          "required": ["sda", "scl"],
+          "properties": {
+            "sda": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "scl": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "writes": {
+              "type": "array",
+              "description": "[address, register, value], in order.",
+              "items": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 3 }
+            }
+          }
+        }
       }
     },
     "buttons": {

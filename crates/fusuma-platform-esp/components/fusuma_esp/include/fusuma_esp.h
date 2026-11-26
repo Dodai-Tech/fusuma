@@ -85,6 +85,9 @@ esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms, int active_low);
 // ── Plain GPIO, for power pins and keys. ─────────────────────────────────────────────────────────────────────────
 // Makes `pin` an output at `level` (0 or 1).
 esp_err_t fusuma_gpio_output(int pin, int level);
+// Writes `value` to `reg` of the I2C chip at `addr` (7-bit) on the bus `sda`/`scl`, then frees the bus so a driver can open its own
+// on the same pins (an I/O expander or PMIC switching a rail before the rest starts).
+esp_err_t fusuma_i2c_write_reg(int sda, int scl, int addr, int reg, int value);
 // Makes `pin` an input with the pull-up on.
 esp_err_t fusuma_gpio_input_pullup(int pin);
 // The level of `pin`, 0 or 1.

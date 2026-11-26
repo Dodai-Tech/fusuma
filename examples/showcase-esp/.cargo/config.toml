@@ -5,6 +5,10 @@
 linker = "ldproxy"
 rustflags = ["--cfg", "espidf_time64", "-Alinker_messages"]
 
+[target.riscv32imac-esp-espidf]
+linker = "ldproxy"
+rustflags = ["--cfg", "espidf_time64", "-Alinker_messages"]
+
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
 rustflags = ["--cfg", "espidf_time64", "-Alinker_messages"]

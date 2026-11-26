@@ -1,0 +1,42 @@
+# The Waveshare ESP32-C6-ePaper-1.54: a 1.54 inch 200x200 black and white e-paper (SSD1681 family) on an ESP32-C6 (no
+# PSRAM), with a TCA9554 I/O expander that switches the panel's power. NOT RUN ON A BOARD: pins, the expander address and
+# the bits are read from Waveshare's ESP-IDF firmware (waveshareteam/ESP32-C6-ePaper-1.54). The vendor's examples build for 4 MB
+# of flash, so that is what this file assumes. Schema: crates/fusuma-platform/board.schema.json.
+name = "c6-epaper-154"
+title = "Waveshare ESP32-C6-ePaper-1.54"
+about = "Waveshare ESP32-C6-ePaper-1.54, 1.54 inch e-paper (200x200), TCA9554 expander"
+capabilities = ["display", "button", "wifi", "ble", "battery", "storage", "eink"]
+
+[display]
+width = 200
+height = 200
+controller = "ssd1680"
+bus = "spi"
+# The busy line is high while the panel works. Its power is expander output 0, switched below, so there is no `en`.
+pins = { sck = 6, mosi = 5, miso = 4, cs = 7, dc = 15, rst = 11, busy = 10 }
+options = { data_rate_mhz = 4 }
+
+[screen]
+preset = "epaper-1in54"
+
+# The TCA9554 (0x20) on GPIO18/8: output 0 powers the panel, output 5 keeps the battery on (high is on for both); the
+# audio gate (output 1) and the LED (output 4) stay off. Register 1 is the output, register 3 the direction (0 = output).
+[power.i2c]
+sda = 18
+scl = 8
+writes = [[0x20, 1, 0x21], [0x20, 3, 0xDE]]
+
+# BOOT. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 9 }
+active_low = true
+
+[firmware]
+chip = "esp32c6"
+flash_mb = 4
+
+[hardware]
+ram_kb = 512
+psram_kb = 0
+fpu = false
+simd = false

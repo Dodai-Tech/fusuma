@@ -182,3 +182,33 @@ esp_err_t fusuma_epd_read_byte(uint8_t *value) {
     };
     return spi_bus_add_device(SPI2_HOST, &dev, &s_dev);
 }
+
+#include "driver/i2c_master.h"
+
+esp_err_t fusuma_i2c_write_reg(int sda, int scl, int addr, int reg, int value) {
+    i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = -1,
+        .sda_io_num = sda,
+        .scl_io_num = scl,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    i2c_master_bus_handle_t bus;
+    esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus);
+    if (err != ESP_OK) return err;
+    i2c_device_config_t dev = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = addr,
+        .scl_speed_hz = 100000,
+    };
+    i2c_master_dev_handle_t h;
+    err = i2c_master_bus_add_device(bus, &dev, &h);
+    if (err == ESP_OK) {
+        uint8_t buf[2] = { (uint8_t)reg, (uint8_t)value };
+        err = i2c_master_transmit(h, buf, sizeof buf, 100);
+        i2c_master_bus_rm_device(h);
+    }
+    i2c_del_master_bus(bus);
+    return err;
+}

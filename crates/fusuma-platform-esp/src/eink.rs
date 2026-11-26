@@ -21,7 +21,7 @@ use fusuma_platform_embedded::{HeldTouch, orient};
 
 use crate::board::{
     self, BUTTONS, BUTTONS_ACTIVE_LOW, DISPLAY_OPTIONS as OPTIONS, DISPLAY_PINS as PINS, HEIGHT,
-    POWER_HIGH, POWER_LOW, TOUCH_MIRROR, TOUCH_SWAP_XY, WIDTH,
+    POWER_HIGH, POWER_I2C, POWER_I2C_WRITES, POWER_LOW, TOUCH_MIRROR, TOUCH_SWAP_XY, WIDTH,
 };
 use crate::{LINKED, Options, hardware, heap, touch};
 
@@ -220,6 +220,15 @@ pub(crate) fn run_here<A: App>(
     for &g in POWER_LOW {
         // SAFETY: as above.
         unsafe { ffi::fusuma_gpio_output(g, 0) };
+    }
+    // Rails behind an I2C chip (an I/O expander, a PMIC): register writes on a bus that is freed again afterwards.
+    let (sda, scl) = POWER_I2C;
+    for &[addr, reg, value] in POWER_I2C_WRITES {
+        // SAFETY: a short blocking I2C write, on a bus the call opens and closes itself.
+        let err = unsafe {
+            ffi::fusuma_i2c_write_reg(sda, scl, i32::from(addr), i32::from(reg), i32::from(value))
+        };
+        anyhow::ensure!(err == 0, "rail chip {addr:#x} register {reg:#x}: esp error {err}");
     }
     std::thread::sleep(Duration::from_millis(100));
 
