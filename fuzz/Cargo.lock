@@ -204,12 +204,16 @@ name = "fusuma-anim"
 version = "0.2.0"
 
 [[package]]
+name = "fusuma-cells"
+version = "0.2.0"
+
+[[package]]
 name = "fusuma-fuzz"
 version = "0.0.0"
 dependencies = [
  "fusuma-anim",
  "fusuma-render",
- "fusuma-render-embedded",
+ "fusuma-render-integer",
  "fusuma-render-vello-cpu",
  "fusuma-ui",
  "libfuzzer-sys",
@@ -220,7 +224,7 @@ name = "fusuma-render"
 version = "0.2.0"
 
 [[package]]
-name = "fusuma-render-embedded"
+name = "fusuma-render-integer"
 version = "0.2.0"
 dependencies = [
  "embedded-graphics",
@@ -250,6 +254,7 @@ name = "fusuma-ui"
 version = "0.2.0"
 dependencies = [
  "fusuma-anim",
+ "fusuma-cells",
  "fusuma-render",
 ]
 
