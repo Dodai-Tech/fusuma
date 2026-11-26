@@ -519,3 +519,162 @@ fn a_program_is_described_to_assistive_technology_and_does_what_a_reader_asks() 
     assert_eq!(perform_on_app(&mut r, &wild), Outcome::Gone);
     assert_eq!(perform_on_app(&mut r, &click(WINDOW)), Outcome::Ignored);
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sb {
+    Show,
+    Hide,
+    Key(char),
+    Resized(u32, u32),
+    Nope,
+    Pin,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SbState {
+    pinned: bool,
+    toast: bool,
+    hides: u32,
+    keys: u32,
+    last_key: Option<char>,
+    size: (u32, u32),
+    listening_to_resize: bool,
+}
+
+struct Scoped;
+
+impl Program for Scoped {
+    type State = SbState;
+    type Msg = Sb;
+
+    fn init() -> SbState {
+        SbState::default()
+    }
+
+    fn update(s: &mut SbState, m: Sb) -> Task<Sb> {
+        match m {
+            Sb::Show => s.toast = true,
+            Sb::Hide => {
+                // A pinned toast stays, so the recipe that fired is still wanted.
+                s.toast = s.pinned;
+                s.hides += 1;
+            }
+            Sb::Pin => s.pinned = true,
+            Sb::Key(c) => {
+                s.keys += 1;
+                s.last_key = Some(c);
+            }
+            Sb::Resized(w, h) => s.size = (w, h),
+            Sb::Nope => s.listening_to_resize = !s.listening_to_resize,
+        }
+        Task::none()
+    }
+
+    fn view<'a>(s: &'a SbState, _: &Screen) -> impl Children<Sb> + 'a {
+        (
+            text_fmt(format_args!("{} {}", s.hides, s.keys)),
+            button("Show").on_press(Sb::Show),
+        )
+    }
+
+    fn subscription(s: &SbState) -> Sub<Sb> {
+        // An auto-dismiss that exists only while the toast does, a shortcut that is always there, a resize that is asked for.
+        let mut sub = Sub::keys(2, |k| match k {
+            fusuma_ui::Key::Left => Some(Sb::Key('<')),
+            fusuma_ui::Key::Right => Some(Sb::Key('>')),
+            _ => None,
+        });
+        if s.toast {
+            sub = sub.and(Sub::once(1, 3000, Sb::Hide));
+        }
+        if s.listening_to_resize {
+            sub = sub.and(Sub::resizes(3, Sb::Resized));
+        }
+        sub
+    }
+}
+
+#[test]
+fn a_once_fires_after_its_time_only_once_and_starts_again_when_it_is_wanted_again() {
+    let mut r = Runner::<Scoped, 16, 16, 0>::new(300, 200);
+    r.tick(5000);
+    assert_eq!(r.state().hides, 0, "nothing wanted it");
+    r.send(Sb::Show);
+    assert_eq!(
+        r.deadline(),
+        Some(3000),
+        "a deadline: the loop can sleep until then"
+    );
+    r.tick(2900);
+    assert_eq!(r.state().hides, 0);
+    assert!(r.state().toast);
+    r.tick(100);
+    assert_eq!(r.state().hides, 1, "after three seconds");
+    assert!(
+        !r.state().toast,
+        "which hid it, and the subscription let go of the recipe"
+    );
+    assert_eq!(r.deadline(), None, "nothing left to wake for");
+    r.tick(10_000);
+    assert_eq!(r.state().hides, 1, "and it does not come again");
+    // Shown again: a new start, a full three seconds.
+    r.send(Sb::Show);
+    r.tick(2999);
+    assert_eq!(r.state().hides, 1);
+    r.tick(1);
+    assert_eq!(r.state().hides, 2);
+    // A once that is still wanted after it fired stays silent: shown, and the app does not hide it on Hide.
+    r.send(Sb::Show);
+    r.tick(3000);
+    assert_eq!(r.state().hides, 3);
+    // Hiding by the user before the time takes the recipe away, so it never fires.
+    r.send(Sb::Show);
+    r.tick(1000);
+    r.send(Sb::Hide);
+    let hides = r.state().hides;
+    r.tick(10_000);
+    assert_eq!(
+        r.state().hides,
+        hides,
+        "a recipe that is gone does not fire"
+    );
+    // A once that is still wanted after it fired stays silent for as long as it is wanted.
+    r.send(Sb::Pin);
+    r.send(Sb::Show);
+    r.tick(3000);
+    let fired = r.state().hides;
+    assert!(r.state().toast, "pinned: still wanted");
+    assert_eq!(r.deadline(), None, "and nothing to wake for");
+    r.tick(60_000);
+    assert_eq!(r.state().hides, fired, "it fired once and no more");
+    r.send(Sb::Hide);
+    assert_eq!(r.state().hides, fired + 1);
+}
+
+#[test]
+fn a_shortcut_takes_the_keys_it_wants_and_leaves_the_others_to_the_widgets_and_a_resize_is_heard_when_asked()
+ {
+    let mut r = Runner::<Scoped, 16, 16, 0>::new(300, 200);
+    let mut s = fusuma_render_vello_cpu::new(300, 200).unwrap();
+    r.frame(&mut s).unwrap();
+    App::key(&mut r, fusuma_ui::Key::Left);
+    App::key(&mut r, fusuma_ui::Key::Right);
+    assert_eq!((r.state().keys, r.state().last_key), (2, Some('>')));
+    // A key it does not want goes to the widgets: Next moves the focus to the button, Activate then presses it.
+    App::key(&mut r, fusuma_ui::Key::Next);
+    App::key(&mut r, fusuma_ui::Key::Activate);
+    assert!(
+        r.state().toast,
+        "the button was pressed through the keyboard, which the shortcut did not take"
+    );
+    assert_eq!(r.state().keys, 2);
+    // A resize is not heard until it is asked for.
+    App::resized(&mut r, 400, 300, 100);
+    assert_eq!(r.state().size, (0, 0));
+    r.send(Sb::Nope);
+    App::resized(&mut r, 500, 320, 100);
+    assert_eq!(r.state().size, (500, 320));
+    App::resized(&mut r, 500, 320, 100);
+    App::resized(&mut r, 640, 480, 200);
+    assert_eq!(r.state().size, (640, 480));
+}

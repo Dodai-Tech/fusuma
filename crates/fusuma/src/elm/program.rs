@@ -66,8 +66,10 @@ pub struct Preset<S> {
 #[derive(Clone, Copy, Debug)]
 struct Active<M> {
     recipe: Recipe<M>,
-    /// Milliseconds until an `Every` fires again.
+    /// Milliseconds until an `Every` fires again, or a `Once` fires.
     left: u32,
+    /// A `Once` that has fired: it stays so, and silent, for as long as it is wanted.
+    spent: bool,
 }
 
 /// A timer started by `Task::after`.
@@ -294,10 +296,14 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> Runner<P, N, K,
             }
             if let Some(slot) = self.active.iter_mut().find(|a| a.is_none()) {
                 let left = match recipe {
-                    Recipe::Every(_, ms, _) => ms,
-                    Recipe::Frames(..) => 0,
+                    Recipe::Every(_, ms, _) | Recipe::Once(_, ms, _) => ms,
+                    Recipe::Frames(..) | Recipe::Key(..) | Recipe::Resize(..) => 0,
                 };
-                *slot = Some(Active { recipe, left });
+                *slot = Some(Active {
+                    recipe,
+                    left,
+                    spent: false,
+                });
             }
         }
     }
@@ -352,7 +358,22 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
     }
 
     fn key(&mut self, key: Key) {
-        self.tree.key(key);
+        // A shortcut the program subscribed to takes the key before the widgets do.
+        let mut consumed = false;
+        for i in 0..self.active.len() {
+            if let Some(Active {
+                recipe: Recipe::Key(_, f),
+                ..
+            }) = self.active[i]
+                && let Some(m) = f(key)
+            {
+                self.push(m);
+                consumed = true;
+            }
+        }
+        if !consumed {
+            self.tree.key(key);
+        }
         self.collect_actions();
         self.drain();
     }
@@ -422,6 +443,19 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.tree.invalidate();
         // The view can choose its layout by the screen.
         self.dirty = true;
+        // Whoever asked to hear of every resize does.
+        if (before.width, before.height) != (width, height) {
+            for i in 0..self.active.len() {
+                if let Some(Active {
+                    recipe: Recipe::Resize(_, f),
+                    ..
+                }) = self.active[i]
+                {
+                    self.push(f(width, height));
+                }
+            }
+            self.drain();
+        }
         self.screen_changed(&before);
     }
 
@@ -444,6 +478,20 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
             let Some(a) = self.active[i] else { continue };
             match a.recipe {
                 Recipe::Frames(_, f) => self.push(f(dt_ms)),
+                Recipe::Key(..) | Recipe::Resize(..) => {}
+                Recipe::Once(_, _, m) => {
+                    if a.spent {
+                        continue;
+                    }
+                    let left = a.left.saturating_sub(dt_ms);
+                    if let Some(slot) = &mut self.active[i] {
+                        slot.left = left;
+                        slot.spent = left == 0;
+                    }
+                    if left == 0 {
+                        self.push(m);
+                    }
+                }
                 Recipe::Every(_, ms, m) => {
                     let mut left = a.left;
                     let mut due = 0;
@@ -473,7 +521,8 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         let timers = self.timers.iter().flatten().map(|t| t.left);
         let every = self.active.iter().flatten().filter_map(|a| match a.recipe {
             Recipe::Every(..) => Some(a.left),
-            Recipe::Frames(..) => None,
+            Recipe::Once(..) if !a.spent => Some(a.left),
+            Recipe::Once(..) | Recipe::Frames(..) | Recipe::Key(..) | Recipe::Resize(..) => None,
         });
         timers.chain(every).chain(self.tree.deadline()).min()
     }

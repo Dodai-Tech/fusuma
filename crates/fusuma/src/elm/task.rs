@@ -130,6 +130,15 @@ pub enum Recipe<M> {
     Frames(u16, fn(u32) -> M),
     /// This message every so many milliseconds, from when it first appears.
     Every(u16, u32, M),
+    /// This message once, so many milliseconds after it first appears (an auto-dismiss). It does not come again while the recipe
+    /// stays in the subscription; when the state changes so that the subscription no longer has it, and later has it again, it is
+    /// a new start.
+    Once(u16, u32, M),
+    /// A message made from each key press, or `None` to leave the key to the widgets: a shortcut. A key that gets a message does
+    /// not reach the widgets (it is consumed).
+    Key(u16, fn(fusuma_ui::Key) -> Option<M>),
+    /// A message made from the new size of the window or screen, in pixels, every time it changes.
+    Resize(u16, fn(u32, u32) -> M),
 }
 
 impl<M> Recipe<M> {
@@ -138,7 +147,11 @@ impl<M> Recipe<M> {
     #[must_use]
     pub const fn id(&self) -> u16 {
         match self {
-            Self::Frames(id, _) | Self::Every(id, ..) => *id,
+            Self::Frames(id, _)
+            | Self::Every(id, ..)
+            | Self::Once(id, ..)
+            | Self::Key(id, _)
+            | Self::Resize(id, _) => *id,
         }
     }
 }
@@ -181,6 +194,24 @@ impl<M: Copy> Sub<M> {
     #[must_use]
     pub const fn every(id: u16, ms: u32, message: M) -> Self {
         Self::of(Recipe::Every(id, ms, message))
+    }
+
+    /// `message` once, `ms` milliseconds after this appears in a subscription, `id` naming the recipe.
+    #[must_use]
+    pub const fn once(id: u16, ms: u32, message: M) -> Self {
+        Self::of(Recipe::Once(id, ms, message))
+    }
+
+    /// A shortcut: `f(key)` for every key press; a `Some` is sent and the key is consumed, a `None` leaves it to the widgets.
+    #[must_use]
+    pub const fn keys(id: u16, f: fn(fusuma_ui::Key) -> Option<M>) -> Self {
+        Self::of(Recipe::Key(id, f))
+    }
+
+    /// `f(width, height)` every time the screen changes size.
+    #[must_use]
+    pub const fn resizes(id: u16, f: fn(u32, u32) -> M) -> Self {
+        Self::of(Recipe::Resize(id, f))
     }
 
     /// This subscription and `other`; what does not fit is dropped.

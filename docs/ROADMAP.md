@@ -353,8 +353,11 @@ the same pixels as the hand-built page, a message log that replays to the same s
 - [ ] Node at 128 bytes: needs the text out of the node (a shared arena with compaction); about 7 KB on a 112-node tree (the showcase has room for 256 nodes now: roughly double, not measured)
 - [ ] A flash-per-added-page report, and a `riscv32imc` size report (no C3 board here: Tier 0 is proven by the allocation
   test and the `no_std` builds until there is one)
-- [ ] Scoped effects (`auto_dismiss`, `every` as view modifiers that stop on teardown); `Task::perform` with futures as an
-  optional adapter for desktop and web; a `Sub` for resize and key shortcuts
+- [x] **Scoped effects as subscriptions** (they stop when the state stops wanting them, so nothing is ever cancelled by hand): `Sub::once`
+  (an auto-dismiss: fires once after its time, silent while it stays wanted, a new start when it comes back, a deadline so the loop
+  can sleep), `Sub::keys` (a shortcut: a `Some` is consumed, a `None` goes to the widgets) and `Sub::resizes`. `on_screen` covers the
+  changes a layout cares about
+- [ ] `Task::perform` with futures as an optional adapter for desktop and web
 - [ ] The simulator on the web build (the same scripts in the browser)
 
 ## Animation
