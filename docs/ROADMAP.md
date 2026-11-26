@@ -12,6 +12,8 @@ Waveshare ESP32-S3-Touch-AMOLED-2.06 (410x502), the P4 the Waveshare ESP32-P4 7"
 4. **Web** (done, see [Boards and platforms](#boards-and-platforms)).
 5. **The Elm-style view layer** (in progress, see [View layer](#view-layer)): one program shape from an ESP32-C3 to the
    web, declarative, with no allocation on the chip.
+6. **One screen description, phones and e-paper** (built, not run on hardware; see [Screens](#screens-one-description-on-every-platform),
+   [E-paper](#e-paper-reflective-panels) and [Mobile](#mobile)): the Sticky and the phone hosts are next to test.
 
 Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
 
@@ -75,7 +77,7 @@ fusuma                       the front door: the Elm API (Program, views, Task, 
       fusuma-render-integer  the integer engine for chips (no_std, no allocator)
       fusuma-render-vello*   Vello on the CPU and the GPU
   fusuma-text, -fonts        shaping and bundled fonts (optional, by feature)
-  fusuma-platform-*          hosts: desktop (winit), embedded (Board) + esp, tui (crossterm), console (any writer)
+  fusuma-platform-*          hosts: desktop (winit), embedded (Board) + esp + eink, mobile (+ android, ios, linux-mobile), tui (crossterm), console (any writer)
   fusuma-cells, -cells-panel the text UI
   fusuma-test, -palette      the simulator, palette generation
 ```
@@ -101,6 +103,7 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 | `fusuma-fonts` | the font catalog (families, presets, icons), `FontSet`, glyph atlases made at build time | yes |
 | `fusuma-platform` | the renderer choice, settings (`fusuma.toml`) and board files (`board.toml`) | yes (`toml` needs `std`) |
 | `fusuma-platform-embedded` | what every board shares: `Board`, `Driver`, the renderer surface, touch tracking, timing | yes |
+| `fusuma-platform-eink` | e-paper over `fusuma-platform-embedded`: one-bit packing, batched refresh, SSD1680, SSD1677, SSD2677, the Sticky's panel detection (unpublished, not run on a panel) | yes |
 | `fusuma-platform-esp` | ESP-IDF runtime and drivers per controller; boards are files (not a workspace member) | no |
 | `fusuma-platform-desktop` | a `winit` window, GPU Vello else CPU | no |
 | `fusuma-cells` | the text UI's cells: grid, diff, ANSI encoder, key and mouse decoder, wide characters | yes |
@@ -369,37 +372,9 @@ the same pixels as the hand-built page, a message log that replays to the same s
   runner for CI (none)
 - [ ] **Linux phones:** run the desktop host on postmarketOS (it should already work on Wayland), then the shell's keyboard
   and output rotation from this crate
-- [x] **Size classes know the physical size** (`Screen::with_size_mm`, `with_form_factor`, `form_factor()`, `dpi()`; `Display::screen()`): a declared form factor beats the glass, the glass (short side under 55 mm a watch, under 85 a phone) beats the width. Hosts still have to report it (todo: `board.toml` mm, Android `xdpi`, `wl_output`), and `SizeClass` and `Metrics` are not built. Before: by logical width alone a 360 dp phone is `Class::Watch` (the limit is 480);
-  `Screen` needs the dpi or a form-factor hint from the host
+- [x] **A phone is a phone, not a watch:** `Display` carries the glass size and `Display::screen()` gives the `Screen` (see
+  [Screens](#screens-one-description-on-every-platform)); the hosts' `display(...)` fill it
 - [ ] A `mobile` preset on the `fusuma` crate; lifecycle on the web (a page going to the background) through the same `Session`
-
-### E-paper (reflective panels)
-
-The app draws as always, on the integer renderer or Vello CPU; the `fusuma-platform-eink` crate (it draws through `fusuma-platform-embedded`) does the rest:
-`EinkDriver` tells the app what the glass is (`Input::Screen`: `Palette::PAPER`, no motion), quantises the RGB565 picture to one
-bit a pixel (`pack_mono`: threshold or 4x4 ordered dither, eight pixels a byte, a set bit is white), batches damage with a
-`Planner` (settle time, minimum interval, one union rectangle, a full refresh against ghosting every N partial ones and
-after sleep) and sends it through a `Panel`. `Ssd1680` is a panel over a small `Bus` trait (1.54, 2.13 and 2.9 inch
-Waveshare modules; presets `epaper-1in54`, `-2in13`, `-2in9`, `-4in2`, `-7in5`).
-
-- [x] Quantising and packing, `Planner`, `EinkDriver`, `Panel`, `Ssd1680` over a recording bus; tests on both backends,
-  frames looked at as images
-- [x] **Seeed reTerminal Sticky** (3.97 inch, 800x480, ESP32-S3R8): board file `s3-sticky` (pins from Seeed's ESPHome model
-  and Sticky Playground: SPI 13/14, CS 15, DC 16, RST 17, BUSY 18, panel power 47, power latch 45/46, touch power 42, keys
-  4/5/6, GT911 on I2C 2/3), `[power]` and `[buttons]` in the board file, the `epaper_spi.c` bus in `fusuma_esp`, `eink` run
-  loop in `fusuma-platform-esp`. **Two panels have shipped**: the SSD1677 (`Ssd1677`: windows, planes, partial refresh,
-  mirrored in x) and the newer SSD2677 (`Ssd2677`: another command set, 2 bits a pixel, full refresh only, waveform from the
-  temperature); `Sticky::detect` reads register 0x70 (0x07 is an SSD2677). Builds as firmware; **not run on a Sticky yet**
-- [ ] On a Sticky: which panel it has, the SSD2677's orientation (mirror and scan direction are unmeasured), the touch
-  swap, the real refresh times, the deep sleep and wake (OK key), battery gauge and RTC; the four-gray mode (both panels);
-  the partition table (read the Sticky's own before flashing)
-- [ ] Run on a real Waveshare SSD1680 panel (its sequences follow Waveshare's V2/V4 drivers and are unchecked): `board.toml`
-  `controller = "ssd1680"`, then measure the refresh times
-- [ ] UC8176 / UC8179 panels (4.2 and 7.5 inch), the 4-gray mode (`Levels`, two bit planes), tri-colour (red/yellow plane),
-  landscape on a panel built portrait (rotate while packing)
-- [ ] A layout for tiny panels in the showcase (the watch tiles are cut off at 128 px) and focus by keys as the main input
-- [ ] **Bug (not e-paper):** after `Key::Next` on the Overview page the showcase on Vello CPU asks for a frame forever and draws none (integer is fine)
-- [ ] A one-bit framebuffer renderer (an 800x480 RGB565 frame is 768 KB: PSRAM only; 1 bit is 48 KB)
 
 ### Screens: one description on every platform
 
@@ -407,27 +382,46 @@ A `Screen` is the one value that describes the device, and every host fills it i
 **facts once**; an app never configures display hardware, it reads the result (`form_factor()`, the theme) and the toolkit
 derives the rest.
 
-- [x] Physical size and a declared form factor on `Screen` (`with_size_mm`, `with_form_factor`, `form_factor()`, `dpi()`,
-  `Display::screen()`); the order is declared, then the glass (short side under 55 mm a watch, under 85 a phone), then the width
-- [x] **More form factors, declared and not guessed** (`FormFactor::Micro`, `Panel`; `form` in a board file; under `MICRO_BELOW` = 260 logical px an undeclared screen is guessed `Micro`): `Micro` (a tiny display, no touch: 128x64 and 240x135 boards, e-paper
-  tags; one value or short list per screen, driven by a button or an encoder) and `Panel` (a small touch board that is not
-  worn: 1.28 to 2.8 inch dev boards, a smart knob), below `Watch` (worn: the square with round corners, a crown, a tile grid),
-  `Phone`, `Tablet`, `Desktop`. Size alone cannot tell a 1.28 inch round board from a watch, so `board.toml` says
-  `form = "micro" | "panel" | "watch"`; with nothing declared, only a very small pixel size (under about 240 logical px) guesses `Micro`
-- [x] **Display kind** (`DisplayKind`, `Screen::with_glass`, `is_reflective`, `motion()`; `Screen::theme` turns motion off on a reflective glass, the showcase follows; `Palette::PAPER` and `Screen::palette` give a one-bit glass black on white) (a property of the glass, across every form factor): `Emissive` or `Reflective` (e-ink, memory LCD),
-  the colour depth (1 bit, 4 or 16 grays, spot colours) and a refresh hint (`Fast` or `Slow`, in ms). Reflective gives, with
-  no code in the app: a mono or grayscale palette from `fusuma-palette`, animation `Off` (pages jump, scroll by whole steps),
-  and one batched damage rect per refresh, with a full clear now and then against ghosting
-- [x] **Input kind** (`Inputs`, a set: touch, keys, encoder, pointer; reported, no layout reads it yet) (touch, keys, encoder, pointer) as its own property, not part of the form factor: a micro board can
-  have touch and a watch can have only a crown; layout asks for it independently
-- [x] **Board presets** (`[screen] preset = "..."` in `board.toml`, six presets in `SCREEN_PRESETS`; the ESP build emits `SCREEN`, the driver sends `Input::Screen` / `App::screen`): `preset = "..."` in `board.toml` fills in the whole `Screen` (size, mm, form, display kind, depth,
-  refresh, input) for known hardware (the S3 watch, the small S3 boards, common e-paper modules); custom hardware declares only
-  what it knows, every other field has a default
-- [x] `SizeClass` (`Screen::size_class`) and `Metrics` (`Screen::metrics`; nothing in the showcase uses them yet); `Class` stays as the compatibility layer. Old text: (compact, medium, expanded by window width, for resizing) apart from the form factor, and `Metrics`
-  (touch target and spacing minimums per form factor); `Class` stays as the compatibility layer
-- [~] Hosts report what they know (done: ESP `board.toml`, `fusuma_platform_android::display` from `DisplayMetrics`, `..._ios::display`, `..._linux_mobile::display` from `wl_output`; todo: desktop (`winit` monitor mm), web, a change as an Elm message); was: ESP `board.toml` (mm, shape, form, display kind), Android `DisplayMetrics` (`xdpi`), iOS
-  `UIScreen`, Wayland `wl_output` (mm), the web `devicePixelRatio` (no mm); a change (rotation, resize, keyboard) arrives as a
-  message in the Elm layer
+- [x] **Form factor:** `FormFactor` = `Micro`, `Panel`, `Watch`, `Phone`, `Tablet`, `Desktop`. Decided by what the host
+  declares (`form` in a board's `[screen]`), then the glass (`with_size_mm`: short side under 55 mm a watch, under 85 a
+  phone), then the width (under `MICRO_BELOW` = 260 logical px a `Micro`). Small boards are declared: a 1.28 inch round board
+  and a watch have the same glass. `class()` respects it, so a 360 dp phone with its size known is a phone, not a watch
+- [x] **Display kind:** `DisplayKind` (`Emissive`, `Reflective`), depth in bits and refresh time (`with_glass`). A reflective
+  glass turns motion off (`Screen::theme`, the showcase follows) and, below 4 bits, takes `Palette::PAPER` (`Screen::palette`)
+- [x] **Inputs** (`Inputs`: touch, keys, encoder, pointer), `SizeClass` (compact, medium, expanded, follows the window) and
+  `Metrics` (touch target, gap, columns per form factor, scaled): reported and tested, **no layout reads them yet**
+- [x] **Board `[screen]`:** `preset = "..."` (`SCREEN_PRESETS`: the S3 watch, round 1.28, OLED 0.96, LCD 1.14, e-paper 1.54,
+  2.13, 2.9, 3.97, 4.2, 7.5, the P4 7 inch) and any key to override; the ESP build emits `SCREEN`, and the driver sends
+  `Input::Screen`, which reaches an app as `App::screen`. `Board::screen()` has a default
+- [x] **Hosts report the glass:** ESP `board.toml`; `fusuma_platform_android::display` (`DisplayMetrics`),
+  `fusuma_platform_ios::display` (points and scale, the model's size), `fusuma_platform_linux_mobile::display`
+  (`wl_output` mm, rotation swaps the sizes)
+- [ ] Desktop (`winit` monitor size), web (no mm, `devicePixelRatio`), and a change (rotation, resize, keyboard) as an
+  Elm message
+- [ ] A layout in the showcase that reads form factor, inputs and metrics (tiny panels: the watch tiles are cut off at 128 px;
+  keys as the main input)
+
+### E-paper (reflective panels)
+
+The app draws as always, on the integer renderer or Vello CPU. `fusuma-platform-eink` (over `fusuma-platform-embedded`) does the
+rest: `EinkDriver` tells the app what the glass is, quantises the RGB565 picture to one bit (`pack_mono`: threshold or 4x4
+ordered dither, a set bit is white), batches damage with a `Planner` (settle time, minimum interval, one union rectangle in
+whole bytes, a full flashing refresh every N partials and after sleep) and sends it through a `Panel` over a small `Bus`
+trait. Controllers: `Ssd1680` (Waveshare 1.54, 2.13, 2.9 inch), `Ssd1677` and `Ssd2677` (800x480, the two panels the Sticky
+has shipped with, told apart by register 0x70 in `Sticky::detect`).
+
+- [x] Quantising, `Planner`, `EinkDriver`, `Panel`, the three controllers over a recording bus; the showcase on both
+  renderers, packed frames looked at as images. **Nothing has run on a panel.**
+- [x] **Seeed reTerminal Sticky** (3.97 inch, 800x480, ESP32-S3R8, `s3-sticky`): pins from Seeed's ESPHome model, `[power]` and
+  `[buttons]` in the board file, `epaper_spi.c` in `fusuma_esp`, the e-paper run loop in `fusuma-platform-esp`, GT911 touch.
+  Builds as firmware next to the watch's. The SSD2677 has no published partial refresh: every refresh is a full one
+- [ ] **On a Sticky:** which panel it has, the SSD2677's mirror and scan direction, the touch swap, real refresh times, deep
+  sleep and the OK-key wake, battery gauge and RTC, the partition table (read the Sticky's own before flashing, back up first)
+- [ ] On a Waveshare SSD1680 module (sequences follow Waveshare's V2/V4 drivers): `board.toml` `controller = "ssd1680"`
+- [ ] UC8176 / UC8179 (4.2 and 7.5 inch), four grays (two bit planes), tri-colour, Spectra 6, landscape on a portrait panel
+- [ ] A one-bit framebuffer renderer (an 800x480 RGB565 frame is 768 KB, PSRAM only; one bit is 48 KB)
+- [ ] **Bug (not e-paper):** after `Key::Next` on the Overview page the showcase on Vello CPU asks for a frame forever and draws
+  none (integer is fine); the e-paper key test runs on the integer backend only until it is fixed
 
 ## Text UI
 
