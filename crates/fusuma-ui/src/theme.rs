@@ -332,6 +332,49 @@ impl Theme {
         }
     }
 
+    /// This theme with its text scaled by `percent` (the person's font-size setting, 50 to 400, 100 unchanged) and nothing else:
+    /// the text sizes are multiplied, and a control grows with them so its label still fits (it never shrinks: a small touch
+    /// target is not made smaller by small text). Spacing, radii and colours stay. Apply it to the base theme and
+    /// [`scaled`](Self::scaled) for the display on the result: the two multiply.
+    #[must_use]
+    pub const fn with_text_scale(self, percent: u32) -> Self {
+        let p = if percent < 50 {
+            50
+        } else if percent > 400 {
+            400
+        } else {
+            percent
+        };
+        if p == 100 {
+            return self;
+        }
+        const fn s(v: u32, p: u32) -> u32 {
+            let r = (v as u64 * p as u64 + 50) / 100;
+            if r > u32::MAX as u64 {
+                u32::MAX
+            } else if r < 1 {
+                1
+            } else {
+                r as u32
+            }
+        }
+        let grown = s(self.control_height, p);
+        Self {
+            text: TextSizes {
+                caption: s(self.text.caption, p),
+                body: s(self.text.body, p),
+                title: s(self.text.title, p),
+                icon: s(self.text.icon, p),
+            },
+            control_height: if grown > self.control_height {
+                grown
+            } else {
+                self.control_height
+            },
+            ..self
+        }
+    }
+
     /// This theme for a display at `percent` scale (100 is one pixel per logical pixel, 200 a 2x screen): every
     /// length is multiplied and rounded, and nothing that was visible disappears (a 1 pixel outline stays at
     /// least 1). Colours and motion are unchanged. `percent` is held between 50 and 800, and 100 returns the
@@ -1408,6 +1451,40 @@ mod tests {
         assert_eq!(mix(a, b, 5000), b, "held to 1000");
         assert_eq!(Colors::on(Color::rgb(255, 230, 100)), Color::BLACK);
         assert_eq!(Colors::on(Color::rgb(20, 60, 160)), Color::WHITE);
+    }
+
+    #[test]
+    fn text_scaling_changes_only_the_text_and_lets_controls_grow_but_never_shrink() {
+        let t = Theme::DARK;
+        assert_eq!(t.with_text_scale(100), t);
+        let big = t.with_text_scale(200);
+        assert_eq!(big.text.body, t.text.body * 2);
+        assert_eq!(big.text.title, t.text.title * 2);
+        assert_eq!(
+            big.control_height,
+            t.control_height * 2,
+            "a control grows with its label"
+        );
+        assert_eq!(
+            (big.spacing, big.radii, big.colors),
+            (t.spacing, t.radii, t.colors)
+        );
+        let small = t.with_text_scale(50);
+        assert_eq!(small.text.body, (t.text.body + 1) / 2);
+        assert_eq!(
+            small.control_height, t.control_height,
+            "a touch target is not made smaller"
+        );
+        // Held to 50 to 400, and the two scales multiply in either order.
+        assert_eq!(t.with_text_scale(1), t.with_text_scale(50));
+        assert_eq!(t.with_text_scale(9000), t.with_text_scale(400));
+        let both = t.with_text_scale(150).scaled(200);
+        assert!(
+            both.text.body.abs_diff(t.text.body * 3) <= 2,
+            "rounded twice: {}",
+            both.text.body
+        );
+        assert!(both.control_height >= t.control_height * 3);
     }
 
     #[test]

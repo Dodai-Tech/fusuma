@@ -295,6 +295,8 @@ pub struct Showcase {
     chips: [bool; 3],
     /// What the Data and Pickers pages keep.
     x: pages::Extra,
+    /// The person's font size setting in percent, on top of the display's scale.
+    text_scale: u32,
     /// The Overview page's view, kept in step with its part of the tree.
     pages: fusuma::Host<pages::PageMsg, 160>,
     /// The icon characters, looked up once (a lookup by name is not free on a chip).
@@ -357,6 +359,7 @@ impl Showcase {
             step: 1,
             chips: [true, false, false],
             x: pages::Extra::START,
+            text_scale: 100,
             pages: fusuma::Host::new(),
             icons: None,
             notify: true,
@@ -1220,6 +1223,28 @@ impl Showcase {
             == fusuma::FormFactor::Micro
     }
 
+    /// The person's font size, in percent (50 to 400): the text and the controls grow, everything else stays. The page is laid out
+    /// again with it.
+    pub fn set_text_scale(&mut self, percent: u32) {
+        let percent = percent.clamp(50, 400);
+        if percent != self.text_scale {
+            self.text_scale = percent;
+            self.theme = self.make_theme();
+            self.rebuild();
+        }
+    }
+
+    /// Lays the whole app out right to left (rows start at the right); the pages and the state are kept.
+    pub fn set_rtl(&mut self, rtl: bool) {
+        self.tree.set_rtl(rtl);
+    }
+
+    /// The font size setting in percent.
+    #[must_use]
+    pub const fn text_scale(&self) -> u32 {
+        self.text_scale
+    }
+
     /// What the platform said the device is (a plain screen until it says).
     #[must_use]
     pub const fn device(&self) -> fusuma::Screen {
@@ -1331,6 +1356,7 @@ impl Showcase {
             return Theme::CELLS.with_colors(self.palette.colors(self.dark));
         }
         theme(self.dark, &self.palette)
+            .with_text_scale(self.text_scale)
             .scaled(self.scale)
             .with_motion(budget)
     }
@@ -3085,6 +3111,77 @@ mod tests {
                 .semantics()
                 .any(|n| n.name == "Hidden until opened")
         );
+    }
+
+    #[test]
+    fn a_bigger_font_size_makes_the_text_and_the_controls_bigger_and_keeps_the_page() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Buttons);
+        settle(&mut s);
+        s.frame(&mut r).unwrap();
+        let before = s
+            .rect_of(s.tree.find(pages::wid::CLICK_ME).unwrap())
+            .unwrap();
+        s.set_text_scale(150);
+        s.frame(&mut r).unwrap();
+        assert_eq!(s.text_scale(), 150);
+        assert_eq!(s.page(), Page::Buttons, "the page is kept");
+        let after = s
+            .rect_of(s.tree.find(pages::wid::CLICK_ME).unwrap())
+            .unwrap();
+        assert!(
+            after.h > before.h && after.w > before.w,
+            "{before:?} {after:?}"
+        );
+        assert!(s.theme().text.body > Theme::DARK.text.body, "bigger text");
+        // The same value again changes nothing, and it is held to 50 to 400.
+        let nodes = s.tree.len();
+        s.set_text_scale(150);
+        assert_eq!(s.tree.len(), nodes);
+        s.set_text_scale(9000);
+        assert_eq!(s.text_scale(), 400);
+        s.set_text_scale(100);
+        s.frame(&mut r).unwrap();
+        assert_eq!(
+            s.rect_of(s.tree.find(pages::wid::CLICK_ME).unwrap()),
+            Some(before)
+        );
+    }
+
+    #[test]
+    fn right_to_left_mirrors_the_app_and_every_button_still_works() {
+        let (mut s, mut r) = app();
+        go(&mut s, Page::Buttons);
+        settle(&mut s);
+        s.frame(&mut r).unwrap();
+        let click = s.tree.find(pages::wid::CLICK_ME).unwrap();
+        let del = s.tree.find(pages::wid::DELETE).unwrap();
+        let (a, b) = (s.rect_of(click).unwrap(), s.rect_of(del).unwrap());
+        assert!(a.x < b.x, "left to right: Click me is first, on the left");
+        s.set_rtl(true);
+        s.frame(&mut r).unwrap();
+        let (a2, b2) = (s.rect_of(click).unwrap(), s.rect_of(del).unwrap());
+        assert!(
+            a2.x > b2.x,
+            "right to left: Click me is on the right of Delete: {a2:?} {b2:?}"
+        );
+        // What was pressable still is, where it is now.
+        tap(&mut s, click);
+        assert!(
+            s.tree()
+                .text(s.tree.find(pages::wid::COUNTER).unwrap())
+                .is_some_and(|t| t.contains('1'))
+        );
+        // The sidebar and the page are inside the screen.
+        for n in s.tree().semantics() {
+            assert!(
+                n.rect.x >= 0 && n.rect.right() <= i32::try_from(s.bounds.w).unwrap() + 1,
+                "{n:?}"
+            );
+        }
+        s.set_rtl(false);
+        s.frame(&mut r).unwrap();
+        assert_eq!(s.rect_of(click), Some(a));
     }
 
     #[test]

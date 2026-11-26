@@ -515,12 +515,12 @@ impl<const N: usize> Tree<N> {
                 CrossAlign::End => line_h.saturating_sub(h),
             };
             let (sx, sy) = self.nodes[ci].shift;
-            let rect = Rect::new(
-                offset(inner.x, i64::from(x)),
-                offset(inner.y, i64::from(y) + i64::from(dy)),
-                w,
-                h,
-            );
+            let left = if self.rtl {
+                offset(inner.right(), -(i64::from(x) + i64::from(w)))
+            } else {
+                offset(inner.x, i64::from(x))
+            };
+            let rect = Rect::new(left, offset(inner.y, i64::from(y) + i64::from(dy)), w, h);
             self.set_rect(ci, rect.translate(i32::from(sx), i32::from(sy)));
         }
     }
@@ -639,6 +639,13 @@ impl<const N: usize> Tree<N> {
                     offset(inner.y, pos),
                     cross_px,
                     main_px,
+                ),
+                // Right to left: the row starts at its right edge, so a position along it is measured from there.
+                Axis::Row if self.rtl => Rect::new(
+                    offset(inner.right(), -(pos + i64::from(main_px))),
+                    offset(inner.y, cross_off),
+                    main_px,
+                    cross_px,
                 ),
                 Axis::Row => Rect::new(
                     offset(inner.x, pos),
@@ -802,6 +809,77 @@ mod tests {
         // A screen narrower than that squeezes the columns.
         let (t, _, g) = grid_of(3, 6, 4, Length::Content, 30);
         assert!(rect(&t, g).w <= 30, "{}", rect(&t, g).w);
+    }
+
+    #[test]
+    fn right_to_left_starts_rows_flows_and_grids_at_the_right_and_leaves_columns_alone() {
+        let mut t = Tree::<32>::new();
+        let root = t.column(None, Style::new().padding(10).gap(6)).unwrap();
+        let row = t
+            .row(Some(root), Style::new().width(Length::Fill(1)).gap(5))
+            .unwrap();
+        let a = t.spacer(Some(row), fixed(30, 10)).unwrap();
+        let b = t.spacer(Some(row), fixed(20, 10)).unwrap();
+        let fill = t
+            .spacer(
+                Some(row),
+                Style::new()
+                    .width(Length::Fill(1))
+                    .height(Length::Fixed(10)),
+            )
+            .unwrap();
+        let flow = t
+            .flow(Some(root), Style::new().width(Length::Fill(1)).gap(4))
+            .unwrap();
+        let f: std::vec::Vec<_> = (0..4)
+            .map(|_| t.spacer(Some(flow), fixed(40, 8)).unwrap())
+            .collect();
+        let grid = t
+            .grid(Some(root), 2, Style::new().width(Length::Fill(1)).gap(4))
+            .unwrap();
+        let g: std::vec::Vec<_> = (0..4)
+            .map(|_| t.spacer(Some(grid), fixed(10, 6)).unwrap())
+            .collect();
+        let col = t
+            .column(Some(root), Style::new().align(CrossAlign::Start))
+            .unwrap();
+        let c = t.spacer(Some(col), fixed(15, 5)).unwrap();
+        let bounds = Rect::new(0, 0, 200, 200);
+        t.update(&screen(), &THEME, bounds);
+        // Left to right (what it always was).
+        assert_eq!((rect(&t, a).x, rect(&t, b).x), (10, 45));
+        assert_eq!(rect(&t, fill).x, 45 + 20 + 5);
+        assert_eq!(rect(&t, f[0]).x, 10);
+        assert_eq!(rect(&t, g[0]).x, 10);
+        let ltr_col = rect(&t, c);
+        let ltr_ys: std::vec::Vec<i32> = f.iter().map(|n| rect(&t, *n).y).collect();
+        assert!(!t.is_rtl());
+        // Right to left: the first child is the rightmost, order and gaps kept, and the fill takes what is left on the left.
+        t.set_rtl(true);
+        assert!(t.is_rtl());
+        t.update(&screen(), &THEME, bounds);
+        let right = 200 - 10;
+        assert_eq!(rect(&t, a).right(), right);
+        assert_eq!(rect(&t, b).right(), rect(&t, a).x - 5);
+        assert_eq!(rect(&t, fill).right(), rect(&t, b).x - 5);
+        assert_eq!(rect(&t, fill).x, 10, "the fill reaches the left edge");
+        // The flow: the first of the line is at the right; the line breaks where it did.
+        assert_eq!(rect(&t, f[0]).right(), right);
+        assert!(rect(&t, f[1]).right() < rect(&t, f[0]).x + 1);
+        let rtl_ys: std::vec::Vec<i32> = f.iter().map(|n| rect(&t, *n).y).collect();
+        assert_eq!(rtl_ys, ltr_ys, "lines break at the same places");
+        // The grid: the first column is the right one.
+        assert!(rect(&t, g[0]).x > rect(&t, g[1]).x);
+        assert_eq!(rect(&t, g[0]).right(), right);
+        // A column is unchanged.
+        assert_eq!(rect(&t, c), ltr_col);
+        // Back again: exactly as before.
+        t.set_rtl(false);
+        t.update(&screen(), &THEME, bounds);
+        assert_eq!((rect(&t, a).x, rect(&t, b).x), (10, 45));
+        assert_eq!(rect(&t, g[0]).x, 10);
+        t.set_rtl(false);
+        assert!(!t.is_rtl());
     }
 
     #[test]

@@ -632,6 +632,8 @@ pub struct Tree<const N: usize> {
     pub(crate) pending_click: Option<(NodeId, i32, crate::textedit::Click)>,
     /// The y of that press, for a text area (which line it landed on).
     pub(crate) pending_y: i32,
+    /// Right-to-left layout: rows, wrapping rows and grids start at the right.
+    pub(crate) rtl: bool,
     /// The edits of the text fields that can be undone and redone.
     pub(crate) history: crate::textedit::History,
     /// Milliseconds the animation clock has run, to tell a double click from two clicks.
@@ -701,6 +703,7 @@ impl<const N: usize> Tree<N> {
             preedit: InputText::EMPTY,
             pending_click: None,
             pending_y: 0,
+            rtl: false,
             history: crate::textedit::History::new(),
             clock: 0,
             last_press: None,
@@ -928,6 +931,28 @@ impl<const N: usize> Tree<N> {
         }
         self.request(free, Flags::LAYOUT | Flags::PAINT);
         Ok(self.id_of(free))
+    }
+
+    /// Sets the reading direction: `true` lays rows, wrapping rows and grids out from the right (the first child is the
+    /// rightmost, a column's children keep their order). The page is laid out again. This mirrors the **layout**: the text itself
+    /// is drawn by the renderer left to right (shaping and reordering of right-to-left scripts is not done here), and the slider
+    /// and splitter keys keep their meaning.
+    pub fn set_rtl(&mut self, rtl: bool) {
+        if self.rtl != rtl {
+            self.rtl = rtl;
+            self.measure_all = true;
+            if let Some(root) = self.root.map(usize::from) {
+                self.request(root, Flags::LAYOUT | Flags::PAINT);
+                let r = self.nodes[root].rect;
+                self.add_damage(r);
+            }
+        }
+    }
+
+    /// Whether the layout is right to left.
+    #[must_use]
+    pub const fn is_rtl(&self) -> bool {
+        self.rtl
     }
 
     /// Adds a column.
