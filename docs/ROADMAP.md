@@ -373,6 +373,25 @@ the same pixels as the hand-built page, a message log that replays to the same s
   `Screen` needs the dpi or a form-factor hint from the host
 - [ ] A `mobile` preset on the `fusuma` crate; lifecycle on the web (a page going to the background) through the same `Session`
 
+### E-paper (reflective panels)
+
+The app draws as always, on the integer renderer or Vello CPU; `fusuma_platform_embedded::eink` does the rest:
+`EinkDriver` tells the app what the glass is (`Input::Screen`: `Palette::PAPER`, no motion), quantises the RGB565 picture to one
+bit a pixel (`pack_mono`: threshold or 4x4 ordered dither, eight pixels a byte, a set bit is white), batches damage with a
+`Planner` (settle time, minimum interval, one union rectangle, a full refresh against ghosting every N partial ones and
+after sleep) and sends it through a `Panel`. `Ssd1680` is a panel over a small `Bus` trait (1.54, 2.13 and 2.9 inch
+Waveshare modules; presets `epaper-1in54`, `-2in13`, `-2in9`, `-4in2`, `-7in5`).
+
+- [x] Quantising and packing, `Planner`, `EinkDriver`, `Panel`, `Ssd1680` over a recording bus; tests on both backends,
+  frames looked at as images
+- [ ] **Run on a real panel** (the sequences follow Waveshare's V2/V4 drivers and are unchecked on hardware): an ESP-IDF
+  `Bus` (SPI, DC, RST, BUSY), `board.toml` `controller = "ssd1680"` and a firmware cell; then measure the refresh times
+- [ ] UC8176 / UC8179 panels (4.2 and 7.5 inch), the 4-gray mode (`Levels`, two bit planes), tri-colour (red/yellow plane),
+  landscape on a panel built portrait (rotate while packing)
+- [ ] A layout for tiny panels in the showcase (the watch tiles are cut off at 128 px) and focus by keys as the main input
+- [ ] **Bug (not e-paper):** after `Key::Next` on the Overview page the showcase on Vello CPU asks for a frame forever and draws none (integer is fine)
+- [ ] A one-bit framebuffer renderer (an 800x480 RGB565 frame is 768 KB: PSRAM only; 1 bit is 48 KB)
+
 ### Screens: one description on every platform
 
 A `Screen` is the one value that describes the device, and every host fills it in the same way. Hosts and board files report
@@ -386,7 +405,7 @@ derives the rest.
   worn: 1.28 to 2.8 inch dev boards, a smart knob), below `Watch` (worn: the square with round corners, a crown, a tile grid),
   `Phone`, `Tablet`, `Desktop`. Size alone cannot tell a 1.28 inch round board from a watch, so `board.toml` says
   `form = "micro" | "panel" | "watch"`; with nothing declared, only a very small pixel size (under about 240 logical px) guesses `Micro`
-- [x] **Display kind** (`DisplayKind`, `Screen::with_glass`, `is_reflective`, `motion()`; `Screen::theme` turns motion off on a reflective glass, the showcase follows; the mono/gray palette and one damage rect per refresh are not built yet) (a property of the glass, across every form factor): `Emissive` or `Reflective` (e-ink, memory LCD),
+- [x] **Display kind** (`DisplayKind`, `Screen::with_glass`, `is_reflective`, `motion()`; `Screen::theme` turns motion off on a reflective glass, the showcase follows; `Palette::PAPER` and `Screen::palette` give a one-bit glass black on white) (a property of the glass, across every form factor): `Emissive` or `Reflective` (e-ink, memory LCD),
   the colour depth (1 bit, 4 or 16 grays, spot colours) and a refresh hint (`Fast` or `Slow`, in ms). Reflective gives, with
   no code in the app: a mono or grayscale palette from `fusuma-palette`, animation `Off` (pages jump, scroll by whole steps),
   and one batched damage rect per refresh, with a full clear now and then against ghosting

@@ -7,7 +7,7 @@
 use fusuma_render::Rect;
 
 use crate::shape::{Insets, Shape};
-use crate::theme::{MotionBudget, Theme};
+use crate::theme::{MotionBudget, Palette, Theme};
 
 /// Screens narrower than this, in logical pixels, are a watch: a grid of big tiles, one small page at a time.
 pub const WATCH_BELOW: u32 = 480;
@@ -342,6 +342,18 @@ impl Screen {
         }
     }
 
+    /// The palette this glass shows: `wanted` on an ordinary screen, [`Palette::PAPER`] on a reflective one with few levels
+    /// (a colour a panel cannot show is not a colour). A reflective glass of 16 grays or more (`depth_bits` 4 and up)
+    /// keeps the palette asked for.
+    #[must_use]
+    pub const fn palette(&self, wanted: Palette) -> Palette {
+        if self.is_reflective() && self.depth_bits < 4 {
+            Palette::PAPER
+        } else {
+            wanted
+        }
+    }
+
     /// The size class by window width, which follows a resize.
     #[must_use]
     pub const fn size_class(&self) -> SizeClass {
@@ -655,6 +667,25 @@ mod tests {
             Some(DisplayKind::Reflective)
         );
         assert_eq!(DisplayKind::from_name("lcd"), None);
+    }
+
+    #[test]
+    fn a_black_and_white_glass_gets_the_paper_palette_and_others_keep_theirs() {
+        let eink = Screen::new(296, 128).with_glass(DisplayKind::Reflective, 1, 300);
+        assert_eq!(eink.palette(Palette::FOREST), Palette::PAPER);
+        // A glass with depth unknown (0) is also treated as having few levels.
+        let unknown = Screen::new(296, 128).with_glass(DisplayKind::Reflective, 0, 0);
+        assert_eq!(unknown.palette(Palette::FOREST), Palette::PAPER);
+        let gray16 = Screen::new(800, 480).with_glass(DisplayKind::Reflective, 4, 900);
+        assert_eq!(gray16.palette(Palette::FOREST), Palette::FOREST);
+        assert_eq!(
+            Screen::new(296, 128).palette(Palette::FOREST),
+            Palette::FOREST
+        );
+        assert!(
+            Palette::named("paper").is_none(),
+            "not a choice in a switcher"
+        );
     }
 
     #[test]

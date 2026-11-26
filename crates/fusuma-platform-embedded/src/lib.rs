@@ -5,6 +5,7 @@ extern crate alloc;
 
 mod board;
 mod driver;
+pub mod eink;
 mod surface;
 mod target;
 

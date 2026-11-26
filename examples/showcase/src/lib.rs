@@ -1423,6 +1423,12 @@ impl App for Showcase {
         // What the device is: the layout class is the device's (a small board is the watch layout at any scale), and a
         // glass that reflects light has no motion.
         self.device = screen;
+        // Black ink on white paper where the glass has too few levels for colour (and no dark mode: ink is dark).
+        let palette = screen.palette(self.palette);
+        if palette != self.palette {
+            self.palette = palette;
+            self.dark = false;
+        }
         let class = fusuma::Screen {
             width: self.bounds.w,
             height: self.bounds.h,

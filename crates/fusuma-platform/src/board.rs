@@ -356,7 +356,7 @@ pub struct ScreenPreset {
 }
 
 /// Screens of hardware that is common on a desk: a board file names one and adds only what differs.
-pub const SCREEN_PRESETS: [ScreenPreset; 6] = [
+pub const SCREEN_PRESETS: [ScreenPreset; 10] = [
     ScreenPreset {
         name: "amoled-2in06-watch",
         about: "2.06 inch AMOLED watch, 410x502 (Waveshare ESP32-S3-Touch-AMOLED-2.06)",
@@ -403,13 +403,57 @@ pub const SCREEN_PRESETS: [ScreenPreset; 6] = [
     },
     ScreenPreset {
         name: "epaper-2in9",
-        about: "2.9 inch e-paper, 296x128, black and white, partial refresh",
+        about: "2.9 inch e-paper (Waveshare, SSD1680), 128x296 as the panel is built, black and white, partial refresh",
         form: "micro",
-        width_mm: 67,
-        height_mm: 29,
+        width_mm: 29,
+        height_mm: 67,
         reflective: true,
         depth_bits: 1,
         refresh_ms: 300,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "epaper-1in54",
+        about: "1.54 inch e-paper (Waveshare, SSD1681), 200x200, black and white",
+        form: "micro",
+        width_mm: 27,
+        height_mm: 27,
+        reflective: true,
+        depth_bits: 1,
+        refresh_ms: 200,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "epaper-2in13",
+        about: "2.13 inch e-paper (Waveshare, SSD1680), 122x250, black and white",
+        form: "micro",
+        width_mm: 24,
+        height_mm: 49,
+        reflective: true,
+        depth_bits: 1,
+        refresh_ms: 300,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "epaper-4in2",
+        about: "4.2 inch e-paper (Waveshare, UC8176), 400x300, black and white",
+        form: "panel",
+        width_mm: 85,
+        height_mm: 64,
+        reflective: true,
+        depth_bits: 1,
+        refresh_ms: 500,
+        inputs: &["keys"],
+    },
+    ScreenPreset {
+        name: "epaper-7in5",
+        about: "7.5 inch e-paper (Waveshare, UC8179), 800x480, black and white",
+        form: "tablet",
+        width_mm: 163,
+        height_mm: 98,
+        reflective: true,
+        depth_bits: 1,
+        refresh_ms: 1000,
         inputs: &["keys"],
     },
     ScreenPreset {

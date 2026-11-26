@@ -378,6 +378,44 @@ impl Palette {
         light: Theme::LIGHT.colors,
     };
 
+    /// Black on white for a panel that shows no grays well (e-ink, a memory LCD): every surface is plain white (or black in
+    /// the dark theme), edges and text are black (white), and the greys left are dark enough to stay ink after a
+    /// threshold. Not in [`ALL`](Self::ALL): a screen with a reflective glass is given it
+    /// ([`Screen::palette`](crate::Screen::palette)), nobody picks it from a switcher.
+    pub const PAPER: Self = Self {
+        name: "paper",
+        dark: Colors {
+            background: Color::rgb(0, 0, 0),
+            surface: Color::rgb(0, 0, 0),
+            surface_raised: Color::rgb(0, 0, 0),
+            border: Color::rgb(255, 255, 255),
+            border_strong: Color::rgb(255, 255, 255),
+            text: Color::rgb(255, 255, 255),
+            text_muted: Color::rgb(220, 220, 220),
+            text_disabled: Color::rgb(170, 170, 170),
+            primary: Color::rgb(255, 255, 255),
+            primary_hover: Color::rgb(255, 255, 255),
+            primary_active: Color::rgb(255, 255, 255),
+            on_primary: Color::rgb(0, 0, 0),
+            danger: Color::rgb(255, 255, 255),
+        },
+        light: Colors {
+            background: Color::rgb(255, 255, 255),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(255, 255, 255),
+            border: Color::rgb(0, 0, 0),
+            border_strong: Color::rgb(0, 0, 0),
+            text: Color::rgb(0, 0, 0),
+            text_muted: Color::rgb(35, 35, 35),
+            text_disabled: Color::rgb(85, 85, 85),
+            primary: Color::rgb(0, 0, 0),
+            primary_hover: Color::rgb(0, 0, 0),
+            primary_active: Color::rgb(0, 0, 0),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(0, 0, 0),
+        },
+    };
+
     /// Greens from dark pine to sage, on a warm cream (light) or a near-black green (dark).
     pub const FOREST: Self = Self {
         name: "forest",
@@ -1180,6 +1218,39 @@ mod tests {
             }
         };
         0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+
+    #[test]
+    fn the_paper_palette_is_ink_or_paper_after_a_threshold_and_still_readable() {
+        for (name, c) in [
+            ("dark", Palette::PAPER.dark),
+            ("light", Palette::PAPER.light),
+        ] {
+            let paper = c.background;
+            for (what, bg) in [("surface", c.surface), ("raised", c.surface_raised)] {
+                assert_eq!(
+                    bg, paper,
+                    "{name}: a {what} is the paper, so a card is told apart by its edge"
+                );
+            }
+            for (what, ink) in [
+                ("text", c.text),
+                ("muted", c.text_muted),
+                ("disabled", c.text_disabled),
+                ("border", c.border),
+            ] {
+                assert!(
+                    contrast(ink, paper) >= 4.5,
+                    "{name}: {what} {:.2}",
+                    contrast(ink, paper)
+                );
+            }
+            // After a threshold at the middle, the main action is ink and its text paper.
+            assert_ne!(c.primary, paper, "{name}");
+            assert!(contrast(c.on_primary, c.primary) >= 7.0, "{name}");
+            assert!(contrast(c.danger, paper) >= 7.0, "{name}");
+            assert!(contrast(c.text, paper) >= 7.0 && contrast(c.text_muted, paper) >= 7.0);
+        }
     }
 
     /// Every palette in both modes, and every palette with every other's accent on it.
