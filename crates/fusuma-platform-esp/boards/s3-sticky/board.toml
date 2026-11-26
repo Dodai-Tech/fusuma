@@ -1,0 +1,52 @@
+# The Seeed reTerminal Sticky: a 3.97 inch 800x480 e-paper (SSD1677, or its twin the SSD2677, same commands) with an
+# ESP32-S3R8 (8 MB octal PSRAM, 32 MB flash), a GT911 touch panel and three keys. The pins are the ones Seeed's own ESPHome
+# model `seeed-reterminal-sticky` and its Sticky Playground use; none of this has been run on a Sticky by Fusuma yet.
+# Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-sticky"
+about = "Seeed reTerminal Sticky, 3.97 inch e-paper (800x480)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "rtc", "imu", "storage", "eink"]
+
+[display]
+width = 800
+height = 480
+controller = "ssd1677"
+bus = "spi"
+# The panel's busy line is high while it works. en (GPIO47) switches the panel's power.
+pins = { sck = 13, mosi = 14, miso = 12, cs = 15, dc = 16, rst = 17, busy = 18, en = 47 }
+# The panel is wired mirrored in x (ESPHome's `mirror_x: true`): the driver mirrors the picture on its way out.
+options = { data_rate_mhz = 10, mirror_x = 1 }
+
+[screen]
+preset = "epaper-3in97"
+
+# 45 and 46 must be high at boot or the board switches itself off (the power latch and its lock), 42 powers the touch panel.
+# The MicroSD card shares the panel's SPI bus: its chip select (8) idles high and its power enable (10) stays off, so the
+# card does not answer on the panel's lines.
+[power]
+high = [45, 46, 42, 8]
+low = [10]
+
+# OK is also the deep-sleep wake key. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 4, up = 5, down = 6 }
+active_low = true
+
+# The GT911 is on its own I2C bus (GPIO2 and 3) with the reset on GPIO41 and the interrupt on GPIO21; it reports in the
+# panel's portrait orientation, so the board turns it to the landscape picture (to be measured on a real Sticky: swap_xy
+# is what ESPHome's config needs).
+[touch]
+controller = "gt911"
+bus = "i2c"
+pins = { sda = 2, scl = 3, rst = 41, int = 21 }
+swap_xy = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 32
+target = "xtensa-esp32s3-none-elf"
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

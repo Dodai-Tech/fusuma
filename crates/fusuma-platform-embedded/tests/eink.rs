@@ -199,3 +199,33 @@ fn the_sequences_name_the_window_the_data_goes_to() {
     assert_eq!(sleeps, 1);
     let _ = Bus::wait_busy(panel.bus_mut());
 }
+
+#[test]
+fn the_showcase_on_the_sticky_800x480_lands_mirrored_on_the_panel() {
+    use fusuma_platform_embedded::eink::ssd1677::{Config, Ssd1677};
+    let frame = |config: Config| {
+        let panel = Ssd1677::new(Recorder::default(), config);
+        let mut d =
+            EinkDriver::new(Showcase::new(800, 480), panel, Backend::Integer, policy()).unwrap();
+        d.step(0).unwrap();
+        d.step(10).unwrap();
+        assert_eq!(d.step(100).unwrap().refreshed, Some(Refresh::Full));
+        let log = d.panel_mut().bus_mut().log.clone();
+        data_of(&log, 0x24).remove(0)
+    };
+    let plain = frame(Config::new(800, 480));
+    let sticky = frame(Config::STICKY);
+    assert_eq!(plain.len(), 100 * 480);
+    assert_eq!(sticky.len(), plain.len());
+    assert!(
+        ink(&plain) > 1000,
+        "there is something on the page: {}",
+        ink(&plain)
+    );
+    // The same picture, turned about the vertical axis.
+    let mirrored: Vec<u8> = plain
+        .chunks(100)
+        .flat_map(|row| row.iter().rev().map(|b| b.reverse_bits()))
+        .collect();
+    assert_eq!(sticky, mirrored);
+}

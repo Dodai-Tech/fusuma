@@ -20,8 +20,8 @@
         "radius": { "type": "integer", "minimum": 1 },
         "offset": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 },
         "grid": { "type": "integer", "minimum": 1, "maximum": 16 },
-        "controller": { "enum": ["co5300", "ek79007"] },
-        "bus": { "enum": ["qspi", "dsi"] },
+        "controller": { "enum": ["co5300", "ek79007", "ssd1677"] },
+        "bus": { "enum": ["qspi", "dsi", "spi"] },
         "pins": { "$ref": "#/$defs/pins" },
         "options": { "$ref": "#/$defs/options" }
       }
@@ -31,7 +31,7 @@
       "description": "What the screen is: the facts the toolkit cannot measure. Every key is optional; a preset fills them all and the others override it.",
       "additionalProperties": false,
       "properties": {
-        "preset": { "enum": ["amoled-2in06-watch", "round-1in28", "oled-0in96", "lcd-1in14", "epaper-1in54", "epaper-2in13", "epaper-2in9", "epaper-4in2", "epaper-7in5", "lcd-7in-1024x600"] },
+        "preset": { "enum": ["amoled-2in06-watch", "round-1in28", "oled-0in96", "lcd-1in14", "epaper-1in54", "epaper-2in13", "epaper-2in9", "epaper-3in97", "epaper-4in2", "epaper-7in5", "lcd-7in-1024x600"] },
         "form": { "enum": ["micro", "panel", "watch", "phone", "tablet", "desktop"] },
         "width_mm": { "type": "integer", "minimum": 1, "maximum": 5000 },
         "height_mm": { "type": "integer", "minimum": 1, "maximum": 5000 },
@@ -39,6 +39,34 @@
         "depth": { "enum": [1, 2, 4, 8] },
         "refresh_ms": { "type": "integer", "minimum": 0, "maximum": 60000 },
         "inputs": { "type": "array", "items": { "enum": ["touch", "keys", "encoder", "pointer"] } }
+      }
+    },
+    "power": {
+      "type": "object",
+      "description": "Pins driven before anything else works (a power latch, a regulator enable).",
+      "additionalProperties": false,
+      "properties": {
+        "high": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "uniqueItems": true },
+        "low": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "uniqueItems": true }
+      }
+    },
+    "buttons": {
+      "type": "object",
+      "description": "Hardware keys: ok presses, up and down (left, right) move the focus.",
+      "additionalProperties": false,
+      "properties": {
+        "pins": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "up": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "down": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "left": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "right": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        },
+        "active_low": { "type": "boolean" }
       }
     },
     "touch": {

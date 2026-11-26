@@ -140,7 +140,7 @@ const fn opt(name: &'static str, default: i64, min: i64, max: i64) -> OptionSpec
 }
 
 /// The controllers Fusuma's ESP drivers know (`fusuma-platform-esp`). A board made of these is one file.
-pub const CONTROLLERS: [Controller; 5] = [
+pub const CONTROLLERS: [Controller; 6] = [
     Controller {
         name: "co5300",
         kind: PartKind::Display,
@@ -170,6 +170,27 @@ pub const CONTROLLERS: [Controller; 5] = [
         // MIPI DSI exists on the P4 only, and the driver's timing is for its 1024x600 panel.
         chips: &["esp32p4"],
         sizes: &[(1024, 600)],
+        offset: false,
+    },
+    Controller {
+        name: "ssd1677",
+        kind: PartKind::Display,
+        bus: "spi",
+        // An e-paper panel: a write-only SPI bus, a data/command line, a reset, a busy line (high while it works) and
+        // optionally a pin that switches the panel's power.
+        pins: &[
+            pin("sck", 1, true),
+            pin("mosi", 1, true),
+            pin("miso", 1, false),
+            pin("cs", 1, true),
+            pin("dc", 1, true),
+            pin("rst", 1, true),
+            pin("busy", 1, true),
+            pin("en", 1, false),
+        ],
+        options: &[opt("data_rate_mhz", 10, 1, 40), opt("mirror_x", 0, 0, 1)],
+        chips: &[],
+        sizes: &[],
         offset: false,
     },
     Controller {
@@ -356,7 +377,7 @@ pub struct ScreenPreset {
 }
 
 /// Screens of hardware that is common on a desk: a board file names one and adds only what differs.
-pub const SCREEN_PRESETS: [ScreenPreset; 10] = [
+pub const SCREEN_PRESETS: [ScreenPreset; 11] = [
     ScreenPreset {
         name: "amoled-2in06-watch",
         about: "2.06 inch AMOLED watch, 410x502 (Waveshare ESP32-S3-Touch-AMOLED-2.06)",
@@ -457,6 +478,17 @@ pub const SCREEN_PRESETS: [ScreenPreset; 10] = [
         inputs: &["keys"],
     },
     ScreenPreset {
+        name: "epaper-3in97",
+        about: "3.97 inch e-paper, 800x480, black and white and four grays (Seeed reTerminal Sticky, SSD1677), touch and three keys",
+        form: "panel",
+        width_mm: 86,
+        height_mm: 52,
+        reflective: true,
+        depth_bits: 1,
+        refresh_ms: 600,
+        inputs: &["touch", "keys"],
+    },
+    ScreenPreset {
         name: "lcd-7in-1024x600",
         about: "7 inch touch panel, 1024x600 (Waveshare ESP32-P4)",
         form: "tablet",
@@ -468,6 +500,28 @@ pub const SCREEN_PRESETS: [ScreenPreset; 10] = [
         inputs: &["touch"],
     },
 ];
+
+/// Pins the board needs driven before anything else works (a power latch, a regulator enable).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Power {
+    /// GPIO numbers set high at boot, in order.
+    pub high: Vec<u8>,
+    /// GPIO numbers set low at boot (a rail enable that is active high and must start off, a shared bus's other device
+    /// parked), after the high ones.
+    pub low: Vec<u8>,
+}
+
+/// The keys a board can have, and what the toolkit does with each (`ok` presses, `up` and `down` move the focus).
+pub const BUTTON_NAMES: [&str; 5] = ["ok", "up", "down", "left", "right"];
+
+/// Hardware keys.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Buttons {
+    /// Each key (one of [`BUTTON_NAMES`]) and its GPIO.
+    pub keys: BTreeMap<String, u8>,
+    /// Whether a pressed key pulls its pin low (with the pull-up on), which is the usual wiring.
+    pub active_low: bool,
+}
 
 /// A board file, read and checked.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -482,6 +536,10 @@ pub struct BoardFile {
     pub display: Option<Display>,
     /// What the screen is (form, size, glass, inputs), if the file says.
     pub screen: Option<ScreenSpec>,
+    /// Pins driven at boot, if any.
+    pub power: Option<Power>,
+    /// Hardware keys, if any.
+    pub buttons: Option<Buttons>,
     /// The touch panel, if any.
     pub touch: Option<Touch>,
     /// The backlight, if the panel has one of its own.
@@ -522,6 +580,8 @@ struct RawFile {
     capabilities: Vec<String>,
     display: Option<RawDisplay>,
     screen: Option<RawScreen>,
+    power: Option<RawPower>,
+    buttons: Option<RawButtons>,
     touch: Option<RawTouch>,
     backlight: Option<RawBacklight>,
     firmware: Option<RawFirmware>,
@@ -544,6 +604,23 @@ struct RawDisplay {
     pins: BTreeMap<String, RawPin>,
     #[serde(default)]
     options: BTreeMap<String, i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPower {
+    #[serde(default)]
+    high: Vec<i64>,
+    #[serde(default)]
+    low: Vec<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawButtons {
+    #[serde(default)]
+    pins: BTreeMap<String, i64>,
+    active_low: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -671,6 +748,62 @@ impl BoardFile {
         if screen.is_some() && display.is_none() {
             return Err(err("[screen] needs a [display]".into()));
         }
+        let power = raw
+            .power
+            .map(|p| {
+                let list = |name: &str, pins: &[i64]| -> Result<Vec<u8>, String> {
+                    let gpios = pins
+                        .iter()
+                        .map(|&g| {
+                            gpio(g)
+                                .ok_or_else(|| format!("[power] {name}: GPIO {g} is not 0 to 255"))
+                        })
+                        .collect::<Result<Vec<u8>, String>>()?;
+                    let mut seen = gpios.clone();
+                    seen.sort_unstable();
+                    seen.dedup();
+                    if seen.len() != gpios.len() {
+                        return Err(format!("[power] {name}: a GPIO twice"));
+                    }
+                    Ok(gpios)
+                };
+                let (high, low) = (list("high", &p.high)?, list("low", &p.low)?);
+                if let Some(g) = high.iter().find(|g| low.contains(g)) {
+                    return Err(format!("[power] GPIO {g} is both high and low"));
+                }
+                Ok(Power { high, low })
+            })
+            .transpose()
+            .map_err(err)?;
+        let buttons = raw
+            .buttons
+            .map(|b| {
+                let mut keys = BTreeMap::new();
+                for (name, g) in b.pins {
+                    if !BUTTON_NAMES.contains(&name.as_str()) {
+                        return Err(format!(
+                            "[buttons] pins.{name}: a key is one of {}",
+                            BUTTON_NAMES.join(", ")
+                        ));
+                    }
+                    let g = gpio(g).ok_or_else(|| {
+                        format!("[buttons] pins.{name}: GPIO {g} is not 0 to 255")
+                    })?;
+                    keys.insert(name, g);
+                }
+                let mut gpios: Vec<u8> = keys.values().copied().collect();
+                gpios.sort_unstable();
+                gpios.dedup();
+                if gpios.len() != keys.len() {
+                    return Err("[buttons] two keys on one GPIO".to_string());
+                }
+                Ok(Buttons {
+                    keys,
+                    active_low: b.active_low.unwrap_or(true),
+                })
+            })
+            .transpose()
+            .map_err(err)?;
         let touch = raw
             .touch
             .map(|t| {
@@ -730,6 +863,8 @@ impl BoardFile {
             capabilities: raw.capabilities,
             display,
             screen,
+            power,
+            buttons,
             touch,
             backlight,
             firmware,
@@ -737,6 +872,10 @@ impl BoardFile {
             render,
         })
     }
+}
+
+fn gpio(n: i64) -> Option<u8> {
+    u8::try_from(n).ok()
 }
 
 fn read_screen(r: RawScreen) -> Result<ScreenSpec, String> {
@@ -1049,6 +1188,57 @@ fpu = true
             e.starts_with("board.toml: ") && e.contains(says),
             "{new}: {e}"
         );
+    }
+
+    #[test]
+    fn the_sticky_is_an_e_paper_board_with_power_pins_and_three_keys() {
+        let text = include_str!("../../fusuma-platform-esp/boards/s3-sticky/board.toml");
+        let b = BoardFile::from_toml(text, "s3-sticky").unwrap();
+        let d = b.display.unwrap();
+        assert_eq!((d.width, d.height), (800, 480));
+        let c = d.wiring.controller.unwrap();
+        assert_eq!((c.name, c.bus), ("ssd1677", "spi"));
+        assert_eq!(d.wiring.pins["busy"], [18]);
+        assert_eq!(d.wiring.options["mirror_x"], 1);
+        assert_eq!(d.wiring.options["data_rate_mhz"], 10);
+        let s = b.screen.unwrap();
+        assert!(s.reflective);
+        assert_eq!(s.form.as_deref(), Some("panel"));
+        let power = b.power.unwrap();
+        assert_eq!((power.high, power.low), (vec![45, 46, 42, 8], vec![10]));
+        let k = b.buttons.unwrap();
+        assert_eq!(
+            (k.keys["ok"], k.keys["up"], k.keys["down"], k.active_low),
+            (4, 5, 6, true)
+        );
+    }
+
+    #[test]
+    fn power_pins_and_keys_are_checked() {
+        let with_tables = |t: &str| with("[touch]", &format!("{t}\n\n[touch]"));
+        let b =
+            with_tables("[power]\nhigh = [1, 2]\n[buttons]\npins = { ok = 3 }\nactive_low = false")
+                .unwrap();
+        assert_eq!(b.power.unwrap().high, [1, 2]);
+        assert!(!b.buttons.unwrap().active_low);
+        for (text, says) in [
+            ("[power]\nhigh = [1, 1]", "a GPIO twice"),
+            ("[power]\nhigh = [1]\nlow = [1]", "both high and low"),
+            ("[power]\nlow = [256]", "[power] low: GPIO 256"),
+            ("[power]\nhigh = [300]", "GPIO 300"),
+            ("[buttons]\npins = { fire = 3 }", "pins.fire"),
+            (
+                "[buttons]\npins = { ok = 3, up = 3 }",
+                "two keys on one GPIO",
+            ),
+            ("[buttons]\npins = { ok = -1 }", "GPIO -1"),
+        ] {
+            let e = with_tables(text).expect_err(text).0;
+            assert!(
+                e.starts_with("board.toml: ") && e.contains(says),
+                "{text}: {e}"
+            );
+        }
     }
 
     #[test]

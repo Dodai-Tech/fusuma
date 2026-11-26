@@ -62,3 +62,34 @@ bool fusuma_gt911_read(bool *down, uint16_t *x, uint16_t *y);
 esp_err_t fusuma_ledc_backlight_init(int pin, bool invert, uint32_t freq_hz);
 // 0 to 100.
 void fusuma_ledc_backlight_set(int percent);
+
+// ── E-paper panel on SPI (SSD1677 and relatives): a write-only bus plus a data/command line, a reset and a busy line. ──
+typedef struct {
+    int sck, mosi, miso, cs, dc, rst, busy;
+    // A pin that switches the panel's power (driven high); -1 for none.
+    int en;
+    uint32_t hz;
+} fusuma_epd_config_t;
+
+esp_err_t fusuma_epd_init(const fusuma_epd_config_t *cfg);
+// One command byte (the data/command line low).
+esp_err_t fusuma_epd_command(uint8_t command);
+// Data bytes (the data/command line high), in pieces the bus takes; `data` may be in PSRAM.
+esp_err_t fusuma_epd_data(const uint8_t *data, size_t len);
+// Pulses reset: low for 10 ms, high, 10 ms more.
+esp_err_t fusuma_epd_reset(void);
+// Waits until the busy line is low (it is high while the panel works); ESP_ERR_TIMEOUT after `timeout_ms`.
+esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms);
+
+// ── Plain GPIO, for power pins and keys. ─────────────────────────────────────────────────────────────────────────
+// Makes `pin` an output at `level` (0 or 1).
+esp_err_t fusuma_gpio_output(int pin, int level);
+// Makes `pin` an input with the pull-up on.
+esp_err_t fusuma_gpio_input_pullup(int pin);
+// The level of `pin`, 0 or 1.
+int fusuma_gpio_read(int pin);
+
+// Reads one byte from the e-paper controller by bit-banging the clock and the (shared) data line, with the SPI peripheral
+// released for the read and restored after (the controller has no separate read line). `sck` and `mosi` are the pins of
+// the config. Used for the chip id and the temperature.
+esp_err_t fusuma_epd_read_byte(uint8_t *value);

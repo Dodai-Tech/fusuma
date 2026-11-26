@@ -1015,11 +1015,10 @@ dependencies = [
  "fusuma-fonts",
  "fusuma-platform",
  "fusuma-render",
- "fusuma-render-embedded",
+ "fusuma-render-integer",
  "fusuma-render-vello",
  "fusuma-render-vello-cpu",
  "fusuma-ui",
- "fusuma-view",
 ]
 
 [[package]]
@@ -1072,7 +1071,7 @@ name = "fusuma-render"
 version = "0.2.0"
 
 [[package]]
-name = "fusuma-render-embedded"
+name = "fusuma-render-integer"
 version = "0.2.0"
 dependencies = [
  "embedded-graphics",
@@ -1147,15 +1146,6 @@ dependencies = [
  "fusuma-anim",
  "fusuma-cells",
  "fusuma-render",
-]
-
-[[package]]
-name = "fusuma-view"
-version = "0.2.0"
-dependencies = [
- "fusuma-anim",
- "fusuma-render",
- "fusuma-ui",
 ]
 
 [[package]]

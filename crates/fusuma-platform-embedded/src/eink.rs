@@ -24,7 +24,11 @@ use crate::board::Pixels;
 use crate::driver::DriverError;
 use crate::surface::Surface;
 
+pub mod bus;
+pub mod ssd1677;
 pub mod ssd1680;
+pub mod ssd2677;
+pub mod sticky;
 
 /// How a gray becomes black or white.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -343,6 +347,13 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
     /// The app and its frame statistics.
     pub const fn shell(&self) -> &Shell<A> {
         &self.shell
+    }
+
+    /// Draws the font roles with `set`'s families (`[fonts]` in the settings). Call it before the first
+    /// [`step`](Self::step).
+    #[cfg(feature = "fonts")]
+    pub fn set_fonts(&mut self, set: fusuma::fonts::FontSet) {
+        self.surface.set_fonts(set);
     }
 
     /// The panel.

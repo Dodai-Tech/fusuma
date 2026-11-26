@@ -15,7 +15,7 @@ fn main() {
     println!("cargo::rerun-if-env-changed=MCU");
     println!("cargo::rerun-if-changed=boards");
     for (key, values) in [
-        ("fusuma_display", "\"co5300\", \"ek79007\""),
+        ("fusuma_display", "\"co5300\", \"ek79007\", \"ssd1677\""),
         ("fusuma_touch", "\"ft3168\", \"gt911\""),
         ("fusuma_backlight", "\"ledc\""),
     ] {
@@ -125,7 +125,7 @@ fn main() {
         BoardShape::Circle => "fusuma::Shape::Circle".to_string(),
     };
     line(format!(
-        "/// The screen's outline.\npub(crate) const SHAPE: fusuma::Shape = {shape};"
+        "/// The screen's outline.\n#[allow(dead_code)]\npub(crate) const SHAPE: fusuma::Shape = {shape};"
     ));
     let mut screen = format!("fusuma::Screen::new({}, {}).with_shape(SHAPE)", display.width, display.height);
     if let Some(spec) = &board.screen {
@@ -149,7 +149,7 @@ fn main() {
         screen += &format!(".with_inputs({inputs})");
     }
     line(format!(
-        "/// What the device is, from the board file's `[screen]`.\npub(crate) const SCREEN: fusuma::Screen = {screen};"
+        "/// What the device is, from the board file's `[screen]`.\n#[allow(dead_code)]\npub(crate) const SCREEN: fusuma::Screen = {screen};"
     ));
     if controller.offset {
         line(format!(
@@ -158,7 +158,7 @@ fn main() {
         ));
     }
     line(format!(
-        "/// Rectangles start and end on multiples of this.\npub(crate) const GRID: u32 = {};",
+        "/// Rectangles start and end on multiples of this.\n#[allow(dead_code)]\npub(crate) const GRID: u32 = {};",
         display.grid
     ));
     line(wiring("DISPLAY", &display.wiring));
@@ -182,6 +182,31 @@ fn main() {
             b.invert
         ));
     }
+    let (high, low) = board
+        .power
+        .as_ref()
+        .map_or((vec![], vec![]), |p| (p.high.clone(), p.low.clone()));
+    line(format!(
+        "/// GPIOs driven high at boot, in order.\n#[allow(dead_code)]\npub(crate) const POWER_HIGH: &[i32] = &{:?};",
+        high.iter().map(|&g| i32::from(g)).collect::<Vec<_>>()
+    ));
+    line(format!(
+        "/// GPIOs driven low at boot, after the high ones.\n#[allow(dead_code)]\npub(crate) const POWER_LOW: &[i32] = &{:?};",
+        low.iter().map(|&g| i32::from(g)).collect::<Vec<_>>()
+    ));
+    let (keys, active_low) = board
+        .buttons
+        .as_ref()
+        .map_or((vec![], true), |b| {
+            (b.keys.iter().map(|(n, g)| (n.clone(), i32::from(*g))).collect(), b.active_low)
+        });
+    line(format!(
+        "/// The hardware keys: name and GPIO.\n#[allow(dead_code)]\npub(crate) const BUTTONS: &[(&str, i32)] = &{:?};",
+        keys
+    ));
+    line(format!(
+        "/// A pressed key pulls its pin low.\n#[allow(dead_code)]\npub(crate) const BUTTONS_ACTIVE_LOW: bool = {active_low};"
+    ));
     let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("board.rs");
     fs::write(path, out).unwrap();
 }

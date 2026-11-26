@@ -1,19 +1,29 @@
 //! Fusuma on ESP-IDF boards. See the README.
 
+#[cfg(not(fusuma_display = "ssd1677"))]
 mod backlight;
 mod board;
-#[cfg(feature = "demo")]
+#[cfg(all(feature = "demo", not(fusuma_display = "ssd1677")))]
 mod demo;
+#[cfg(not(fusuma_display = "ssd1677"))]
 mod display;
+#[cfg(fusuma_display = "ssd1677")]
+mod eink;
+#[cfg(not(fusuma_display = "ssd1677"))]
 mod panel;
 mod touch;
 
+#[cfg(not(fusuma_display = "ssd1677"))]
 use std::time::{Duration, Instant};
 
 use fusuma::App;
 pub use fusuma::platform::{Backend, BackendSetting, RenderLayer};
-use fusuma::platform::{Hardware, Machine, Render, Settings};
+use fusuma::platform::Hardware;
+#[cfg(not(fusuma_display = "ssd1677"))]
+use fusuma::platform::{Machine, Render, Settings};
+#[cfg(not(fusuma_display = "ssd1677"))]
 use fusuma_platform_embedded::Board as _;
+#[cfg(not(fusuma_display = "ssd1677"))]
 use fusuma_platform_embedded::{Driver, DriverError};
 
 /// The backends linked into this program: the integer one always, the others by cargo feature.
@@ -137,6 +147,12 @@ pub fn run<A: App>(
         .map_err(|_| anyhow::anyhow!("the app thread panicked"))?
 }
 
+#[cfg(fusuma_display = "ssd1677")]
+fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow::Result<()> {
+    eink::run_here(make, options)
+}
+
+#[cfg(not(fusuma_display = "ssd1677"))]
 fn run_here<A: App>(make: impl FnOnce(u32, u32) -> A, options: Options) -> anyhow::Result<()> {
     log::info!("board: {} ({}, {})", board::NAME, board::ABOUT, board::CHIP);
     let panel = panel::EspBoard::open(options.backlight)?;

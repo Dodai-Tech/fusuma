@@ -384,8 +384,17 @@ Waveshare modules; presets `epaper-1in54`, `-2in13`, `-2in9`, `-4in2`, `-7in5`).
 
 - [x] Quantising and packing, `Planner`, `EinkDriver`, `Panel`, `Ssd1680` over a recording bus; tests on both backends,
   frames looked at as images
-- [ ] **Run on a real panel** (the sequences follow Waveshare's V2/V4 drivers and are unchecked on hardware): an ESP-IDF
-  `Bus` (SPI, DC, RST, BUSY), `board.toml` `controller = "ssd1680"` and a firmware cell; then measure the refresh times
+- [x] **Seeed reTerminal Sticky** (3.97 inch, 800x480, ESP32-S3R8): board file `s3-sticky` (pins from Seeed's ESPHome model
+  and Sticky Playground: SPI 13/14, CS 15, DC 16, RST 17, BUSY 18, panel power 47, power latch 45/46, touch power 42, keys
+  4/5/6, GT911 on I2C 2/3), `[power]` and `[buttons]` in the board file, the `epaper_spi.c` bus in `fusuma_esp`, `eink` run
+  loop in `fusuma-platform-esp`. **Two panels have shipped**: the SSD1677 (`Ssd1677`: windows, planes, partial refresh,
+  mirrored in x) and the newer SSD2677 (`Ssd2677`: another command set, 2 bits a pixel, full refresh only, waveform from the
+  temperature); `Sticky::detect` reads register 0x70 (0x07 is an SSD2677). Builds as firmware; **not run on a Sticky yet**
+- [ ] On a Sticky: which panel it has, the SSD2677's orientation (mirror and scan direction are unmeasured), the touch
+  swap, the real refresh times, the deep sleep and wake (OK key), battery gauge and RTC; the four-gray mode (both panels);
+  the partition table (read the Sticky's own before flashing)
+- [ ] Run on a real Waveshare SSD1680 panel (its sequences follow Waveshare's V2/V4 drivers and are unchecked): `board.toml`
+  `controller = "ssd1680"`, then measure the refresh times
 - [ ] UC8176 / UC8179 panels (4.2 and 7.5 inch), the 4-gray mode (`Levels`, two bit planes), tri-colour (red/yellow plane),
   landscape on a panel built portrait (rotate while packing)
 - [ ] A layout for tiny panels in the showcase (the watch tiles are cut off at 128 px) and focus by keys as the main input

@@ -5,41 +5,10 @@
 //! busy pins, a delay); [`Ssd1680`] then is a [`Panel`](super::Panel). The command sequences follow Waveshare's V2
 //! and V4 drivers; the tests run them against a recording bus, they have **not** been checked on a panel yet.
 
-use alloc::vec::Vec;
-
 use fusuma::render::Rect;
 
+pub use super::bus::{Bus, Call, Recorder};
 use super::{Panel, byte_region, row_bytes};
-
-/// What the controller's bus needs: nothing about the chip, only what the pins do.
-pub trait Bus {
-    /// What goes wrong.
-    type Error: core::fmt::Debug;
-
-    /// Sends one command byte (the data/command pin low).
-    ///
-    /// # Errors
-    /// The SPI or pin error.
-    fn command(&mut self, command: u8) -> Result<(), Self::Error>;
-
-    /// Sends data bytes (the data/command pin high).
-    ///
-    /// # Errors
-    /// The SPI or pin error.
-    fn data(&mut self, data: &[u8]) -> Result<(), Self::Error>;
-
-    /// Pulses the reset pin (low for 10 ms, then high, then 10 ms more).
-    ///
-    /// # Errors
-    /// The pin error.
-    fn reset(&mut self) -> Result<(), Self::Error>;
-
-    /// Waits until the busy pin says the controller is done (it is high while busy).
-    ///
-    /// # Errors
-    /// The pin error, or a timeout.
-    fn wait_busy(&mut self) -> Result<(), Self::Error>;
-}
 
 /// The commands of the chip this driver uses.
 mod cmd {
@@ -225,50 +194,6 @@ impl<B: Bus> Panel for Ssd1680<B> {
             self.send(cmd::DEEP_SLEEP, &[0x01])?;
             self.awake = false;
         }
-        Ok(())
-    }
-}
-
-/// A bus that records what it was sent, for tests of the sequences and of a driver on top.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Recorder {
-    /// Every call, in order.
-    pub log: Vec<Call>,
-}
-
-/// One call on a [`Recorder`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Call {
-    /// A command byte.
-    Command(u8),
-    /// Data bytes.
-    Data(Vec<u8>),
-    /// A reset.
-    Reset,
-    /// A wait for the busy pin.
-    Busy,
-}
-
-impl Bus for Recorder {
-    type Error = core::convert::Infallible;
-
-    fn command(&mut self, command: u8) -> Result<(), Self::Error> {
-        self.log.push(Call::Command(command));
-        Ok(())
-    }
-
-    fn data(&mut self, data: &[u8]) -> Result<(), Self::Error> {
-        self.log.push(Call::Data(data.to_vec()));
-        Ok(())
-    }
-
-    fn reset(&mut self) -> Result<(), Self::Error> {
-        self.log.push(Call::Reset);
-        Ok(())
-    }
-
-    fn wait_busy(&mut self) -> Result<(), Self::Error> {
-        self.log.push(Call::Busy);
         Ok(())
     }
 }
