@@ -31,6 +31,7 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 | Board | Screen | Controller, bus | Touch | Pins read from the vendor |
 |---|---|---|---|---|
 | ESP32-C6-LCD-1.47 (what WeatherTrack's `-gui` runs) | 172x320 | ST7789, SPI | none (button GPIO9, WS2812 GPIO8) | SCLK 7, MOSI 6, CS 14, DC 15, RST 21, BL 22, offset 34,0, inverted. **run** in weathertrack-gui |
+| ESP32-C6-ePaper-1.54 | 200x200 e-paper | SSD1681 (the `epaper-1in54` preset), SPI | none | SCK 6, MOSI 5, MISO 4, CS 7, DC 15, RST 11, BUSY 10; I2C SDA 18, SCL 8; BOOT 9, PWR button 2; 16 MB flash, no PSRAM. **The panel's power switch is expander output 0** (TCA9554 at 0x20, high = on; the same chip also gates audio on 1, the battery sense on 5 and the LED on 4). Source: `waveshareteam/ESP32-C6-ePaper-1.54`, `02_Example/espidf_v5.5.3`. Not a file yet: Fusuma's e-paper driver switches power with a GPIO (`en`), so without the expander the panel stays dark |
 | ESP32-C6-Touch-LCD-1.83 | | ST7789, SPI | yes | not extracted |
 | ESP32-C6-Touch-LCD-2.8 | | SPI | I2C 6/7, INT 18 | SCLK 0, MOSI 1, DC 10, CS 11 |
 | ESP32-C6-Touch-AMOLED-1.64 | 280x456 | SH8601 (the CO5300 init), QSPI | FT3168 | not extracted: a C6 has fewer pins than the S3 |
