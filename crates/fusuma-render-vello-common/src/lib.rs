@@ -18,7 +18,7 @@ use embedded_graphics::{
     prelude::{DrawTarget, Drawable, Point as EgPoint},
     text::{Baseline, Text},
 };
-pub use font::{MAX_SCALE, font_for, scaled_text_size, text_scale, text_size};
+pub use font::{MAX_SCALE, font_for, font_for_char, runs, scaled_text_size, text_scale, text_size};
 use fusuma_render::{
     Capabilities, Color, Error, Image, PathCmd, Point, Probe, Rect, Renderer, Size, TextStyle,
     left_edge,
@@ -596,13 +596,19 @@ impl<S: Scene> Renderer for Backend<S> {
         }
         // The built-in bitmap fonts are drawn as horizontal runs of lit pixels, laid out at the origin and
         // then magnified by a whole number and moved to place.
-        let mut runs = Runs::default();
-        let mono = MonoTextStyle::new(font, Rgb888::new(255, 255, 255));
-        let _ = Text::with_baseline(text, EgPoint::new(0, 0), mono, Baseline::Top).draw(&mut runs);
-        runs.finish();
+        let mut lit = Runs::default();
+        let advance =
+            i32::try_from(font.character_size.width + font.character_spacing).unwrap_or(i32::MAX);
+        for run in font::runs(text, style.size) {
+            let x = advance.saturating_mul(i32::try_from(run.before).unwrap_or(i32::MAX));
+            let mono = MonoTextStyle::new(run.font, Rgb888::new(255, 255, 255));
+            let _ = Text::with_baseline(run.text, EgPoint::new(x, 0), mono, Baseline::Top)
+                .draw(&mut lit);
+        }
+        lit.finish();
         i.scene.set_paint(solid(style.color));
         let (kf, ox, oy) = (f64::from(k), f64::from(left), f64::from(at.y));
-        for run in runs.done {
+        for run in lit.done {
             i.scene.fill_rect(&kurbo::Rect::new(
                 ox + run.x0 * kf,
                 oy + run.y0 * kf,

@@ -13,8 +13,16 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
+# The built-in bitmap fonts (Latin-1 in three sizes), shared by the backends that draw them.
+bitmap = ["dep:embedded-graphics"]
+# Also Romanian and Central European (ISO 8859-16 and 2), Cyrillic (8859-5) and Greek (8859-7), picked a character at a time: about
+# 100 KB of flash more, which is why it is off.
+bitmap-extended = ["bitmap"]
 # The shared test-suite every backend must pass (`fusuma_render::conformance`).
 conformance = []
+
+[dependencies]
+embedded-graphics = { workspace = true, optional = true }
 
 [lints]
 workspace = true

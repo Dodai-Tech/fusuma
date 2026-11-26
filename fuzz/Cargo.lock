@@ -576,6 +576,9 @@ dependencies = [
 [[package]]
 name = "fusuma-render"
 version = "0.2.0"
+dependencies = [
+ "embedded-graphics",
+]
 
 [[package]]
 name = "fusuma-render-integer"

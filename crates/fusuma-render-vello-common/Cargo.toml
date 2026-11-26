@@ -13,6 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
+# Romanian, Central European, Cyrillic and Greek in the built-in bitmap font (about 100 KB of flash).
+bitmap-extended = ["fusuma-render/bitmap-extended"]
 default = ["std"]
 # The standard library. Without it the crate is `no_std` with `alloc`, and needs `libm` for the
 # floating-point maths (an ESP32-S3 or similar).
@@ -23,7 +25,7 @@ libm = ["vello_common/libm"]
 text = ["dep:fusuma-text"]
 
 [dependencies]
-fusuma-render.workspace = true
+fusuma-render = { workspace = true, features = ["bitmap"] }
 embedded-graphics.workspace = true
 vello_common.workspace = true
 fusuma-text = { workspace = true, optional = true }

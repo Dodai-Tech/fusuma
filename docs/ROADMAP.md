@@ -190,7 +190,11 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 - [ ] Filled icons (the `FILL` axis)
 - [x] The text field: drag and word selection, undo, a placeholder, longer text (a feature)
 - [ ] The text field: caret and selection from Parley's clusters (right-to-left and complex scripts)
-- [ ] The bitmap font (the fallback without `fonts`) is ASCII only: `é` and `ș` draw as `?` there
+- [x] **The bitmap font is Latin-1** (`fusuma_render::bitmap`, shared by the integer and Vello backends: `é ü ñ ß £ ¿` draw as themselves,
+  checked by the conformance suite); with `bitmap-extended` a character that is not in it comes from ISO 8859-16 (Romanian `ș ț ă`,
+  Polish, Hungarian), 8859-2, 8859-5 (Cyrillic) or 8859-7 (Greek), **one character at a time** (a text is cut into runs of one font; every
+  font of a size is as wide as the others, so a text is as wide as it has characters). About 100 KB of flash more, which is why it is a
+  feature. Anything else (CJK, Arabic, Hindi) is still a `?` there: those need the vector text
 
 ## Theming
 

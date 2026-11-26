@@ -81,6 +81,7 @@ pub fn run_all<R: Renderer + Probe>(make: impl Fn() -> R) {
     optional_antialiasing(&make);
     gradients(&make);
     shadows(&make);
+    accented_text(&make);
 }
 
 fn rect_fills_inside_only<R: Renderer + Probe>(make: &impl Fn() -> R) {
@@ -640,4 +641,37 @@ fn shadows<R: Renderer + Probe>(make: &impl Fn() -> R) {
         Color::WHITE,
         "a shadow outside the clip, and an invisible one",
     );
+}
+
+fn accented_text<R: Renderer + Probe>(make: &impl Fn() -> R) {
+    // Latin-1 letters are letters, not question marks: `é` and `ü` do not draw what `?` draws, and are as wide as one character.
+    let style = TextStyle::new(20, Color::WHITE);
+    // A fingerprint of the picture (no allocator here) and whether anything was drawn.
+    let picture = |text: &str| {
+        let mut r = fresh(make);
+        r.draw_text(text, Point::new(4, 4), &style).expect("text");
+        let m = r.measure_text(text, &style);
+        let (mut hash, mut ink) = (0xcbf2_9ce4_8422_2325u64, false);
+        for y in 0..m.h.min(40) as i32 + 4 {
+            for x in 0..m.w.min(60) as i32 + 8 {
+                let lit = r.pixel(x, y).expect("pixel") != BLACK;
+                ink |= lit;
+                hash = (hash ^ u64::from(lit)).wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        (hash, ink, m)
+    };
+    let (e_acute, ink, m_acute) = picture("é");
+    let (e_plain, _, m_plain) = picture("e");
+    let (q, _, m_q) = picture("?");
+    let (u_uml, _, _) = picture("ü");
+    assert_eq!(
+        m_acute.w, m_plain.w,
+        "an accented letter is as wide as its plain one"
+    );
+    assert!(m_q.w > 0);
+    assert!(ink, "é has ink");
+    assert!(e_acute != q, "é is not a question mark");
+    assert!(u_uml != q, "ü is not a question mark");
+    assert!(e_acute != e_plain, "é is not an e");
 }

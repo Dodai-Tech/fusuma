@@ -13,12 +13,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
+# Romanian, Central European, Cyrillic and Greek in the built-in bitmap font (about 100 KB of flash).
+bitmap-extended = ["fusuma-render/bitmap-extended"]
 # Smooth text: the families `fusuma-fonts` links, from glyph atlases rasterised at build time (about 40 KB a face
 # at the default line heights 10, 15 and 20), blended into the target. Without it text is the bitmap font.
 fonts = ["dep:fusuma-fonts", "fusuma-fonts/atlas"]
 
 [dependencies]
-fusuma-render.workspace = true
+fusuma-render = { workspace = true, features = ["bitmap"] }
 embedded-graphics.workspace = true
 fusuma-fonts = { workspace = true, optional = true, default-features = false }
 

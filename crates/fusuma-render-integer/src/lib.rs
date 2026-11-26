@@ -15,10 +15,7 @@ use core::fmt::Debug;
 use embedded_graphics::{
     draw_target::DrawTargetExt,
     geometry::Size as EgSize,
-    mono_font::{
-        MonoFont, MonoTextStyle,
-        ascii::{FONT_6X10, FONT_9X15, FONT_10X20},
-    },
+    mono_font::MonoTextStyle,
     pixelcolor::{IntoStorage, Rgb565},
     prelude::{DrawTarget, Drawable, Point as EgPoint},
     primitives::Rectangle,
@@ -53,26 +50,7 @@ struct State {
     ty: i32,
 }
 
-/// The mono font that comes closest to a requested line height, and its glyph metrics.
-#[must_use]
-pub fn font_for(size: u32) -> &'static MonoFont<'static> {
-    match size {
-        0..=12 => &FONT_6X10,
-        13..=17 => &FONT_9X15,
-        _ => &FONT_10X20,
-    }
-}
-
-/// The size of `text` in `font`, in pixels.
-#[must_use]
-pub fn text_size(font: &MonoFont<'_>, text: &str) -> Size {
-    let n = text.chars().count() as u32;
-    if n == 0 {
-        return Size::new(0, 0);
-    }
-    let w = n * font.character_size.width + (n - 1) * font.character_spacing;
-    Size::new(w, font.character_size.height)
-}
+pub use fusuma_render::bitmap::{font_for, font_for_char, runs, text_size};
 
 fn rgb565(c: Color) -> Rgb565 {
     Rgb565::new(c.r >> 3, c.g >> 2, c.b >> 3)
@@ -600,11 +578,21 @@ where
         if !Self::point_ok(origin) {
             return Ok(());
         }
-        let mono = MonoTextStyle::new(font, rgb565(style.color));
+        let advance =
+            i32::try_from(font.character_size.width + font.character_spacing).unwrap_or(i32::MAX);
+        let colour = rgb565(style.color);
         self.draw(|t| {
-            Text::with_baseline(text, origin, mono, Baseline::Top)
-                .draw(t)
-                .map(drop)
+            // Nearly every text is one run of one font; a text with Romanian or Cyrillic letters is a few.
+            for run in runs(text, style.size) {
+                let x = origin.x.saturating_add(
+                    advance.saturating_mul(i32::try_from(run.before).unwrap_or(i32::MAX)),
+                );
+                let mono = MonoTextStyle::new(run.font, colour);
+                Text::with_baseline(run.text, EgPoint::new(x, origin.y), mono, Baseline::Top)
+                    .draw(t)
+                    .map(drop)?;
+            }
+            Ok(())
         })
     }
 
@@ -1106,10 +1094,10 @@ mod tests {
         assert_eq!(font_for(17).character_size.height, 15);
         assert_eq!(font_for(18).character_size.height, 20);
         assert_eq!(font_for(u32::MAX).character_size.height, 20);
-        assert_eq!(text_size(&FONT_10X20, "abc"), Size::new(30, 20));
-        assert_eq!(text_size(&FONT_10X20, ""), Size::new(0, 0));
+        assert_eq!(text_size(font_for(20), "abc"), Size::new(30, 20));
+        assert_eq!(text_size(font_for(20), ""), Size::new(0, 0));
         assert_eq!(
-            text_size(&FONT_10X20, "é"),
+            text_size(font_for(20), "é"),
             Size::new(10, 20),
             "chars, not bytes"
         );
@@ -1617,5 +1605,50 @@ mod atlas_text_tests {
                 rel * 100.0
             );
         }
+    }
+}
+
+#[cfg(all(test, feature = "bitmap-extended", not(feature = "fonts")))]
+mod bitmap_extended_tests {
+    extern crate std;
+    use std::{vec, vec::Vec};
+
+    use super::*;
+
+    #[test]
+    fn a_text_in_several_scripts_is_drawn_run_by_run_in_the_right_places() {
+        use fusuma_render::{Color, Probe, Renderer};
+        let style = TextStyle::new(20, Color::WHITE);
+        let mut shot = |text: &str| {
+            let mut r = Embedded::new(Frame::new(120, 24, vec![0u16; 120 * 24]).unwrap());
+            r.draw_text(text, Point::new(0, 0), &style).unwrap();
+            (0..120)
+                .map(|x| {
+                    (0..24)
+                        .filter(|y| r.pixel(x, *y).is_some_and(|c| c != Color::BLACK))
+                        .count()
+                })
+                .collect::<Vec<_>>()
+        };
+        // Each character takes ten pixels whatever font it comes from, so a letter in the middle is where it would be anyway.
+        let (plain, ro) = (shot("a?c"), shot("așc"));
+        assert_eq!(plain[..10], ro[..10], "the a is the same");
+        assert_eq!(
+            plain[20..30],
+            ro[20..30],
+            "and the c, after a character from another font"
+        );
+        assert_ne!(plain[10..20], ro[10..20], "the ș is not a question mark");
+        assert!(ro[10..20].iter().any(|n| *n > 0), "it has ink");
+        // Cyrillic and Greek too.
+        for t in ["Ж", "λ"] {
+            assert_ne!(shot("?")[..10], shot(t)[..10], "{t}");
+        }
+        assert_eq!(
+            Embedded::new(Frame::new(120, 24, vec![0u16; 120 * 24]).unwrap())
+                .measure_text("aș日", &style)
+                .w,
+            30
+        );
     }
 }

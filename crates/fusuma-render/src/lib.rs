@@ -10,6 +10,8 @@
 //! show that it draws the same scene as the others.
 #![no_std]
 
+#[cfg(feature = "bitmap")]
+pub mod bitmap;
 pub mod color;
 pub mod effects;
 pub mod geometry;
