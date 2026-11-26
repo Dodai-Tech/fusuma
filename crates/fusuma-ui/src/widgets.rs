@@ -706,8 +706,8 @@ impl<const N: usize> Tree<N> {
                     crate::tree::ChartStyle::Bars => {
                         let slot = plot.w / cnt as u32;
                         let bar = slot.saturating_sub(slot / 4).max(1);
-                        for k in 0..cnt {
-                            let h = ((plot.h as i64 * i64::from(data[k])) / 255) as u32;
+                        for (k, v) in data.iter().take(cnt).enumerate() {
+                            let h = ((plot.h as i64 * i64::from(*v)) / 255) as u32;
                             if h > 0 {
                                 let x = plot.x + (slot * k as u32 + (slot - bar) / 2) as i32;
                                 r.fill_rect(

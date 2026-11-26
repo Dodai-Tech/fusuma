@@ -877,10 +877,7 @@ fn a_spinner_in_a_view_turns_and_a_bottom_sheet_rises_from_the_bottom_edge_and_i
     s.tree.advance(&THEME, 1000);
     s.frame();
     let r = s.tree.rect(sheet(&s)).unwrap();
-    assert_eq!(
-        (r.x, r.w, r.bottom()),
-        (0, i32::from(W) as u32 * 0 + u32::from(W), i32::from(H))
-    );
+    assert_eq!((r.x, r.w, r.bottom()), (0, u32::from(W), i32::from(H)));
     assert_eq!(s.tap("Copy link"), Some(M2::Close));
     // A press outside it asks to dismiss.
     let outside = Point::new(10, 10);

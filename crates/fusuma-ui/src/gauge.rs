@@ -292,7 +292,7 @@ mod tests {
         assert!(t.needs_frame() || t.paint_frame(&mut r, &THEME, bounds).unwrap().is_some());
         // A full turn wraps, and a stalled frame (a long pause) turns at most a second's worth.
         assert!(t.advance(&THEME, 800));
-        assert_eq!(t.spinner_phase(a), Some(3600 % 3600 + (900 + 2880) % 3600));
+        assert_eq!(t.spinner_phase(a), Some((900 + 2880) % 3600));
         t.advance(&THEME, 60_000);
         assert!(t.spinner_phase(a).unwrap() < 3600);
         // Hidden: no turning, and so no frames asked for.

@@ -16,7 +16,7 @@ use fusuma::{
 };
 
 /// Nodes the tree can hold; the busiest page uses about 40.
-pub const NODES: usize = 112;
+pub const NODES: usize = 256;
 
 /// How long the progress bar takes to fill, in milliseconds.
 const FILL_MS: u32 = 8000;
@@ -136,11 +136,15 @@ pub enum Page {
     Reading,
     /// Alerts, tags, a segmented control, chips, breadcrumbs, pagination, steps, a stat card, a snackbar.
     Components,
+    /// Charts, a table, a timeline, a carousel, a rating, a spinner and key caps.
+    Data,
+    /// A calendar, a time picker, a select, a tree, a fold and a split view.
+    Pickers,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 13] = [
         Self::Overview,
         Self::Buttons,
         Self::Selection,
@@ -152,6 +156,8 @@ impl Page {
         Self::Navigation,
         Self::Reading,
         Self::Components,
+        Self::Data,
+        Self::Pickers,
     ];
 
     /// The name in the sidebar.
@@ -169,6 +175,8 @@ impl Page {
             Self::Navigation => "Navigation",
             Self::Reading => "Reading",
             Self::Components => "Components",
+            Self::Data => "Data",
+            Self::Pickers => "Pickers",
         }
     }
 }
@@ -240,7 +248,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 11],
+    sidebar: [Option<NodeId>; 13],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
@@ -256,7 +264,7 @@ pub struct Showcase {
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
-    tiles: [Option<NodeId>; 11],
+    tiles: [Option<NodeId>; 13],
     back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
@@ -285,8 +293,10 @@ pub struct Showcase {
     page_no: u32,
     step: u8,
     chips: [bool; 3],
+    /// What the Data and Pickers pages keep.
+    x: pages::Extra,
     /// The Overview page's view, kept in step with its part of the tree.
-    pages: fusuma::Host<pages::PageMsg, 40>,
+    pages: fusuma::Host<pages::PageMsg, 160>,
     /// The icon characters, looked up once (a lookup by name is not free on a chip).
     icons: Option<pages::Icons>,
     /// The state the pages show, besides the ones above.
@@ -315,7 +325,7 @@ impl Showcase {
             palette: Palette::FUSUMA,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Overview,
-            sidebar: [None; 11],
+            sidebar: [None; 13],
             nav: [None; 3],
             class: Class::of(width),
             dialog: [None; 3],
@@ -323,7 +333,7 @@ impl Showcase {
             shape: fusuma::Shape::Rect,
             device: fusuma::Screen::new(0, 0),
             open: false,
-            tiles: [None; 11],
+            tiles: [None; 13],
             back: None,
             body: None,
             content: None,
@@ -346,6 +356,7 @@ impl Showcase {
             page_no: 3,
             step: 1,
             chips: [true, false, false],
+            x: pages::Extra::START,
             pages: fusuma::Host::new(),
             icons: None,
             notify: true,
@@ -373,9 +384,9 @@ impl Showcase {
         s.class = Class::of(cols.saturating_mul(CELL_PX));
         s.theme = s.make_theme();
         s.tree.clear();
-        s.sidebar = [None; 11];
+        s.sidebar = [None; 13];
         s.nav = [None; 3];
-        s.tiles = [None; 11];
+        s.tiles = [None; 13];
         s.back = None;
         s.content = None;
         let _ = s.build();
@@ -834,7 +845,7 @@ impl Showcase {
             .background(Surface::Surface)
             .round(Round::Medium);
         // A small screen shows a window onto the page, which scrolls: the pages are taller than a watch.
-        let c = if compact || page == Page::Components {
+        let c = if compact || matches!(page, Page::Components | Page::Data | Page::Pickers) {
             t.scroll(body, style)?
         } else {
             t.column(body, style)?
@@ -938,6 +949,7 @@ impl Showcase {
             page_no: self.page_no,
             step: self.step,
             chips: self.chips,
+            x: self.x,
             icons,
         };
         // The tree has room for the page (the whole app is checked to fit), so a failure leaves a smaller page.
@@ -954,6 +966,8 @@ impl Showcase {
             Page::Navigation => host.sync_children(tree, c, &pages::navigation(look, state)),
             Page::Reading => host.sync_children(tree, c, &pages::reading(look, state)),
             Page::Components => host.sync_children(tree, c, &pages::components(look, state)),
+            Page::Data => host.sync_children(tree, c, &pages::data(look, state)),
+            Page::Pickers => host.sync_children(tree, c, &pages::pickers(look, state)),
         };
         self.refresh_live();
     }
@@ -1084,6 +1098,71 @@ impl Showcase {
             P::Undo => {
                 let _ = write!(say, "Undone");
             }
+            P::Split(p) => {
+                self.x.split = p.clamp(50, 950);
+                let _ = write!(say, "Split {}%", self.x.split / 10);
+            }
+            P::Day(d) => {
+                self.x.day = d;
+                let _ = write!(
+                    say,
+                    "{} {} {}",
+                    d,
+                    fusuma::MONTHS[usize::from(self.x.month - 1)],
+                    self.x.year
+                );
+            }
+            P::MonthBy(by) => {
+                (self.x.year, self.x.month) = fusuma::shift_month(self.x.year, self.x.month, by);
+                self.x.day = self
+                    .x
+                    .day
+                    .min(fusuma::days_in_month(self.x.year, self.x.month));
+                let _ = write!(
+                    say,
+                    "{} {}",
+                    fusuma::MONTHS[usize::from(self.x.month - 1)],
+                    self.x.year
+                );
+            }
+            P::TimeStep(part, by) => {
+                (self.x.hour, self.x.minute) =
+                    fusuma::step_time(self.x.hour, self.x.minute, part, by);
+                let _ = write!(say, "{:02}:{:02}", self.x.hour, self.x.minute);
+            }
+            P::SelectToggle => self.x.size_open = !self.x.size_open,
+            P::SelectClose => self.x.size_open = false,
+            P::SelectPick(i) => {
+                self.x.size = Some(i.min(2));
+                self.x.size_open = false;
+                let _ = write!(say, "Size {}", pages::SIZES[i.min(2)]);
+            }
+            P::Rate(n) => {
+                self.x.rating = if self.x.rating == n { 0 } else { n };
+                let _ = write!(say, "{} of 5", self.x.rating);
+            }
+            P::Slide(i) => {
+                self.x.slide = i.min(pages::SLIDES.len() - 1);
+                let _ = write!(say, "Slide {}", self.x.slide + 1);
+            }
+            P::Fold => {
+                self.x.fold = !self.x.fold;
+                let _ = write!(say, "{}", if self.x.fold { "Opened" } else { "Closed" });
+            }
+            P::TreeToggle => {
+                self.x.tree_open = !self.x.tree_open;
+                if !self.x.tree_open && self.x.tree_row > 0 {
+                    self.x.tree_row = 0;
+                }
+            }
+            P::TreeSelect(i) => {
+                self.x.tree_row = i;
+                let _ = write!(
+                    say,
+                    "{}",
+                    ["src", "lib.rs", "main.rs"][usize::from(i.min(2))]
+                );
+            }
             P::Swiped(dir) => {
                 self.swipes += 1;
                 self.swiped = Some(dir);
@@ -1116,9 +1195,9 @@ impl Showcase {
     fn rebuild(&mut self) {
         self.tree.clear();
         self.pages.forget();
-        self.sidebar = [None; 11];
+        self.sidebar = [None; 13];
         self.nav = [None; 3];
-        self.tiles = [None; 11];
+        self.tiles = [None; 13];
         self.back = None;
         self.content = None;
         let _ = self.build();
@@ -1581,9 +1660,9 @@ impl App for Showcase {
             self.bounds = bounds;
             self.tree.clear();
             self.pages.forget();
-            self.sidebar = [None; 11];
+            self.sidebar = [None; 13];
             self.nav = [None; 3];
-            self.tiles = [None; 11];
+            self.tiles = [None; 13];
             self.back = None;
             self.content = None;
             let _ = self.build();
@@ -2909,6 +2988,103 @@ mod tests {
         let home = by(&s, "Home");
         press(&mut s, &mut r, home);
         assert_eq!(status(&s).as_deref(), Some("Back to Home"));
+    }
+
+    #[test]
+    fn the_data_and_pickers_pages_answer_every_part_and_keep_their_state() {
+        let (mut s, mut r) = app();
+        let by = |s: &Showcase, name: &str| {
+            s.tree()
+                .semantics()
+                .filter(|n| n.name == name)
+                .last()
+                .map(|n| n.id)
+                .unwrap_or_else(|| panic!("no '{name}' on the page"))
+        };
+        let press = |s: &mut Showcase, r: &mut _, name: &str| {
+            let id = by(s, name);
+            s.tree.focus(id);
+            s.frame(r).unwrap();
+            tap(s, id);
+        };
+        let status = |s: &Showcase| {
+            s.status
+                .and_then(|id| s.tree().text(id))
+                .map(std::string::ToString::to_string)
+        };
+        // Data: a star, a carousel arrow.
+        go(&mut s, Page::Data);
+        settle(&mut s);
+        s.frame(&mut r).unwrap();
+        let stars: std::vec::Vec<_> = s
+            .tree()
+            .semantics()
+            .filter(|n| n.name == "*")
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(stars.len(), 5);
+        s.tree.focus(stars[4]);
+        s.frame(&mut r).unwrap();
+        tap(&mut s, stars[4]);
+        assert_eq!(s.x.rating, 5);
+        assert_eq!(status(&s).as_deref(), Some("5 of 5"));
+        press(&mut s, &mut r, ">");
+        assert_eq!(s.x.slide, 1);
+        assert!(s.tree().semantics().any(|n| n.name == "Pick a theme"));
+        // Pickers: the calendar, the time, the select, the tree, the fold.
+        go(&mut s, Page::Pickers);
+        settle(&mut s);
+        s.frame(&mut r).unwrap();
+        press(&mut s, &mut r, "20");
+        assert_eq!(s.x.day, 20);
+        assert_eq!(status(&s).as_deref(), Some("20 November 2026"));
+        press(&mut s, &mut r, ">");
+        assert_eq!((s.x.year, s.x.month), (2026, 12));
+        press(&mut s, &mut r, ">");
+        press(&mut s, &mut r, "<");
+        assert_eq!((s.x.year, s.x.month), (2026, 12));
+        for _ in 0..12 {
+            press(&mut s, &mut r, ">");
+        }
+        assert_eq!((s.x.year, s.x.month), (2027, 12), "a year on");
+        // 31 December selected is held to the month's length when the month changes.
+        s.x.day = 31;
+        s.sync_pages();
+        press(&mut s, &mut r, "<");
+        assert_eq!((s.x.month, s.x.day), (11, 30));
+        let plus = s
+            .tree()
+            .semantics()
+            .filter(|n| n.name == "+")
+            .map(|n| n.id)
+            .collect::<std::vec::Vec<_>>();
+        s.tree.focus(plus[0]);
+        s.frame(&mut r).unwrap();
+        tap(&mut s, plus[0]);
+        assert_eq!((s.x.hour, s.x.minute), (10, 30));
+        assert_eq!(status(&s).as_deref(), Some("10:30"));
+        // The select opens, and picking closes it and shows the choice.
+        press(&mut s, &mut r, "Medium");
+        assert!(s.x.size_open);
+        press(&mut s, &mut r, "Large");
+        assert_eq!((s.x.size, s.x.size_open), (Some(2), false));
+        // The tree: folding hides the children and selects the folder.
+        let before = s.tree().semantics().filter(|n| n.name == "lib.rs").count();
+        assert_eq!(before, 1);
+        press(&mut s, &mut r, "v");
+        assert!(!s.x.tree_open);
+        assert_eq!(
+            s.tree().semantics().filter(|n| n.name == "lib.rs").count(),
+            0
+        );
+        // The fold opens.
+        press(&mut s, &mut r, "More");
+        assert!(s.x.fold);
+        assert!(
+            s.tree()
+                .semantics()
+                .any(|n| n.name == "Hidden until opened")
+        );
     }
 
     #[test]

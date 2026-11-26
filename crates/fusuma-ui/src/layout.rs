@@ -827,11 +827,7 @@ mod tests {
             if align == CrossAlign::Stretch {
                 assert_eq!((r0.h, r1.h), (10, 11), "a fixed height stays as it is");
             }
-            assert_eq!(
-                rect(&t, k[3]).y >= 12,
-                true,
-                "the second line is below the first"
-            );
+            assert!(rect(&t, k[3]).y >= 12, "the second line is below the first");
         }
     }
 

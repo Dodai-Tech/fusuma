@@ -3,12 +3,16 @@
 
 use fusuma::Tone;
 use fusuma::{
-    Children, alert, avatar, badge, banner, breadcrumbs, button, card, checkbox, chip, column,
-    divider, each, gauge, gestures, icon, item, menu, named, pagination, paragraph, progress,
-    radio, row, scroll, section, segmented, slider, snackbar, stat_card, stepper, steps, switch,
-    tab, tab_bar, tag, text, text_field, text_fmt, toast, wrap,
+    Children, accordion, alert, area_chart, avatar, badge, banner, breadcrumbs, button, card,
+    checkbox, chip, column, divider, each, gauge, gestures, icon, item, menu, named, pagination,
+    paragraph, progress, radio, row, scroll, section, segmented, slider, snackbar, stat_card,
+    stepper, steps, switch, tab, tab_bar, tag, text, text_field, text_fmt, toast, wrap,
 };
 use fusuma::{CrossAlign, Id, Length, Swipe, SwipeDir};
+use fusuma::{
+    bar_chart, calendar, carousel, kbd, line_chart, rating, select, show, spinner, split_view,
+    table, time_picker, timeline, tree_item,
+};
 
 /// The names the app gives the widgets the tests and the rest of the app look for.
 pub mod wid {
@@ -102,7 +106,84 @@ pub enum PageMsg {
     Crumb(u8),
     /// The snackbar's action.
     Undo,
+    /// The split view's bar moved to this many thousandths.
+    Split(u16),
+    /// A day of the calendar.
+    Day(u8),
+    /// The calendar's arrows: a month back or on.
+    MonthBy(i32),
+    /// A step of the time picker.
+    TimeStep(fusuma::TimePart, i32),
+    /// The select's button, an option of it, or a press outside its menu.
+    SelectToggle,
+    /// An option of the select.
+    SelectPick(usize),
+    /// A press outside the select's menu.
+    SelectClose,
+    /// A star of the rating.
+    Rate(u8),
+    /// A page of the carousel.
+    Slide(usize),
+    /// The accordion's heading.
+    Fold,
+    /// A tree row's triangle (the folder) or the row itself.
+    TreeToggle,
+    /// A row of the tree.
+    TreeSelect(u8),
 }
+
+/// What the Data and Pickers pages keep: the split, the date and time, the select, the rating, the carousel, the accordion and
+/// the tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Extra {
+    pub split: u16,
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub size: Option<usize>,
+    pub size_open: bool,
+    pub rating: u8,
+    pub slide: usize,
+    pub fold: bool,
+    pub tree_open: bool,
+    pub tree_row: u8,
+}
+
+impl Extra {
+    pub const START: Self = Self {
+        split: 400,
+        year: 2026,
+        month: 11,
+        day: 26,
+        hour: 9,
+        minute: 30,
+        size: Some(1),
+        size_open: false,
+        rating: 3,
+        slide: 0,
+        fold: false,
+        tree_open: true,
+        tree_row: 1,
+    };
+}
+
+/// The sizes the select offers.
+pub const SIZES: [&str; 3] = ["Small", "Medium", "Large"];
+/// A week of readings for the charts.
+pub const READINGS: [i32; 12] = [4, 7, 5, 9, 12, 8, 6, 10, 14, 11, 9, 13];
+/// The rows of the table.
+pub const TABLE_HEAD: [&str; 3] = ["Item", "Qty", "Price"];
+const ROW1: [&str; 3] = ["Bolt", "10", "0.50"];
+const ROW2: [&str; 3] = ["Nut", "25", "0.20"];
+const ROW3: [&str; 3] = ["Washer", "7", "0.10"];
+pub const TABLE_ROWS: [&[&str]; 3] = [&ROW1, &ROW2, &ROW3];
+/// The steps of the order timeline.
+pub const TIMELINE: [(&str, &str); 3] =
+    [("Ordered", "Mon"), ("Shipped", "Tue"), ("Delivered", "Thu")];
+/// The carousel's pages.
+pub const SLIDES: [&str; 3] = ["Welcome", "Pick a theme", "All set"];
 
 /// How a page is laid out on the screen it is on.
 #[derive(Clone, Copy, Debug)]
@@ -160,6 +241,7 @@ pub struct State<'a> {
     pub page_no: u32,
     pub step: u8,
     pub chips: [bool; 3],
+    pub x: Extra,
     pub icons: Icons,
 }
 
@@ -320,6 +402,103 @@ pub fn components<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
         button("Next step").on_press(PageMsg::StepTo((s.step + 1) % 3)),
         (!look.lite).then(|| stat_card("Steps today", "8,412", "+12%", Tone::Success)),
         snackbar("Message deleted", "Undo", PageMsg::Undo),
+    )
+}
+
+/// The Data page: numbers and how they change.
+pub fn data<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
+    let (w, h) = if look.micro {
+        (96, 48)
+    } else if look.lite {
+        (180, 70)
+    } else {
+        (260, 90)
+    };
+    (
+        (!look.lite).then(|| text("Data").title()),
+        stat_card("Steps today", "8,412", "+12%", Tone::Success),
+        column((
+            line_chart(&READINGS).size(w, h),
+            area_chart(&READINGS).size(w, h),
+            bar_chart(&READINGS).range(&READINGS, 0, 16).size(w, h),
+        ))
+        .gap(look.sm),
+        table(&TABLE_HEAD, &TABLE_ROWS),
+        timeline(&TIMELINE, 1),
+        carousel(
+            s.x.slide,
+            SLIDES.len(),
+            PageMsg::Slide,
+            text(SLIDES[s.x.slide.min(SLIDES.len() - 1)]),
+        ),
+        row((rating(s.x.rating, PageMsg::Rate), spinner().size(24)))
+            .gap(look.md)
+            .align(CrossAlign::Center),
+        row((text("Press").caption(), kbd("Ctrl"), kbd("K")))
+            .gap(look.sm)
+            .align(CrossAlign::Center),
+    )
+}
+
+/// The Pickers page: a date, a time, a choice, a tree, a fold and a split view.
+pub fn pickers<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
+    let x = s.x;
+    (
+        (!look.lite).then(|| text("Pickers").title()),
+        calendar(x.year, x.month, Some(x.day), PageMsg::Day, PageMsg::MonthBy),
+        time_picker(x.hour, x.minute, PageMsg::TimeStep),
+        select(
+            &SIZES,
+            x.size,
+            x.size_open,
+            PageMsg::SelectToggle,
+            PageMsg::SelectPick,
+            PageMsg::SelectClose,
+        )
+        .placeholder("Size"),
+        column((
+            tree_item(
+                "src",
+                0,
+                Some(x.tree_open),
+                x.tree_row == 0,
+                PageMsg::TreeToggle,
+                PageMsg::TreeSelect(0),
+            ),
+            show(
+                x.tree_open,
+                column((
+                    tree_item(
+                        "lib.rs",
+                        1,
+                        None,
+                        x.tree_row == 1,
+                        PageMsg::TreeToggle,
+                        PageMsg::TreeSelect(1),
+                    ),
+                    tree_item(
+                        "main.rs",
+                        1,
+                        None,
+                        x.tree_row == 2,
+                        PageMsg::TreeToggle,
+                        PageMsg::TreeSelect(2),
+                    ),
+                )),
+            ),
+        )),
+        accordion(
+            "More",
+            x.fold,
+            PageMsg::Fold,
+            (text("Hidden until opened"),),
+        ),
+        split_view(
+            x.split,
+            PageMsg::Split,
+            (text("Left").caption(),),
+            (text("Right").caption(),),
+        ),
     )
 }
 
