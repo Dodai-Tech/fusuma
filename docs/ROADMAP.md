@@ -255,13 +255,25 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   hidden, so it keeps its state). The showcase has a **Components** page (the 11th) that uses all but the accordion and answers each (a test presses every part)
 - [x] **Gauge** (`Kind::Gauge`, `Tree::gauge`, `gauge()` view): an arc of 270 degrees with a number, stroked from a sine table in
   integers (no float, no allocation); 19 points, because the integer renderer holds about 20 segments of a stroked path
-- [ ] **Compositions still to do:** spinner and indeterminate progress (they need a timer-driven node), a bottom sheet, a
-  carousel with page dots, a rating, a key cap (`Kbd`), a timeline, a dismissible alert
-- [ ] **Needs engine work:** image, multi-line editable text, combobox and select, wrap and grid layouts (a row of buttons that
-  does not fit overflows: the showcase stacks them by hand on a tiny panel), split view with a draggable divider, a table,
-  a tree view
-- [ ] **Data display for cars and watches:** line and bar chart, calendar, date and time pickers (the gauge is the first piece)
-- [ ] **System:** right-to-left layout, text scaling, drag and drop
+- [x] **Layout:** a wrapping row (`Kind::Flow`, `wrap()`), a grid of equal columns (`grid(cols, ..)`, `Tree::grid`; each row as tall as its
+  tallest cell), both without allocation and following the width the parent gives them (two passes, like a paragraph); and
+  **right-to-left** (`Tree::set_rtl`: rows, wraps and grids start at the right; the text itself is not reordered or shaped)
+- [x] **More components made of views** (all in `components.rs` / `calendar.rs`, tested in `elm_components.rs`): `spinner` (a real
+  turning node, still where there is no motion), `bottom_sheet` (a modal dialog on the bottom edge), `kbd`, `dismissible_alert`,
+  `rating`, `page_dots`, `carousel`, `timeline`, `table`, `split_view` and `split_view_vertical` (a `Splitter` node that a drag or the
+  arrow keys move, along its parent), `select` (button and menu), `combobox` (suggestions under the field, so it keeps the focus),
+  `tree_item`, `image` (RGBA, `include_bytes!` or flash; shades in a text UI), line, area and bar **charts** (`Kind::Chart`, up to 32
+  samples), a month **calendar** and a **time picker** with the date arithmetic (`weekday`, `days_in_month`, `shift_month`,
+  `step_time`)
+- [x] **Text areas** (`text_area`, `TextField::rows(n)`): Enter breaks the line, Up and Down move between lines, a press picks the
+  line, Home and End go to the ends of the line; no wrapping, and the text is the field's 64 bytes (250 with `long-text`)
+- [x] **System:** text scaling (`Theme::with_text_scale`, the person's font size: text and controls grow, nothing else),
+  **drag and drop** (`set_draggable`, `set_drop_target`, `DragStarted`/`Dropped`/`DragCancelled`, a ghost and the target outlined, the
+  `draggable` and `drop_target` views)
+- [ ] **Still to do:** bidirectional text and shaping of right-to-left scripts (the renderer draws left to right), soft wrapping in a
+  text area and a longer text for it, a combobox that filters by itself, dragging with the keyboard, a floating (popover) combobox
+  menu that does not take the focus, image scaling, line charts with more than 32 points or a time axis, a date range picker,
+  spinner and gauge animation on the text UI beyond one cell
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature
 - [ ] Port the Hibari OS launcher to Fusuma widgets
 
