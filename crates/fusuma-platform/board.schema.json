@@ -21,7 +21,7 @@
         "radius": { "type": "integer", "minimum": 1 },
         "offset": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 },
         "grid": { "type": "integer", "minimum": 1, "maximum": 16 },
-        "controller": { "enum": ["co5300", "sh8601", "rm690b0", "st7789", "gc9a01", "ek79007", "ssd1677", "ssd1680", "uc8179"] },
+        "controller": { "enum": ["co5300", "sh8601", "rm690b0", "st7789", "gc9a01", "ek79007", "ssd1677", "ssd1680", "epd4g", "uc8179"] },
         "bus": { "enum": ["qspi", "dsi", "spi"] },
         "pins": { "$ref": "#/$defs/pins" },
         "options": { "$ref": "#/$defs/options" }

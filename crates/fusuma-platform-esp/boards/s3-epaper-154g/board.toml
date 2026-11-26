@@ -1,0 +1,49 @@
+# The Waveshare ESP32-S3-ePaper-1.54G: a 1.54 inch 200x200 four-colour (black, white, yellow, red) e-paper on an ESP32-S3-PICO-1-N8R8 (8 MB
+# flash, 8 MB octal PSRAM), with the same board as the black and white 1.54: PCF85063 RTC, SHTC3, ES8311 codec and a TF slot. NOT RUN ON A
+# BOARD: the pins, the panel's power polarity and the battery latch are read from Waveshare's firmware (waveshareteam/ESP32-S3-ePaper-1.54G,
+# ESP-IDF 09_E_Paper_Test and 08_BATT_PWR_Test); the panel's controller is not named there, so it is `epd4g` here. A refresh takes
+# seconds and there is no partial one. Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-epaper-154g"
+title = "Waveshare ESP32-S3-ePaper-1.54G"
+about = "Waveshare ESP32-S3-ePaper-1.54G, 1.54 inch four-colour e-paper (200x200), RTC, SHTC3, ES8311 codec, TF slot"
+capabilities = ["display", "button", "wifi", "ble", "battery", "rtc", "storage", "audio", "eink"]
+
+[display]
+width = 200
+height = 200
+controller = "epd4g"
+bus = "spi"
+# The busy line is high when the panel is idle. The panel's power is a plain GPIO (6), switched below, so there is no `en`.
+pins = { sck = 12, mosi = 13, cs = 11, dc = 10, rst = 9, busy = 8 }
+options = { data_rate_mhz = 10 }
+
+[screen]
+form = "micro"
+width_mm = 28
+height_mm = 28
+kind = "eink"
+# Four inks: two bits a pixel.
+depth = 2
+refresh_ms = 15000
+inputs = ["keys"]
+
+# The vendor's firmware drives GPIO6 low to power the panel (high is off) and GPIO17 high to keep the battery switched on.
+# The audio amplifier's power (GPIO42, low is on) stays off.
+[power]
+high = [17, 42]
+low = [6]
+
+# BOOT; the PWR key (GPIO18) is the board's own power key and is left alone. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 0 }
+active_low = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 8
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

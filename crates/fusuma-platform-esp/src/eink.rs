@@ -8,15 +8,25 @@ use fusuma::platform::{Machine, Render, Settings};
 use fusuma::render::Point;
 use fusuma::{App, Input, Key, TouchTracker};
 use fusuma_platform_embedded::eink::bus::Bus;
+#[cfg_attr(not(fusuma_display = "epd4g"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::epd4g::{Config as Epd4gConfig, Epd4g};
 #[cfg_attr(
-    any(fusuma_display = "uc8179", fusuma_display = "ssd1680"),
+    any(
+        fusuma_display = "uc8179",
+        fusuma_display = "ssd1680",
+        fusuma_display = "epd4g"
+    ),
     allow(unused_imports)
 )]
 use fusuma_platform_embedded::eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
 #[cfg_attr(not(fusuma_display = "ssd1680"), allow(unused_imports))]
 use fusuma_platform_embedded::eink::ssd1680::{Config as Ssd1680Config, Ssd1680};
 #[cfg_attr(
-    any(fusuma_display = "uc8179", fusuma_display = "ssd1680"),
+    any(
+        fusuma_display = "uc8179",
+        fusuma_display = "ssd1680",
+        fusuma_display = "epd4g"
+    ),
     allow(unused_imports)
 )]
 use fusuma_platform_embedded::eink::sticky::{Sticky, Variant};
@@ -109,7 +119,11 @@ impl Bus for EspBus {
 /// The panel this firmware drives, by what the board file names.
 enum Chosen {
     #[cfg_attr(
-        any(fusuma_display = "uc8179", fusuma_display = "ssd1680"),
+        any(
+            fusuma_display = "uc8179",
+            fusuma_display = "ssd1680",
+            fusuma_display = "epd4g"
+        ),
         allow(dead_code)
     )]
     Sticky(Sticky<EspBus>),
@@ -117,6 +131,8 @@ enum Chosen {
     Uc8179(Uc8179<EspBus>),
     #[cfg_attr(not(fusuma_display = "ssd1680"), allow(dead_code))]
     Ssd1680(Ssd1680<EspBus>),
+    #[cfg_attr(not(fusuma_display = "epd4g"), allow(dead_code))]
+    Epd4g(Epd4g<EspBus>),
 }
 
 impl Panel for Chosen {
@@ -127,6 +143,7 @@ impl Panel for Chosen {
             Self::Sticky(p) => p.size(),
             Self::Uc8179(p) => p.size(),
             Self::Ssd1680(p) => p.size(),
+            Self::Epd4g(p) => p.size(),
         }
     }
 
@@ -135,6 +152,7 @@ impl Panel for Chosen {
             Self::Sticky(p) => p.full(frame),
             Self::Uc8179(p) => p.full(frame),
             Self::Ssd1680(p) => p.full(frame),
+            Self::Epd4g(p) => p.full(frame),
         }
     }
 
@@ -143,6 +161,7 @@ impl Panel for Chosen {
             Self::Sticky(p) => p.partial(region, data),
             Self::Uc8179(p) => p.partial(region, data),
             Self::Ssd1680(p) => p.partial(region, data),
+            Self::Epd4g(p) => p.partial(region, data),
         }
     }
 
@@ -151,6 +170,7 @@ impl Panel for Chosen {
             Self::Sticky(p) => p.sleep(),
             Self::Uc8179(p) => p.sleep(),
             Self::Ssd1680(p) => p.sleep(),
+            Self::Epd4g(p) => p.sleep(),
         }
     }
 
@@ -159,6 +179,28 @@ impl Panel for Chosen {
             Self::Sticky(p) => p.screen(),
             Self::Uc8179(p) => p.screen(),
             Self::Ssd1680(p) => p.screen(),
+            Self::Epd4g(p) => p.screen(),
+        }
+    }
+
+    fn gray4(&self) -> bool {
+        match self {
+            Self::Epd4g(p) => p.gray4(),
+            _ => false,
+        }
+    }
+
+    fn full_gray4(&mut self, levels: &[u8]) -> Result<(), EspError> {
+        match self {
+            Self::Epd4g(p) => p.full_gray4(levels),
+            _ => Ok(()),
+        }
+    }
+
+    fn colors4(&self) -> Option<[u16; 4]> {
+        match self {
+            Self::Epd4g(p) => p.colors4(),
+            _ => None,
         }
     }
 }
@@ -262,7 +304,32 @@ pub(crate) fn run_here<A: App>(
             },
         )
     };
-    #[cfg(not(any(fusuma_display = "uc8179", fusuma_display = "ssd1680")))]
+    #[cfg(fusuma_display = "epd4g")]
+    let (panel, policy) = {
+        let _ = mirror;
+        // The four-colour panels: a refresh is seconds long and the only kind there is, so settle for a while and never
+        // wait for a clean-up.
+        (
+            Chosen::Epd4g(Epd4g::new(
+                bus,
+                Epd4gConfig {
+                    width: WIDTH,
+                    height: HEIGHT,
+                },
+            )),
+            RefreshPolicy {
+                min_interval_ms: 15_000,
+                settle_ms: 1_000,
+                full_every: 0,
+                ..RefreshPolicy::DEFAULT
+            },
+        )
+    };
+    #[cfg(not(any(
+        fusuma_display = "uc8179",
+        fusuma_display = "ssd1680",
+        fusuma_display = "epd4g"
+    )))]
     let (panel, policy) = {
         let s = if (WIDTH, HEIGHT) == (800, 480) {
             Sticky::detect(bus, mirror).map_err(|e| anyhow::anyhow!("probing the panel: {e:?}"))?
@@ -308,6 +375,14 @@ pub(crate) fn run_here<A: App>(
     // The integer renderer draws straight into a one-bit frame (48 KB for 800x480, where RGB565 is 768 KB and nothing is left
     // to pack); Vello, if the settings ask for it, draws RGB565 that is quantised when it is shown.
     let app = make(w, h);
+    #[cfg(fusuma_display = "epd4g")]
+    let mut driver = EinkDriver::new_color4(app, panel, plan.uses, policy).ok_or_else(|| {
+        anyhow::anyhow!(
+            "cannot make a {} surface for the four-colour panel",
+            plan.uses.name()
+        )
+    })?;
+    #[cfg(not(fusuma_display = "epd4g"))]
     let mut driver = if plan.uses == fusuma::platform::Backend::Integer {
         EinkDriver::new_mono(app, panel, policy)
             .ok_or_else(|| anyhow::anyhow!("cannot make a {w}x{h} one-bit frame"))?

@@ -35,6 +35,7 @@ A board file names them (`display.pins`, `[power]` for rails that must be high o
 | `ssd1677` | 3.97" and other 800x480 | yes, `s3-sticky` | `mirror_x` for the Sticky's wiring |
 | `ssd2677` | the Sticky's newer 3.97" panel | through `Sticky::detect` (reads register 0x70) | full refresh only, waveform from the temperature |
 | `uc8179` | Waveshare 7.5" 800x480 | yes (controller name) | busy low while working, partial refresh |
+| `epd4g` | Waveshare 1.54" four-colour "G" (200x200: black, white, yellow, red) | yes, `s3-epaper-154g` | the chip is not named in Waveshare's repository; two bits a pixel, busy high when idle, **no partial refresh** and each one takes seconds: the driver powers the panel off after every picture. Drawn in colour and quantised to the four inks (`EinkDriver::new_color4`, `pack_color4`) |
 
 Screen presets in `fusuma-platform`: `epaper-1in54`, `-2in13`, `-2in9`, `-4in2`, `-7in5`, `-3in97`. The 4.2" (UC8176) has a
 preset and no driver.
@@ -46,13 +47,13 @@ preset and no driver.
 | `s3-sticky` | Seeed reTerminal Sticky | 3.97" 800x480, SSD1677 or SSD2677, GT911 touch, three keys | file, built |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 1.54" 200x200, SSD1681 | file from vendor firmware, built, not run |
 | `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: voltages as the vendor sets them, ALDO3 switched on with a masked write) | file from vendor firmware, built, not run; the vendor counts Y down, the driver up: the picture may be upside down |
+| `s3-epaper-154g` | Waveshare ESP32-S3-ePaper-1.54G | 1.54" 200x200 four-colour, `epd4g` | file from vendor firmware, built, not run; 8 MB flash; each refresh is a whole picture and takes seconds |
 | `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 1.54" 200x200, SSD1681; panel power and battery latch on a TCA9554 (`[power.i2c]`) | file from vendor firmware, built and linked for the C6, not run |
 
 Not boards yet:
 
 | Board | Why not |
 |---|---|
-| Waveshare ESP32-S3-ePaper-1.54G | read: a **four-colour** (black, white, red, yellow) 1.54" 200x200 panel; the init (`0x4D`, PSR `0x00` = `0x0F 0x29`, ...) is the UC81xx colour family, not SSD168x, and the app would need a four-colour pipeline (palette quantiser), not the one-bit one. Not supported |
 | Waveshare ESP32-S3-ePaper-13.3E6, S3-PhotoPainter | not read; the 13.3" is an IT8951-class or six-colour controller (a different driver) |
 | Waveshare ESP32-S3-RLCD-4.2, S3-LR1121-ePaper-2.9 | not read yet (RLCD is a reflective LCD, not e-paper) |
 | Raspberry Pi Pico / RP2040 e-paper hats | not an ESP; needs the Cortex-M target |
