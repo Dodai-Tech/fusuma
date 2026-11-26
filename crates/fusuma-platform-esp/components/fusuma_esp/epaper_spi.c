@@ -185,7 +185,7 @@ esp_err_t fusuma_epd_read_byte(uint8_t *value) {
 
 #include "driver/i2c_master.h"
 
-esp_err_t fusuma_i2c_write_reg(int sda, int scl, int addr, int reg, int value) {
+esp_err_t fusuma_i2c_write_reg(int sda, int scl, int addr, int reg, int value, int mask) {
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port = -1,
         .sda_io_num = sda,
@@ -205,8 +205,14 @@ esp_err_t fusuma_i2c_write_reg(int sda, int scl, int addr, int reg, int value) {
     i2c_master_dev_handle_t h;
     err = i2c_master_bus_add_device(bus, &dev, &h);
     if (err == ESP_OK) {
-        uint8_t buf[2] = { (uint8_t)reg, (uint8_t)value };
-        err = i2c_master_transmit(h, buf, sizeof buf, 100);
+        uint8_t out = (uint8_t)value;
+        if (mask != 0xFF) {
+            uint8_t r = (uint8_t)reg, old = 0;
+            err = i2c_master_transmit_receive(h, &r, 1, &old, 1, 100);
+            out = (uint8_t)((old & ~mask) | (value & mask));
+        }
+        uint8_t buf[2] = { (uint8_t)reg, out };
+        if (err == ESP_OK) err = i2c_master_transmit(h, buf, sizeof buf, 100);
         i2c_master_bus_rm_device(h);
     }
     i2c_del_master_bus(bus);

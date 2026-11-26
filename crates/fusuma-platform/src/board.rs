@@ -564,8 +564,9 @@ pub struct PowerI2c {
     pub sda: u8,
     /// The bus's clock pin.
     pub scl: u8,
-    /// `[address, register, value]`, in order, each one write of the register then the value.
-    pub writes: Vec<[u8; 3]>,
+    /// `[address, register, value, mask]`, in order. Mask `0xFF` writes the register whole; a smaller mask reads it first and
+    /// changes only the bits in the mask (a chip whose register holds several rails). Written `[a, r, v]` the mask is `0xFF`.
+    pub writes: Vec<[u8; 4]>,
 }
 
 /// The keys a board can have, and what the toolkit does with each (`ok` presses, `up` and `down` move the focus).
@@ -855,10 +856,14 @@ impl BoardFile {
                             .writes
                             .iter()
                             .map(|w| {
-                                let [a, r, v] = w[..] else {
-                                    return Err(format!(
-                                        "[power.i2c] a write is three numbers (address, register, value), not {w:?}"
-                                    ));
+                                let (a, r, v, m) = match w[..] {
+                                    [a, r, v] => (a, r, v, 0xFF),
+                                    [a, r, v, m] => (a, r, v, m),
+                                    _ => {
+                                        return Err(format!(
+                                            "[power.i2c] a write is three or four numbers (address, register, value, optional mask), not {w:?}"
+                                        ));
+                                    }
                                 };
                                 if !(0..0x80).contains(&a) {
                                     return Err(format!("[power.i2c] address {a:#x} is not a 7-bit address"));
@@ -866,7 +871,7 @@ impl BoardFile {
                                 let byte = |n: &str, x: i64| {
                                     u8::try_from(x).map_err(|_| format!("[power.i2c] {n} {x} is not 0 to 255"))
                                 };
-                                Ok([byte("address", a)?, byte("register", r)?, byte("value", v)?])
+                                Ok([byte("address", a)?, byte("register", r)?, byte("value", v)?, byte("mask", m)?])
                             })
                             .collect::<Result<Vec<_>, String>>()?;
                         Ok(PowerI2c { sda, scl, writes })
@@ -1324,12 +1329,15 @@ fpu = true
         .unwrap();
         let i = b.power.unwrap().i2c.unwrap();
         assert_eq!((i.sda, i.scl), (18, 8));
-        assert_eq!(i.writes, [[0x20, 3, 0xFE], [0x20, 1, 0x01]]);
+        assert_eq!(i.writes, [[0x20, 3, 0xFE, 0xFF], [0x20, 1, 0x01, 0xFF]]);
+        let m =
+            with_tables("[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x34, 0x90, 4, 4]]").unwrap();
+        assert_eq!(m.power.unwrap().i2c.unwrap().writes, [[0x34, 0x90, 4, 4]]);
         for (text, says) in [
             ("[power.i2c]\nsda = 1\nscl = 1\nwrites = []", "same pin"),
             (
                 "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x20, 3]]",
-                "three numbers",
+                "three or four numbers",
             ),
             (
                 "[power.i2c]\nsda = 1\nscl = 2\nwrites = [[0x80, 3, 1]]",

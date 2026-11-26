@@ -408,7 +408,8 @@ the same pixels as the hand-built page, a message log that replays to the same s
 - [x] `fusuma-platform-eink` merged into `fusuma-platform-embedded::eink` (it had no dependency of its own); `ssd1680` is a board
   controller (1.54", 2.13", 2.9"), board `s3-epaper-154`; e-paper hardware notes in `docs/EINK.md`
 - [x] `[power.i2c]` in the board file (register writes to a rail chip at boot, bus freed after), board `c6-epaper-154` on the TCA9554;
-  board `s3-epaper-397` uses it for the AXP2101's voltages (the vendor sets no enable, so no masked write was needed)
+  `[address, register, value, mask]` for registers that hold several rails; board `s3-epaper-397` uses it for the AXP2101 (ALDO3 is the panel's rail).
+- [x] A model of the SSD168x memory as a test bus plus the vendor's init sequences (`tests/eink_sim.rs`); open: a `y_decrement` option for the 3.97 if the picture is upside down, the vendor's waveform table for the 1.54"
 - [ ] Plain-SPI LCD driver (ST7789, GC9A01), an I/O expander (TCA9554: the C6 e-paper 1.54's panel power, the S3 1.8"'s reset)
   and a `variant` option on the `co5300` (1.43 SH8601, 1.64 V1/V2)
 - [ ] The C6 (a board file; `esp-hal` as well as ESP-IDF), a Cortex-M board (RP2040, STM32, nRF), a Linux

@@ -223,10 +223,10 @@ pub(crate) fn run_here<A: App>(
     }
     // Rails behind an I2C chip (an I/O expander, a PMIC): register writes on a bus that is freed again afterwards.
     let (sda, scl) = POWER_I2C;
-    for &[addr, reg, value] in POWER_I2C_WRITES {
+    for &[addr, reg, value, mask] in POWER_I2C_WRITES {
         // SAFETY: a short blocking I2C write, on a bus the call opens and closes itself.
         let err = unsafe {
-            ffi::fusuma_i2c_write_reg(sda, scl, i32::from(addr), i32::from(reg), i32::from(value))
+            ffi::fusuma_i2c_write_reg(sda, scl, i32::from(addr), i32::from(reg), i32::from(value), i32::from(mask))
         };
         anyhow::ensure!(err == 0, "rail chip {addr:#x} register {reg:#x}: esp error {err}");
     }

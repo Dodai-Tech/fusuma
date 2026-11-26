@@ -59,8 +59,8 @@
             "scl": { "type": "integer", "minimum": 0, "maximum": 255 },
             "writes": {
               "type": "array",
-              "description": "[address, register, value], in order.",
-              "items": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 3 }
+              "description": "[address, register, value] or [address, register, value, mask], in order. A mask below 255 reads the register and changes only its bits.",
+              "items": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 3, "maxItems": 4 }
             }
           }
         }

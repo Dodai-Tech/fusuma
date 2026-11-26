@@ -19,6 +19,7 @@ that follows the vendor's sequences and has run against the recording bus only.
 Always: SCK, MOSI, CS, DC (data or command), RST, BUSY. Often: a pin or expander output that switches the panel's power. The
 controller's busy polarity differs (SSD1677, SSD1680: high while working; UC8179: low). Voltage is 3.3 V.
 
+A write may carry a fourth number, a mask: `[0x34, 0x90, 0x04, 0x04]` reads register 0x90 and changes only bit 2 (the AXP2101 keeps several rails in one register).
 A rail behind an I2C chip (an I/O expander, a PMIC) is `[power.i2c]`: the bus pins and `[address, register, value]` writes done
 at boot, after the `[power]` pins (the C6 board's TCA9554: output register 1, direction register 3). The bus is freed after
 the writes, so a touch driver may open its own on the same pins.
@@ -44,7 +45,7 @@ preset and no driver.
 |---|---|---|---|
 | `s3-sticky` | Seeed reTerminal Sticky | 3.97" 800x480, SSD1677 or SSD2677, GT911 touch, three keys | file, built |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 1.54" 200x200, SSD1681 | file from vendor firmware, built, not run |
-| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: DC1 and ALDO1..3 at 3.3 V as the vendor sets them) | file from vendor firmware, built, not run; orientation and the PMIC enables unverified |
+| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: voltages as the vendor sets them, ALDO3 switched on with a masked write) | file from vendor firmware, built, not run; the vendor counts Y down, the driver up: the picture may be upside down |
 | `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 1.54" 200x200, SSD1681; panel power and battery latch on a TCA9554 (`[power.i2c]`) | file from vendor firmware, built and linked for the C6, not run |
 
 Not boards yet:
@@ -65,6 +66,27 @@ Not boards yet:
 3. If the controller is not in the table above it is a Rust `Panel` implementation in `eink/`, an entry in `CONTROLLERS`
    (`fusuma-platform/src/board.rs`), the schema's list and `build.rs`; a test against `bus::Recorder` first.
 4. `nu scripts/showcase.nu build --board <id>`, then, with a board and a backup, `install --backup`.
+
+## Checking a driver without a panel
+
+`crates/fusuma-platform-embedded/tests/eink_sim.rs` is a model of the SSD168x memory (window, address counter, entry mode, the
+two RAMs, what an update shows) used as the driver's bus. It checks what ends up on the glass: a full refresh and partial ones
+must show exactly the picture, on a straight and a mirrored panel, for the 1.54", 2.13", 2.9" and 800x480 sizes, with no partial
+refresh that would flash. Two tests make the model fail on purpose (a mirrored panel, the wrong X unit) so a pass means
+something. It also holds the vendor's init as written in Waveshare's firmware and lists every command where the driver differs
+(`differences`), so a new difference fails the test.
+
+What it found so far, and cannot settle without a panel:
+
+* **3.97":** the vendor counts the Y address down (entry mode 1, window 479 to 0), the driver up. With the same gate scan one is
+  upside down. Look at the vertical direction first.
+* **1.54":** the vendor loads its own waveform table (command 0x32, then update 0xC7); the driver uses the built-in waveform (0xF7,
+  border 0x05) of Waveshare's V4 sequence, with Y counting up. If the picture is faint or ghosts, try the vendor's table.
+* **3.97" power:** the vendor switches ALDO3 on in `EPD_Power_ON`. An earlier version of the board file left that to the chip's
+  defaults; the masked write fixes it.
+
+The model is built from the same data sheets and vendor code as the drivers, so it finds the driver's own mistakes, not a wrong
+reading of the chip.
 
 ## Ghosting, temperature, power
 

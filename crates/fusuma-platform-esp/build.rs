@@ -205,7 +205,7 @@ fn main() {
         .and_then(|p| p.i2c.as_ref())
         .map_or((-1, -1, vec![]), |i| (i32::from(i.sda), i32::from(i.scl), i.writes.clone()));
     line(format!(
-        "/// The I2C bus (SDA, SCL; -1 for none) a rail chip is on, and its `[address, register, value]` writes.\n#[allow(dead_code)]\npub(crate) const POWER_I2C: (i32, i32) = ({}, {});\n#[allow(dead_code)]\npub(crate) const POWER_I2C_WRITES: &[[u8; 3]] = &{:?};",
+        "/// The I2C bus (SDA, SCL; -1 for none) a rail chip is on, and its `[address, register, value, mask]` writes.\n#[allow(dead_code)]\npub(crate) const POWER_I2C: (i32, i32) = ({}, {});\n#[allow(dead_code)]\npub(crate) const POWER_I2C_WRITES: &[[u8; 4]] = &{:?};",
         writes.0, writes.1, writes.2
     ));
     let (keys, active_low) = board
