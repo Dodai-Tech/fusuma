@@ -1,0 +1,23 @@
+[package]
+name = "fusuma-platform-ios"
+description = "Fusuma on iOS and iPadOS: touch phases and hardware keys translated to Fusuma input, over the shared mobile lifecycle (a scaffold: the view and Metal surface are not wired yet)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform-ios"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "mobile", "ios"]
+categories = ["gui"]
+# A scaffold: published once an app runs on a device (see the roadmap).
+publish = false
+
+[dependencies]
+fusuma-platform-mobile.workspace = true
+fusuma-ui.workspace = true
+fusuma-render.workspace = true
+
+[lints]
+workspace = true

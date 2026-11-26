@@ -14,6 +14,10 @@ members = [
     "crates/fusuma-cells",
     "crates/fusuma-platform-tui",
     "crates/fusuma-platform-console",
+    "crates/fusuma-platform-mobile",
+    "crates/fusuma-platform-android",
+    "crates/fusuma-platform-ios",
+    "crates/fusuma-platform-linux-mobile",
     "crates/fusuma-cells-panel",
     "crates/fusuma-test",
     "crates/fusuma-palette",
@@ -60,6 +64,7 @@ fusuma-text = { path = "crates/fusuma-text", version = "0.2.0", default-features
 parley = { version = "0.13", default-features = false, features = ["libm"] }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
 fusuma-cells = { path = "crates/fusuma-cells", version = "0.2.0" }
+fusuma-platform-mobile = { path = "crates/fusuma-platform-mobile", version = "0.2.0" }
 fusuma-render-vello-common = { path = "crates/fusuma-render-vello-common", version = "0.2.0", default-features = false }
 vello_common = { version = "0.4", default-features = false }
 vello_cpu = { version = "0.4", default-features = false, features = ["u8_pipeline"] }

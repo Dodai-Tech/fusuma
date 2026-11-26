@@ -1012,6 +1012,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-platform-android"
+version = "0.2.0"
+dependencies = [
+ "fusuma-platform-mobile",
+ "fusuma-render",
+ "fusuma-ui",
+]
+
+[[package]]
 name = "fusuma-platform-console"
 version = "0.2.0"
 dependencies = [
@@ -1040,6 +1049,32 @@ version = "0.2.0"
 dependencies = [
  "fusuma",
  "fusuma-showcase",
+]
+
+[[package]]
+name = "fusuma-platform-ios"
+version = "0.2.0"
+dependencies = [
+ "fusuma-platform-mobile",
+ "fusuma-render",
+ "fusuma-ui",
+]
+
+[[package]]
+name = "fusuma-platform-linux-mobile"
+version = "0.2.0"
+dependencies = [
+ "fusuma-platform-mobile",
+ "fusuma-render",
+ "fusuma-ui",
+]
+
+[[package]]
+name = "fusuma-platform-mobile"
+version = "0.2.0"
+dependencies = [
+ "fusuma-render",
+ "fusuma-ui",
 ]
 
 [[package]]

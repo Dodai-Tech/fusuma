@@ -1,0 +1,22 @@
+[package]
+name = "fusuma-platform-mobile"
+description = "What every phone and tablet host shares: the app and surface lifecycle, the soft keyboard, the system insets and the back gesture, as plain values a host feeds and reads (no_std, no allocator, host-testable)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-platform-mobile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["gui", "mobile", "android", "ios", "no-std"]
+categories = ["gui", "no-std"]
+# A scaffold: published once one of the hosts (Android, iOS, Linux mobile) runs an app (see the roadmap).
+publish = false
+
+[dependencies]
+fusuma-ui.workspace = true
+fusuma-render.workspace = true
+
+[lints]
+workspace = true

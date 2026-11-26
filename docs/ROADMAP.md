@@ -106,7 +106,9 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 | `fusuma-cells` | the text UI's cells: grid, diff, ANSI encoder, key and mouse decoder, wide characters | yes |
 | `fusuma-platform-tui`, `fusuma-platform-console` | the text UI in a terminal (`crossterm`) and over a serial console (any `fmt::Write`) | no / yes |
 | `fusuma-cells-panel` | the text UI on a pixel panel through any renderer, one region a frame | yes |
-| planned: `fusuma-shaders`, `fusuma-platform-mobile` | shader engine; Android and iOS | no |
+| planned: `fusuma-shaders` | shader engine | no |
+| `fusuma-platform-mobile` | what every phone host shares: the surface lifecycle (a surface is made only with a window and the app in front, dropped the moment the system takes it), safe areas with the soft keyboard as an inset, the keyboard's show and hide once per change, back as cancel | yes |
+| `fusuma-platform-android`, `-ios`, `-linux-mobile` | **scaffolds** (not published): touch and key translation for Android and iOS, shell and output rotation for Linux phones; no activity, view or window runs an app yet | yes |
 | `examples/showcase`, `-desktop`, `-tui`, `-web`, `-esp` | the one app and its hosts: window, terminal, browser (wasm), boards | `showcase` yes |
 
 ## Renderers
@@ -354,6 +356,22 @@ the same pixels as the hand-built page, a message log that replays to the same s
 - [ ] An `HtmlView` widget, optional and `std` only (desktop, phone, web): HTML or markdown content (help pages,
   documents, rich text) rendered by Blitz into a texture that Fusuma draws. Not the way to build Fusuma's own UI, and
   never on a chip (Stylo is large)
+
+### Mobile
+
+- [x] **Scaffolds** (`fusuma-platform-mobile` and the three hosts above): the system-specific values translated and tested on
+  the desktop (a random run of 200 lifecycle sequences never draws without a surface or in the background; mutated, 3 of the
+  checks fail), `no_std` builds for RISC-V and Cortex-M0
+- [ ] **Android:** an activity (`android-activity` through `winit`), Vulkan by `wgpu` with Vello CPU as the fallback, the IME
+  for text and composition, `WindowInsets` into `Display`, a Gradle module (or Fusuma as a surface inside
+  `android-app-framework`), an emulator in CI
+- [ ] **iOS:** a `UIView` with a `CAMetalLayer`, `UIKeyInput`/`UITextInput`, safe-area insets, display-link pacing; needs a Mac
+  runner for CI (none)
+- [ ] **Linux phones:** run the desktop host on postmarketOS (it should already work on Wayland), then the shell's keyboard
+  and output rotation from this crate
+- [ ] **Size classes need the physical size:** by logical width alone a 360 dp phone is `Class::Watch` (the limit is 480);
+  `Screen` needs the dpi or a form-factor hint from the host
+- [ ] A `mobile` preset on the `fusuma` crate; lifecycle on the web (a page going to the background) through the same `Session`
 
 ## Text UI
 
