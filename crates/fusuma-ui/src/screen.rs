@@ -18,6 +18,57 @@ pub const PHONE_BELOW: u32 = 640;
 /// Screens narrower than this are a tablet (a 7-inch panel): a sidebar and one page. Wider is a desktop window.
 pub const TABLET_BELOW: u32 = 1100;
 
+/// Physical short side, in millimetres, under which a screen is a watch (a watch face is 30 to 50 mm across).
+pub const WATCH_SHORT_SIDE_MM: u32 = 55;
+
+/// Physical short side under which a screen (that is not a watch) is a phone. A 7-inch tablet is about 90 mm on its short
+/// side, the biggest phones about 80.
+pub const PHONE_SHORT_SIDE_MM: u32 = 85;
+
+/// What kind of device a screen is. Unlike [`Class`] it does not change when a window is resized: a watch stays a watch.
+/// A host that knows says so ([`Screen::with_form_factor`]); else the physical size decides ([`Screen::with_size_mm`]); else
+/// the logical width does, as [`Class`] always has.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormFactor {
+    /// A watch: a grid of tiles, one small page at a time.
+    Watch,
+    /// A phone.
+    Phone,
+    /// A tablet or a small window.
+    Tablet,
+    /// A desktop window.
+    Desktop,
+}
+
+impl FormFactor {
+    /// The layout class that belongs to this form factor when nothing else says otherwise.
+    #[must_use]
+    pub const fn class(self) -> Class {
+        match self {
+            Self::Watch => Class::Watch,
+            Self::Phone => Class::Phone,
+            Self::Tablet => Class::Tablet,
+            Self::Desktop => Class::Desktop,
+        }
+    }
+
+    /// The form factor of a physical short side in millimetres, if that alone says: under [`WATCH_SHORT_SIDE_MM`] a watch,
+    /// under [`PHONE_SHORT_SIDE_MM`] a phone. Bigger screens (a tablet, a laptop, a monitor) are told apart by their window,
+    /// not their glass, so they give `None`; so does 0, which is "unknown".
+    #[must_use]
+    pub const fn of_short_side_mm(mm: u32) -> Option<Self> {
+        if mm == 0 {
+            None
+        } else if mm < WATCH_SHORT_SIDE_MM {
+            Some(Self::Watch)
+        } else if mm < PHONE_SHORT_SIDE_MM {
+            Some(Self::Phone)
+        } else {
+            None
+        }
+    }
+}
+
 /// The class of screen, by logical width.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Class {
@@ -64,6 +115,10 @@ pub struct Screen {
     pub scale_percent: u32,
     /// The outline of the visible part.
     pub shape: Shape,
+    /// Physical width and height of the glass in millimetres, or 0 where the host does not know.
+    pub size_mm: (u32, u32),
+    /// The form factor the host declares (a board file, an app), which beats everything measured.
+    pub form: Option<FormFactor>,
 }
 
 impl Screen {
@@ -75,6 +130,69 @@ impl Screen {
             height,
             scale_percent: 100,
             shape: Shape::Rect,
+            size_mm: (0, 0),
+            form: None,
+        }
+    }
+
+    /// With the physical size of the glass in millimetres (width, height; 0 for unknown). A watch and a phone with the
+    /// same logical width are told apart by this.
+    #[must_use]
+    pub const fn with_size_mm(self, width: u32, height: u32) -> Self {
+        Self {
+            size_mm: (width, height),
+            ..self
+        }
+    }
+
+    /// With the form factor declared by the host, which is trusted over any measurement.
+    #[must_use]
+    pub const fn with_form_factor(self, form: FormFactor) -> Self {
+        Self {
+            form: Some(form),
+            ..self
+        }
+    }
+
+    /// The shorter physical side in millimetres, or 0 if either is unknown (so it does not depend on the orientation).
+    #[must_use]
+    pub const fn short_side_mm(&self) -> u32 {
+        let (w, h) = self.size_mm;
+        if w == 0 || h == 0 {
+            0
+        } else if w < h {
+            w
+        } else {
+            h
+        }
+    }
+
+    /// Pixels per inch, from the physical width, or `None` where it is not known.
+    #[must_use]
+    pub const fn dpi(&self) -> Option<u32> {
+        let mm = self.size_mm.0;
+        if mm == 0 {
+            None
+        } else {
+            Some((self.width as u64 * 254 / (mm as u64 * 10)) as u32)
+        }
+    }
+
+    /// What kind of device this is: what the host declared, else what the physical size says, else what the logical width
+    /// suggests.
+    #[must_use]
+    pub const fn form_factor(&self) -> FormFactor {
+        if let Some(f) = self.form {
+            return f;
+        }
+        if let Some(f) = FormFactor::of_short_side_mm(self.short_side_mm()) {
+            return f;
+        }
+        match Class::of(self.logical_width()) {
+            Class::Watch => FormFactor::Watch,
+            Class::Phone => FormFactor::Phone,
+            Class::Tablet => FormFactor::Tablet,
+            Class::Desktop => FormFactor::Desktop,
         }
     }
 
@@ -110,10 +228,20 @@ impl Screen {
         }
     }
 
-    /// The class of this screen.
+    /// The class of this screen: the logical width's, except that where the device is known (declared or measured) a watch
+    /// is always a watch and nothing else is, so a 360 dp phone is not given the watch's tiles.
     #[must_use]
     pub const fn class(&self) -> Class {
-        Class::of(self.logical_width())
+        let by_width = Class::of(self.logical_width());
+        let known = match self.form {
+            Some(f) => Some(f),
+            None => FormFactor::of_short_side_mm(self.short_side_mm()),
+        };
+        match (known, by_width) {
+            (Some(FormFactor::Watch), _) => Class::Watch,
+            (Some(_), Class::Watch) => Class::Phone,
+            _ => by_width,
+        }
     }
 
     /// The whole screen as a rectangle.
@@ -203,6 +331,59 @@ mod tests {
             Screen::new(2560, 1440).with_scale(300).class(),
             Class::Tablet
         );
+    }
+
+    #[test]
+    fn the_physical_size_tells_a_phone_from_a_watch_at_the_same_logical_width() {
+        // 1080 px at 3x is 360 logical: by width a watch.
+        let phone = Screen::new(1080, 2400).with_scale(300);
+        assert_eq!(phone.class(), Class::Watch);
+        assert_eq!(phone.form_factor(), FormFactor::Watch);
+        // Told it is 68 x 150 mm, it is a phone, and gets the phone class.
+        let phone = phone.with_size_mm(68, 150);
+        assert_eq!(phone.form_factor(), FormFactor::Phone);
+        assert_eq!(phone.class(), Class::Phone);
+        // A 1.75 inch watch: 35 x 43 mm.
+        let watch = Screen::new(410, 502).with_size_mm(35, 43);
+        assert_eq!(watch.form_factor(), FormFactor::Watch);
+        assert_eq!(watch.class(), Class::Watch);
+        assert_eq!(watch.short_side_mm(), 35);
+        // The orientation does not matter.
+        assert_eq!(
+            Screen::new(2400, 1080)
+                .with_size_mm(150, 68)
+                .short_side_mm(),
+            68
+        );
+        // A 7 inch panel (about 90 mm short side) is not decided by glass: by width, a tablet.
+        let panel = Screen::new(1024, 600).with_size_mm(154, 90);
+        assert_eq!(panel.form_factor(), FormFactor::Tablet);
+        assert_eq!(panel.class(), Class::Tablet);
+        // A big monitor says nothing either way.
+        let monitor = Screen::new(2560, 1440).with_size_mm(597, 336);
+        assert_eq!(monitor.form_factor(), FormFactor::Desktop);
+    }
+
+    #[test]
+    fn what_the_host_declares_beats_what_is_measured() {
+        let s = Screen::new(2560, 1440)
+            .with_size_mm(597, 336)
+            .with_form_factor(FormFactor::Watch);
+        assert_eq!(s.form_factor(), FormFactor::Watch);
+        assert_eq!(s.class(), Class::Watch);
+        let p = Screen::new(300, 300).with_form_factor(FormFactor::Phone);
+        assert_eq!(p.class(), Class::Phone, "a declared phone is never a watch");
+    }
+
+    #[test]
+    fn unknown_physical_size_changes_nothing_and_dpi_follows_it() {
+        let s = Screen::new(410, 502);
+        assert_eq!(s.short_side_mm(), 0);
+        assert_eq!(s.dpi(), None);
+        assert_eq!(s.form_factor(), FormFactor::Watch);
+        assert_eq!(Screen::new(10, 10).with_size_mm(0, 5).short_side_mm(), 0);
+        // 410 px over 35 mm is about 297 dpi.
+        assert_eq!(Screen::new(410, 502).with_size_mm(35, 43).dpi(), Some(297));
     }
 
     #[test]

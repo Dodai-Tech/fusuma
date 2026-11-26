@@ -2,7 +2,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use fusuma_render::Rect;
-use fusuma_ui::Key;
+use fusuma_ui::{Key, Screen};
 
 /// How far a host has got.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,6 +150,10 @@ pub struct Display {
     pub inset_right: u32,
     /// Height of the soft keyboard while it is up, else 0.
     pub keyboard: u32,
+    /// Physical width in millimetres (from `xdpi` on Android, the device model on iOS), or 0 if unknown.
+    pub width_mm: u32,
+    /// Physical height in millimetres, or 0 if unknown.
+    pub height_mm: u32,
 }
 
 impl Display {
@@ -172,6 +176,15 @@ impl Display {
             w,
             h,
         )
+    }
+
+    /// The screen as the toolkit sees it: pixels, scale and physical size, so a phone and a watch with the same logical width
+    /// are told apart. The insets are not part of it (they are `content`).
+    #[must_use]
+    pub const fn screen(&self) -> Screen {
+        Screen::new(self.width, self.height)
+            .with_scale(self.scale())
+            .with_size_mm(self.width_mm, self.height_mm)
     }
 
     /// The scale, held between 50 and 800 percent (a host that reports 0 gets 100).
@@ -406,6 +419,7 @@ mod tests {
             inset_left: 0,
             inset_right: 0,
             keyboard: 0,
+            ..Display::default()
         };
         assert_eq!(d.content(), Rect::new(0, 120, 1080, 2220));
         // The keyboard is taller than the gesture bar: it replaces it, it does not add to it.
@@ -437,6 +451,7 @@ mod tests {
             inset_left: 400,
             inset_right: 400,
             keyboard: u32::MAX,
+            ..Display::default()
         };
         let c = d.content();
         assert!(c.w == 0 && c.h == 0 && c.x <= 100 && c.y <= 100, "{c:?}");
@@ -488,11 +503,22 @@ mod tests {
             .logical_width(),
             u32::MAX
         );
-        // A known gap, written down so it is not forgotten: the toolkit's classes go by logical width alone, and a 360 dp phone is
-        // narrower than the watch limit (480), so it would get the watch's tile layout. A phone and a watch differ in physical
-        // size, which `Display` does not know yet (see the roadmap: size classes need the dpi).
+        // By logical width alone a 360 dp phone is narrower than the watch limit (480), so it would get the watch's tiles;
+        // the physical size (`width_mm`) is what tells them apart.
         use fusuma_ui::Class;
         assert_eq!(Class::of(phone.logical_width()), Class::Watch);
+        assert_eq!(
+            phone.screen().class(),
+            Class::Watch,
+            "size unknown: by width"
+        );
+        let phone = Display {
+            width_mm: 68,
+            height_mm: 150,
+            ..phone
+        };
+        assert_eq!(phone.screen().class(), Class::Phone, "68 mm wide: a phone");
+        assert_eq!(phone.screen().scale(), 300);
         assert_eq!(
             Class::of(
                 Display {

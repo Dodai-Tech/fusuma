@@ -369,7 +369,7 @@ the same pixels as the hand-built page, a message log that replays to the same s
   runner for CI (none)
 - [ ] **Linux phones:** run the desktop host on postmarketOS (it should already work on Wayland), then the shell's keyboard
   and output rotation from this crate
-- [ ] **Size classes need the physical size:** by logical width alone a 360 dp phone is `Class::Watch` (the limit is 480);
+- [x] **Size classes know the physical size** (`Screen::with_size_mm`, `with_form_factor`, `form_factor()`, `dpi()`; `Display::screen()`): a declared form factor beats the glass, the glass (short side under 55 mm a watch, under 85 a phone) beats the width. Hosts still have to report it (todo: `board.toml` mm, Android `xdpi`, `wl_output`), and `SizeClass` and `Metrics` are not built. Before: by logical width alone a 360 dp phone is `Class::Watch` (the limit is 480);
   `Screen` needs the dpi or a form-factor hint from the host
 - [ ] A `mobile` preset on the `fusuma` crate; lifecycle on the web (a page going to the background) through the same `Session`
 
