@@ -40,6 +40,7 @@ its parts and how they are wired, so a board made of known parts is a file, not 
 
 ```toml
 name = "s3-amoled-206"
+title = "Waveshare ESP32-S3-Touch-AMOLED-2.06"   # the friendly product name; optional
 about = "Waveshare ESP32-S3-Touch-AMOLED-2.06 watch (410x502)"
 
 [display]

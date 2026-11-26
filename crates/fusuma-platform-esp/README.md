@@ -26,7 +26,7 @@ A board is a directory under `boards/` with its **board file** (`board.toml`, th
 `partitions.csv`. The build reads the board named by the `FUSUMA_BOARD` environment variable (`scripts/showcase.nu`
 sets it), checks it, compiles in the drivers its controllers need and hands them the pins and numbers. A board made of
 known controllers is one file; a mistake stops the build with the file and the key (`display.pins.cs: the co5300
-needs it`).
+needs it`). Which boards exist, which are a file away and which need a driver: [docs/BOARDS.md](../../docs/BOARDS.md).
 
 | Controller | Part | Bus | Notes |
 |---|---|---|---|

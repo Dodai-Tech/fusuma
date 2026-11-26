@@ -64,7 +64,7 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu), [`fusuma-render-vello`](crates/fusuma-render-vello) | Vello on the CPU and on the GPU (`wgpu`), sharing [`-vello-common`](crates/fusuma-render-vello-common) | CPU with `libm` |
 | [`fusuma-text`](crates/fusuma-text) | Parley layout over the linked fonts | with alloc |
 | [`fusuma-fonts`](crates/fusuma-fonts) | the font catalog: ten OFL families, five presets, Material Symbols icons, one feature each; glyph atlases | yes |
-| [`fusuma-platform`](crates/fusuma-platform) | the renderer choice, `fusuma.toml` and board files | yes |
+| [`fusuma-platform`](crates/fusuma-platform) | the renderer choice, `fusuma.toml` and board files (catalog: [docs/BOARDS.md](docs/BOARDS.md)) | yes |
 | [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | a window on Linux, macOS and Windows (`winit`) | no |
 | [`fusuma-platform-embedded`](crates/fusuma-platform-embedded) | what every board shares: `Board`, `Driver`, the frame step | yes |
 | [`fusuma-access`](crates/fusuma-access) | the semantic tree as an AccessKit tree, and what a screen reader asks as calls on the tree (unpublished, std) | no |

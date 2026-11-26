@@ -402,6 +402,11 @@ the same pixels as the hand-built page, a message log that replays to the same s
   rectangles)
 - [x] The P4: built after the move to board files; **not flashed since** (no P4 at hand), so its GT911 on the new I2C
   driver and the LEDC backlight from the board file are untried
+- [x] Board files for the S3 AMOLED 1.43 (from vendor source, not run) and 1.64 (pins run in weathertrack-esp, not yet through
+  Fusuma's driver); `title` (friendly name) in every board file; `showcase install` picks `ota_0` or, on a board without OTA,
+  the factory app only with `--backup`/`--force`. The catalog of what is a file, what needs a driver: `docs/BOARDS.md`
+- [ ] Plain-SPI LCD driver (ST7789, GC9A01), an I/O expander (TCA9554: the C6 e-paper 1.54's panel power, the S3 1.8"'s reset)
+  and a `variant` option on the `co5300` (1.43 SH8601, 1.64 V1/V2)
 - [ ] The C6 (a board file; `esp-hal` as well as ESP-IDF), a Cortex-M board (RP2040, STM32, nRF), a Linux
   framebuffer or DRM board for kiosks
 - [ ] Android and iOS (`fusuma-platform-mobile`), the platform picked by target
