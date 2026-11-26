@@ -199,8 +199,16 @@ pub(crate) fn run_here<A: App>(
     let plan = fusuma::platform::plan(&machine, None, LINKED)
         .ok_or_else(|| anyhow::anyhow!("no renderer is linked"))?;
     log::info!("{w}x{h} e-paper, renderer: {plan}");
-    let mut driver = EinkDriver::new(make(w, h), panel, plan.uses, policy)
-        .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?;
+    // The integer renderer draws straight into a one-bit frame (48 KB for 800x480, where RGB565 is 768 KB and nothing is left
+    // to pack); Vello, if the settings ask for it, draws RGB565 that is quantised when it is shown.
+    let app = make(w, h);
+    let mut driver = if plan.uses == fusuma::platform::Backend::Integer {
+        EinkDriver::new_mono(app, panel, policy)
+            .ok_or_else(|| anyhow::anyhow!("cannot make a {w}x{h} one-bit frame"))?
+    } else {
+        EinkDriver::new(app, panel, plan.uses, policy)
+            .ok_or_else(|| anyhow::anyhow!("cannot make a {} surface", plan.uses.name()))?
+    };
     // What the board file says the device is (its size, form, inputs), with the refresh time of the panel found.
     driver.input(Input::Screen(board::SCREEN.with_glass(
         fusuma::DisplayKind::Reflective,

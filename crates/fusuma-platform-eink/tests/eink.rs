@@ -249,3 +249,99 @@ fn the_showcase_on_the_sticky_800x480_lands_mirrored_on_the_panel() {
         .collect();
     assert_eq!(sticky, mirrored);
 }
+
+fn run_until_refresh(
+    d: &mut EinkDriver<Showcase, Ssd1680<Recorder>>,
+    now: &mut u64,
+) -> Option<Refresh> {
+    for _ in 0..80 {
+        let s = d.step(*now).unwrap();
+        *now += 10;
+        if s.refreshed.is_some() {
+            return s.refreshed;
+        }
+    }
+    None
+}
+
+#[test]
+fn the_one_bit_canvas_is_a_sixteenth_of_the_memory_and_gives_the_same_picture() {
+    // Memory: 800x480 as bits against RGB565.
+    assert_eq!(
+        fusuma_platform_eink::MonoFrame::<Vec<u8>>::stride_of(800) * 480,
+        48_000
+    );
+    assert_eq!(800 * 480 * 2, 768_000);
+
+    let mk = |mono: bool| {
+        let panel = Ssd1680::new(Recorder::default(), Config::EPD_2IN9);
+        if mono {
+            EinkDriver::new_mono(Showcase::new(128, 296), panel, policy()).unwrap()
+        } else {
+            EinkDriver::new(Showcase::new(128, 296), panel, Backend::Integer, policy()).unwrap()
+        }
+    };
+    let (mut rgb, mut mono) = (mk(false), mk(true));
+    let (mut n1, mut n2) = (0u64, 0u64);
+    assert_eq!(run_until_refresh(&mut rgb, &mut n1), Some(Refresh::Full));
+    assert_eq!(run_until_refresh(&mut mono, &mut n2), Some(Refresh::Full));
+    let first = |d: &mut EinkDriver<Showcase, Ssd1680<Recorder>>| {
+        data_of(&d.panel_mut().bus_mut().log.clone(), 0x24).remove(0)
+    };
+    let (a, b) = (first(&mut rgb), first(&mut mono));
+    assert_eq!(a.len(), b.len());
+    // Both are the integer renderer, quantised by the same threshold: the pictures agree except where an anti-aliased edge
+    // is mixed before or after the threshold.
+    let differ: u32 = a.iter().zip(&b).map(|(x, y)| (x ^ y).count_ones()).sum();
+    let (ink_a, ink_b) = (ink(&a) as u32, ink(&b));
+    assert!(ink_a > 300 && ink_b > 300, "there is something on the page");
+    assert!(
+        differ * 20 < ink_a,
+        "{differ} pixels differ of {ink_a} inked: the one-bit picture is the same page"
+    );
+    assert!(d_text_is_sharp(&b), "only black and white, by construction");
+}
+
+fn d_text_is_sharp(bytes: &[u8]) -> bool {
+    // Trivially true for packed bits; the check is that the picture is not blank and not solid.
+    bytes.iter().any(|&b| b != 0xFF) && bytes.iter().any(|&b| b != 0x00)
+}
+
+#[test]
+fn a_partial_refresh_of_the_one_bit_canvas_is_exactly_the_change_in_the_whole_picture() {
+    let panel = Ssd1680::new(Recorder::default(), Config::EPD_2IN9);
+    let mut d = EinkDriver::new_mono(Showcase::new(128, 296), panel, policy()).unwrap();
+    let mut now = 0u64;
+    assert_eq!(run_until_refresh(&mut d, &mut now), Some(Refresh::Full));
+    let mut frame = data_of(&d.panel_mut().bus_mut().log.clone(), 0x24).remove(0);
+    // A key press moves the focus: a partial refresh, which is painted over the first picture.
+    let mut partial = None;
+    for _ in 0..4 {
+        d.input(Input::Key(Key::Next));
+        now += 500;
+        if let Some(Refresh::Partial(r)) = run_until_refresh(&mut d, &mut now) {
+            partial = Some(r);
+            break;
+        }
+    }
+    let r = partial.expect("a key press ends in a partial refresh");
+    let part = data_of(&d.panel_mut().bus_mut().log.clone(), 0x24)
+        .pop()
+        .unwrap();
+    let wb = r.w as usize / 8;
+    assert_eq!(part.len(), wb * r.h as usize);
+    for (i, line) in part.chunks(wb).enumerate() {
+        let at = (r.y as usize + i) * 16 + r.x as usize / 8;
+        frame[at..at + wb].copy_from_slice(line);
+    }
+    // Now the whole picture, asked for on purpose: it must be the first picture with the partial painted over it.
+    d.planner_mut().want_full();
+    assert_eq!(run_until_refresh(&mut d, &mut now), Some(Refresh::Full));
+    let whole = data_of(&d.panel_mut().bus_mut().log.clone(), 0x24)
+        .pop()
+        .unwrap();
+    assert!(
+        frame == whole,
+        "partial over the old picture equals the new whole picture"
+    );
+}

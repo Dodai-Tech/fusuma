@@ -3,11 +3,14 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 
 use fusuma::platform::Backend;
 use fusuma::render::Rect;
+use fusuma::renderers::embedded::Embedded;
+pub use fusuma::renderers::embedded::{Dither, MonoFrame};
 use fusuma::{App, DisplayKind, Input, Screen, Shell};
 
 use fusuma_platform_embedded::{DriverError, Pixels, Surface};
@@ -18,51 +21,10 @@ pub mod ssd1680;
 pub mod ssd2677;
 pub mod sticky;
 
-/// How a gray becomes black or white.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dither {
-    /// Black below the level (0 to 255), white from it: text and lines stay crisp. The default, at 128.
-    Threshold(u8),
-    /// A 4x4 ordered dither (Bayer): a gray is a pattern of dots, the same pattern wherever the pixel is, so a partial
-    /// refresh matches the picture around it.
-    Ordered,
-}
-
-impl Default for Dither {
-    fn default() -> Self {
-        Self::Threshold(128)
-    }
-}
-
 /// The brightness of an RGB565 pixel, 0 to 255 (Rec. 601 weights).
 #[must_use]
 pub const fn luma(p: u16) -> u8 {
-    let r = ((p >> 11) & 0x1F) as u32;
-    let g = ((p >> 5) & 0x3F) as u32;
-    let b = (p & 0x1F) as u32;
-    // Each channel spread to 8 bits, weights 77, 150, 29 of 256.
-    let (r, g, b) = (
-        (r << 3) | (r >> 2),
-        (g << 2) | (g >> 4),
-        (b << 3) | (b >> 2),
-    );
-    ((77 * r + 150 * g + 29 * b) >> 8) as u8
-}
-
-const BAYER4: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
-
-impl Dither {
-    /// Whether the pixel at `(x, y)` with brightness `luma` is white.
-    #[must_use]
-    pub const fn white(self, x: u32, y: u32, luma: u8) -> bool {
-        match self {
-            Self::Threshold(level) => luma >= level,
-            Self::Ordered => {
-                let t = BAYER4[(y & 3) as usize][(x & 3) as usize] as u32 * 16 + 8;
-                luma as u32 >= t
-            }
-        }
-    }
+    fusuma::renderers::embedded::luma565(p)
 }
 
 /// `region` cut to a `width` x `height` screen and grown to whole bytes in x (columns in multiples of 8), the way
@@ -144,12 +106,14 @@ pub struct RefreshPolicy {
 }
 
 impl RefreshPolicy {
-    /// What most black and white panels want: 300 ms apart, a 100 ms settle, a clean-up every 30 refreshes.
+    /// What most black and white panels want: 300 ms apart, a 100 ms settle, a clean-up every 30 refreshes, and a threshold
+    /// at 170 (smooth text is mixed with the paper before it is turned black or white: a lower level loses the thin strokes
+    /// of a small glyph, a higher one makes it bold).
     pub const DEFAULT: Self = Self {
         min_interval_ms: 300,
         settle_ms: 100,
         full_every: 30,
-        dither: Dither::Threshold(128),
+        dither: Dither::Threshold(170),
     };
 }
 
@@ -310,9 +274,74 @@ pub struct EinkStep {
 pub struct EinkDriver<A, P> {
     shell: Shell<A>,
     panel: P,
-    surface: Surface,
+    canvas: Canvas,
     planner: Planner,
     packed: Vec<u8>,
+}
+
+/// What the app draws on: an RGB565 surface (either renderer) that is quantised for the panel when it is shown, or a one-bit
+/// frame the integer renderer draws on directly (what the panel takes, a sixteenth of the memory, nothing to pack).
+enum Canvas {
+    Rgb(Surface),
+    Mono(Box<Embedded<MonoFrame<Vec<u8>>>>),
+}
+
+impl core::fmt::Debug for Canvas {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Rgb(_) => "Canvas::Rgb",
+            Self::Mono(_) => "Canvas::Mono",
+        })
+    }
+}
+
+impl Canvas {
+    fn frame<A: App>(
+        &mut self,
+        shell: &mut Shell<A>,
+        now_ms: u64,
+    ) -> Result<Option<Rect>, fusuma_platform_embedded::DrawError> {
+        match self {
+            Self::Rgb(s) => s.frame(shell, now_ms),
+            Self::Mono(r) => shell
+                .frame(now_ms, &mut **r)
+                .map_err(|e| fusuma_platform_embedded::DrawError(alloc::format!("{e:?}"))),
+        }
+    }
+
+    fn rasterise(&mut self) {
+        if let Self::Rgb(s) = self {
+            s.rasterise();
+        }
+    }
+
+    /// `region` (byte-aligned, from [`byte_region`]) of the picture, packed for the panel into `out`.
+    fn pack(&mut self, screen: (u32, u32), region: Rect, dither: Dither, out: &mut Vec<u8>) {
+        match self {
+            Self::Rgb(s) => pack_mono(s, screen, region, dither, out),
+            Self::Mono(r) => {
+                let f = r.target();
+                out.clear();
+                let (stride, rows) = (f.stride(), usize::from(f.height()));
+                let (x0, wb) = (
+                    region.x.max(0) as usize / 8,
+                    (region.w as usize).div_ceil(8),
+                );
+                out.reserve(wb * region.h as usize);
+                for row in 0..region.h as usize {
+                    let y = region.y.max(0) as usize + row;
+                    if y >= rows {
+                        out.extend(core::iter::repeat_n(0xFF, wb));
+                        continue;
+                    }
+                    let line = &f.bytes()[y * stride..(y + 1) * stride];
+                    for b in x0..x0 + wb {
+                        out.push(line.get(b).copied().unwrap_or(0xFF));
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl<A: App, P: Panel> EinkDriver<A, P> {
@@ -321,15 +350,34 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
     pub fn new(app: A, panel: P, backend: Backend, policy: RefreshPolicy) -> Option<Self> {
         let (w, h) = panel.size();
         let surface = Surface::new(backend, w, h)?;
+        Some(Self::with_canvas(app, panel, Canvas::Rgb(surface), policy))
+    }
+
+    /// Like [`new`](Self::new), drawing straight into a one-bit frame with the integer renderer: a sixteenth of the memory
+    /// (48 KB for an 800x480 panel, where RGB565 is 768 KB, which only a chip with PSRAM has) and nothing to quantise when it
+    /// is shown. `policy.dither` is the dither the renderer turns colours with as it draws (a threshold keeps text crisp);
+    /// anti-aliasing becomes hard edges or dots. `None` when the panel is wider than 65 535 pixels or has no room.
+    pub fn new_mono(app: A, panel: P, policy: RefreshPolicy) -> Option<Self> {
+        let (w, h) = panel.size();
+        let (w16, h16) = (u16::try_from(w).ok()?, u16::try_from(h).ok()?);
+        let bytes = MonoFrame::<Vec<u8>>::stride_of(w16).checked_mul(usize::from(h16))?;
+        // Paper: every bit set, and the bits past the right edge stay so.
+        let frame = MonoFrame::new(w16, h16, vec![0xFF; bytes], policy.dither)?;
+        let canvas = Canvas::Mono(Box::new(Embedded::new(frame)));
+        Some(Self::with_canvas(app, panel, canvas, policy))
+    }
+
+    fn with_canvas(app: A, panel: P, canvas: Canvas, policy: RefreshPolicy) -> Self {
+        let (w, h) = panel.size();
         let mut shell = Shell::new(app);
         shell.input(Input::Screen(panel.screen()));
-        Some(Self {
+        Self {
             shell,
             panel,
-            surface,
+            canvas,
             planner: Planner::new((w, h), policy),
             packed: Vec::new(),
-        })
+        }
     }
 
     /// The app and its frame statistics.
@@ -341,7 +389,10 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
     /// [`step`](Self::step).
     #[cfg(feature = "fonts")]
     pub fn set_fonts(&mut self, set: fusuma::fonts::FontSet) {
-        self.surface.set_fonts(set);
+        match &mut self.canvas {
+            Canvas::Rgb(s) => s.set_fonts(set),
+            Canvas::Mono(r) => r.set_fonts(set),
+        }
     }
 
     /// The panel.
@@ -371,13 +422,13 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
     /// [`DriverError`] when drawing failed or the panel did.
     pub fn step(&mut self, now_ms: u64) -> Result<EinkStep, DriverError<P::Error>> {
         let drawn = self
-            .surface
+            .canvas
             .frame(&mut self.shell, now_ms)
             .map_err(DriverError::Draw)?;
         if let Some(region) = drawn {
             // Vello forgets a frame's commands at the next one, so the pixels are made now and not when the panel is
             // ready; it only redraws the damaged part, which is small.
-            self.surface.rasterise();
+            self.canvas.rasterise();
             self.planner.damage(region, now_ms);
         }
         let refreshed = self.planner.take(now_ms);
@@ -386,8 +437,7 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
             let dither = self.planner.policy().dither;
             match what {
                 Refresh::Full => {
-                    pack_mono(
-                        &mut self.surface,
+                    self.canvas.pack(
                         (w, h),
                         Rect::new(0, 0, w.next_multiple_of(8), h),
                         dither,
@@ -396,7 +446,7 @@ impl<A: App, P: Panel> EinkDriver<A, P> {
                     self.panel.full(&self.packed).map_err(DriverError::Board)?;
                 }
                 Refresh::Partial(r) => {
-                    pack_mono(&mut self.surface, (w, h), r, dither, &mut self.packed);
+                    self.canvas.pack((w, h), r, dither, &mut self.packed);
                     self.panel
                         .partial(r, &self.packed)
                         .map_err(DriverError::Board)?;

@@ -4,9 +4,11 @@
 mod cover;
 mod fill;
 mod frame;
+mod mono;
 pub mod raster;
 
 pub use frame::{Blend, Frame, PixelSource, mix565};
+pub use mono::{Dither, MonoFrame, luma565};
 
 use core::fmt::Debug;
 
