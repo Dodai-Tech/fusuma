@@ -22,4 +22,4 @@ the board, a clock and a loop.
 
 No widget or drawing code lives here: CI fails if a `fusuma-platform-*` crate builds a widget tree.
 
-E-paper panels (one-bit packing, batched refresh, the SSD1680, SSD1677 and SSD2677 controllers) are in `fusuma-platform-eink`.
+E-paper panels (one-bit packing, batched refresh, the SSD1680, SSD1677 and SSD2677 controllers) are in its `eink` module (`fusuma_platform_embedded::eink`), next to the emissive `Driver`; hardware and boards: [docs/EINK.md](../../docs/EINK.md).

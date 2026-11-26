@@ -103,7 +103,7 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 | `fusuma-fonts` | the font catalog (families, presets, icons), `FontSet`, glyph atlases made at build time | yes |
 | `fusuma-platform` | the renderer choice, settings (`fusuma.toml`) and board files (`board.toml`) | yes (`toml` needs `std`) |
 | `fusuma-platform-embedded` | what every board shares: `Board`, `Driver`, the renderer surface, touch tracking, timing | yes |
-| `fusuma-platform-eink` | e-paper over `fusuma-platform-embedded`: one-bit packing, batched refresh, SSD1680, SSD1677, SSD2677, the Sticky's panel detection (unpublished, not run on a panel) | yes |
+| `fusuma-platform-embedded::eink` | e-paper, a module of the embedded crate: one-bit packing, batched refresh, SSD1680, SSD1677, SSD2677, the Sticky's panel detection (unpublished, not run on a panel) | yes |
 | `fusuma-platform-esp` | ESP-IDF runtime and drivers per controller; boards are files (not a workspace member) | no |
 | `fusuma-platform-desktop` | a `winit` window, GPU Vello else CPU | no |
 | `fusuma-cells` | the text UI's cells: grid, diff, ANSI encoder, key and mouse decoder, wide characters | yes |
@@ -405,6 +405,8 @@ the same pixels as the hand-built page, a message log that replays to the same s
 - [x] Board files for the S3 AMOLED 1.43 (from vendor source, not run) and 1.64 (pins run in weathertrack-esp, not yet through
   Fusuma's driver); `title` (friendly name) in every board file; `showcase install` picks `ota_0` or, on a board without OTA,
   the factory app only with `--backup`/`--force`. The catalog of what is a file, what needs a driver: `docs/BOARDS.md`
+- [x] `fusuma-platform-eink` merged into `fusuma-platform-embedded::eink` (it had no dependency of its own); `ssd1680` is a board
+  controller (1.54", 2.13", 2.9"), board `s3-epaper-154`; e-paper hardware notes in `docs/EINK.md`
 - [ ] Plain-SPI LCD driver (ST7789, GC9A01), an I/O expander (TCA9554: the C6 e-paper 1.54's panel power, the S3 1.8"'s reset)
   and a `variant` option on the `co5300` (1.43 SH8601, 1.64 V1/V2)
 - [ ] The C6 (a board file; `esp-hal` as well as ESP-IDF), a Cortex-M board (RP2040, STM32, nRF), a Linux
@@ -472,7 +474,7 @@ derives the rest.
 
 ### E-paper (reflective panels)
 
-The app draws as always, on the integer renderer or Vello CPU. `fusuma-platform-eink` (over `fusuma-platform-embedded`) does the
+The app draws as always, on the integer renderer or Vello CPU. `fusuma_platform_embedded::eink` does the
 rest: `EinkDriver` tells the app what the glass is, quantises the RGB565 picture to one bit (`pack_mono`: threshold or 4x4
 ordered dither, a set bit is white), batches damage with a `Planner` (settle time, minimum interval, one union rectangle in
 whole bytes, a full flashing refresh every N partials and after sleep) and sends it through a `Panel` over a small `Bus`

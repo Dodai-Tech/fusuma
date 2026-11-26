@@ -18,7 +18,10 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 | `s3-amoled-206` | Waveshare ESP32-S3-Touch-AMOLED-2.06 | 410x502 | co5300, ft3168 | run |
 | `s3-sticky` | Seeed reTerminal Sticky | 800x480 e-paper | ssd1677 | run |
 | `s3-amoled-164` | Waveshare ESP32-S3-Touch-AMOLED-1.64 (V2) | 280x456 | co5300 init, ft3168 | pins run (weathertrack-esp), not yet through Fusuma's driver |
+| `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file** from vendor firmware (GPIO6 low powers the panel); built, not run; 4 MB flash assumed |
 | `s3-amoled-143` | Waveshare ESP32-S3-Touch-AMOLED-1.43 | 466x466 round | co5300 init, ft3168 | **file**, CO5300 variant only |
+
+E-paper boards, the controllers and how to add one: [EINK.md](EINK.md).
 
 ## One file away or close
 

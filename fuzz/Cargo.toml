@@ -14,9 +14,8 @@ fusuma-anim = { path = "../crates/fusuma-anim" }
 fusuma-ui = { path = "../crates/fusuma-ui" }
 fusuma-render-integer = { path = "../crates/fusuma-render-integer" }
 fusuma-render-vello-cpu = { path = "../crates/fusuma-render-vello-cpu" }
-fusuma-platform-eink = { path = "../crates/fusuma-platform-eink" }
-fusuma = { path = "../crates/fusuma" }
 fusuma-platform-embedded = { path = "../crates/fusuma-platform-embedded" }
+fusuma = { path = "../crates/fusuma" }
 
 # Not part of the main workspace (needs nightly).
 [workspace]

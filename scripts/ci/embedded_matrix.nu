@@ -23,8 +23,6 @@ export const MATRIX = [
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-platform-console" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-ui" }
     { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-cells-panel" }
-    { target: "riscv32imac-unknown-none-elf", features: "", package: "fusuma-platform-eink" }
-    { target: "thumbv6m-none-eabi", features: "", package: "fusuma-platform-eink" }
     { target: "riscv32imac-unknown-none-elf", features: "android,ios,linux", package: "fusuma-platform-mobile" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-platform-mobile" }
     { target: "thumbv6m-none-eabi", features: "", package: "fusuma-cells-panel" }

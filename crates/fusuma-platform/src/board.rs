@@ -141,7 +141,7 @@ const fn opt(name: &'static str, default: i64, min: i64, max: i64) -> OptionSpec
 }
 
 /// The controllers Fusuma's ESP drivers know (`fusuma-platform-esp`). A board made of these is one file.
-pub const CONTROLLERS: [Controller; 7] = [
+pub const CONTROLLERS: [Controller; 8] = [
     Controller {
         name: "co5300",
         kind: PartKind::Display,
@@ -190,6 +190,28 @@ pub const CONTROLLERS: [Controller; 7] = [
             pin("en", 1, false),
         ],
         options: &[opt("data_rate_mhz", 10, 1, 40), opt("mirror_x", 0, 0, 1)],
+        chips: &[],
+        sizes: &[],
+        offset: false,
+    },
+    Controller {
+        name: "ssd1680",
+        kind: PartKind::Display,
+        bus: "spi",
+        // The small black and white panels (SSD1680, SSD1681): 1.54 inch 200x200, 2.13 inch 122x250, 2.9 inch 128x296. The
+        // wiring of the SSD1677's; the busy line is high while it works. The driver follows Waveshare's V2 and V4 sequences
+        // and has run against a recording bus only, not on a panel.
+        pins: &[
+            pin("sck", 1, true),
+            pin("mosi", 1, true),
+            pin("miso", 1, false),
+            pin("cs", 1, true),
+            pin("dc", 1, true),
+            pin("rst", 1, true),
+            pin("busy", 1, true),
+            pin("en", 1, false),
+        ],
+        options: &[opt("data_rate_mhz", 4, 1, 20)],
         chips: &[],
         sizes: &[],
         offset: false,
@@ -1520,6 +1542,10 @@ flash_mb = 32
             (
                 "s3-amoled-206",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-206/board.toml"),
+            ),
+            (
+                "s3-epaper-154",
+                include_str!("../../fusuma-platform-esp/boards/s3-epaper-154/board.toml"),
             ),
             (
                 "s3-amoled-143",

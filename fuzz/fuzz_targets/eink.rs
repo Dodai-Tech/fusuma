@@ -2,7 +2,7 @@
 //! The e-paper pipeline never panics and keeps its promises: the planner only gives regions on the panel in whole bytes, packing is
 //! the size it says, and the one-bit drawing never touches the padding bits of a row.
 
-use fusuma_platform_eink::{byte_region, gray_level, pack_gray4, pack_mono, Dither, Planner, Refresh, RefreshPolicy};
+use fusuma_platform_embedded::eink::{byte_region, gray_level, pack_gray4, pack_mono, Dither, Planner, Refresh, RefreshPolicy};
 use fusuma_render::{Point, Rect};
 use fusuma_render_integer::{Embedded, Frame, MonoFrame};
 use libfuzzer_sys::fuzz_target;

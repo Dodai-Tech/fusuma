@@ -1,4 +1,4 @@
-# fusuma-platform-eink
+# E-paper (`fusuma_platform_embedded::eink`)
 
 Fusuma on e-paper (and other reflective panels: memory LCDs): black and white, slow to refresh, no animation. `no_std` with
 an allocator, tested on the computer against a recording bus; **not yet run on a panel** (see the roadmap).
@@ -21,4 +21,4 @@ The app draws as always, on the integer renderer or Vello on the CPU. This crate
 - **`bus::Bus`**: what a controller needs from the chip (command, data, reset, busy, an optional read-back and delay), so a
   runtime (`fusuma-platform-esp` over SPI) implements four functions. `bus::Recorder` is the test bus.
 
-It draws through `fusuma-platform-embedded` (`Surface`, `Pixels`) and shares nothing else with it.
+It draws through the crate's `Surface` and `Pixels`; the emissive `Driver` and this module are two loops over one surface.

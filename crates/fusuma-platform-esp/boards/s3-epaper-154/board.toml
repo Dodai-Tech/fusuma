@@ -1,0 +1,43 @@
+# The Waveshare ESP32-S3-ePaper-1.54: a 1.54 inch 200x200 black and white e-paper (SSD1681 family) on an ESP32-S3 with 8 MB
+# octal PSRAM, PCF85063 RTC, SHTC3 sensor, ES8311 audio codec and a TF slot. NOT RUN ON A BOARD: the pins, the panel's power
+# polarity and the battery latch are read from Waveshare's firmware (waveshareteam/ESP32-S3-ePaper-1.54, ESP-IDF V1 and V2,
+# which agree). The vendor's examples build for 4 MB of flash, so that is what this file assumes; read the real size
+# (`espflash board-info`) before trusting more. A touch version (ESP32-S3-Touch-ePaper-1.54) exists and is not described here.
+# Schema: crates/fusuma-platform/board.schema.json.
+name = "s3-epaper-154"
+title = "Waveshare ESP32-S3-ePaper-1.54"
+about = "Waveshare ESP32-S3-ePaper-1.54, 1.54 inch e-paper (200x200), RTC, SHTC3, ES8311 codec, TF slot"
+capabilities = ["display", "button", "wifi", "ble", "battery", "rtc", "storage", "audio", "eink"]
+
+[display]
+width = 200
+height = 200
+controller = "ssd1680"
+bus = "spi"
+# The panel's busy line is high while it works. The panel's power is a plain GPIO (6), switched below, so there is no `en`.
+pins = { sck = 12, mosi = 13, cs = 11, dc = 10, rst = 9, busy = 8 }
+options = { data_rate_mhz = 4 }
+
+[screen]
+preset = "epaper-1in54"
+
+# The vendor's firmware drives GPIO6 low to power the panel (high is off) and GPIO17 high to keep the battery switched on.
+# The audio amplifier's power (GPIO42, low is on) stays off.
+[power]
+high = [17, 42]
+low = [6]
+
+# BOOT; the PWR key (GPIO18) is the board's own power key and is left alone. Pressed pulls the pin low.
+[buttons]
+pins = { ok = 0 }
+active_low = true
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 4
+
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

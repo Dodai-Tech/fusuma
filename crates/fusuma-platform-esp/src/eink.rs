@@ -1,5 +1,5 @@
 //! A board whose screen is e-paper: power pins, the SPI bus, the panel (found by asking the chip), three keys and touch,
-//! run by `fusuma_platform_eink::EinkDriver`. The emissive boards go through `panel.rs` and `Driver` instead.
+//! run by `fusuma_platform_embedded::eink::EinkDriver`. The emissive boards go through `panel.rs` and `Driver` instead.
 
 use std::time::{Duration, Instant};
 
@@ -7,14 +7,16 @@ use esp_idf_svc::sys::fusuma_esp as ffi;
 use fusuma::platform::{Machine, Render, Settings};
 use fusuma::render::Point;
 use fusuma::{App, Input, Key, TouchTracker};
-#[cfg_attr(fusuma_display = "uc8179", allow(unused_imports))]
-use fusuma_platform_eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
-#[cfg_attr(fusuma_display = "uc8179", allow(unused_imports))]
-use fusuma_platform_eink::sticky::{Sticky, Variant};
+#[cfg_attr(any(fusuma_display = "uc8179", fusuma_display = "ssd1680"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
+#[cfg_attr(not(fusuma_display = "ssd1680"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::ssd1680::{Config as Ssd1680Config, Ssd1680};
+#[cfg_attr(any(fusuma_display = "uc8179", fusuma_display = "ssd1680"), allow(unused_imports))]
+use fusuma_platform_embedded::eink::sticky::{Sticky, Variant};
 #[cfg_attr(not(fusuma_display = "uc8179"), allow(unused_imports))]
-use fusuma_platform_eink::uc8179::{Config as Uc8179Config, Uc8179};
-use fusuma_platform_eink::bus::Bus;
-use fusuma_platform_eink::{EinkDriver, Panel, RefreshPolicy};
+use fusuma_platform_embedded::eink::uc8179::{Config as Uc8179Config, Uc8179};
+use fusuma_platform_embedded::eink::bus::Bus;
+use fusuma_platform_embedded::eink::{EinkDriver, Panel, RefreshPolicy};
 use fusuma_platform_embedded::{HeldTouch, orient};
 
 use crate::board::{
@@ -99,10 +101,12 @@ impl Bus for EspBus {
 
 /// The panel this firmware drives, by what the board file names.
 enum Chosen {
-    #[cfg_attr(fusuma_display = "uc8179", allow(dead_code))]
+    #[cfg_attr(any(fusuma_display = "uc8179", fusuma_display = "ssd1680"), allow(dead_code))]
     Sticky(Sticky<EspBus>),
     #[cfg_attr(not(fusuma_display = "uc8179"), allow(dead_code))]
     Uc8179(Uc8179<EspBus>),
+    #[cfg_attr(not(fusuma_display = "ssd1680"), allow(dead_code))]
+    Ssd1680(Ssd1680<EspBus>),
 }
 
 impl Panel for Chosen {
@@ -112,6 +116,7 @@ impl Panel for Chosen {
         match self {
             Self::Sticky(p) => p.size(),
             Self::Uc8179(p) => p.size(),
+            Self::Ssd1680(p) => p.size(),
         }
     }
 
@@ -119,6 +124,7 @@ impl Panel for Chosen {
         match self {
             Self::Sticky(p) => p.full(frame),
             Self::Uc8179(p) => p.full(frame),
+            Self::Ssd1680(p) => p.full(frame),
         }
     }
 
@@ -126,6 +132,7 @@ impl Panel for Chosen {
         match self {
             Self::Sticky(p) => p.partial(region, data),
             Self::Uc8179(p) => p.partial(region, data),
+            Self::Ssd1680(p) => p.partial(region, data),
         }
     }
 
@@ -133,6 +140,7 @@ impl Panel for Chosen {
         match self {
             Self::Sticky(p) => p.sleep(),
             Self::Uc8179(p) => p.sleep(),
+            Self::Ssd1680(p) => p.sleep(),
         }
     }
 
@@ -140,6 +148,7 @@ impl Panel for Chosen {
         match self {
             Self::Sticky(p) => p.screen(),
             Self::Uc8179(p) => p.screen(),
+            Self::Ssd1680(p) => p.screen(),
         }
     }
 }
@@ -231,7 +240,21 @@ pub(crate) fn run_here<A: App>(
             },
         )
     };
-    #[cfg(not(fusuma_display = "uc8179"))]
+    #[cfg(fusuma_display = "ssd1680")]
+    let (panel, policy) = {
+        let _ = mirror;
+        // The small panels: about two seconds for a full refresh, 0.3 for a partial, a full one now and then to clear ghosts.
+        (
+            Chosen::Ssd1680(Ssd1680::new(bus, Ssd1680Config::new(WIDTH, HEIGHT))),
+            RefreshPolicy {
+                min_interval_ms: 1_000,
+                settle_ms: 150,
+                full_every: 20,
+                ..RefreshPolicy::DEFAULT
+            },
+        )
+    };
+    #[cfg(not(any(fusuma_display = "uc8179", fusuma_display = "ssd1680")))]
     let (panel, policy) = {
         let s = if (WIDTH, HEIGHT) == (800, 480) {
             Sticky::detect(bus, mirror).map_err(|e| anyhow::anyhow!("probing the panel: {e:?}"))?

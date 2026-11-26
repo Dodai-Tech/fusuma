@@ -5,8 +5,8 @@
 use fusuma::platform::Backend;
 use fusuma::render::Rect;
 use fusuma::{Input, Key};
-use fusuma_platform_eink::ssd1680::{Bus, Call, Config, Recorder, Ssd1680};
-use fusuma_platform_eink::{EinkDriver, Panel, Refresh, RefreshPolicy};
+use fusuma_platform_embedded::eink::ssd1680::{Bus, Call, Config, Recorder, Ssd1680};
+use fusuma_platform_embedded::eink::{EinkDriver, Panel, Refresh, RefreshPolicy};
 use fusuma_showcase::Showcase;
 
 fn policy() -> RefreshPolicy {
@@ -14,7 +14,7 @@ fn policy() -> RefreshPolicy {
         min_interval_ms: 300,
         settle_ms: 100,
         full_every: 30,
-        dither: fusuma_platform_eink::Dither::default(),
+        dither: fusuma_platform_embedded::eink::Dither::default(),
     }
 }
 
@@ -222,7 +222,7 @@ fn the_sequences_name_the_window_the_data_goes_to() {
 
 #[test]
 fn the_showcase_on_the_sticky_800x480_lands_mirrored_on_the_panel() {
-    use fusuma_platform_eink::ssd1677::{Config, Ssd1677};
+    use fusuma_platform_embedded::eink::ssd1677::{Config, Ssd1677};
     let frame = |config: Config| {
         let panel = Ssd1677::new(Recorder::default(), config);
         let mut d =
@@ -268,7 +268,7 @@ fn run_until_refresh(
 fn the_one_bit_canvas_is_a_sixteenth_of_the_memory_and_gives_the_same_picture() {
     // Memory: 800x480 as bits against RGB565.
     assert_eq!(
-        fusuma_platform_eink::MonoFrame::<Vec<u8>>::stride_of(800) * 480,
+        fusuma_platform_embedded::eink::MonoFrame::<Vec<u8>>::stride_of(800) * 480,
         48_000
     );
     assert_eq!(800 * 480 * 2, 768_000);
@@ -349,7 +349,7 @@ fn a_partial_refresh_of_the_one_bit_canvas_is_exactly_the_change_in_the_whole_pi
 #[test]
 fn the_showcase_on_a_7_5_inch_uc8179_is_a_full_refresh_then_a_partial_one_with_the_chips_polarities()
  {
-    use fusuma_platform_eink::uc8179::{Config, Uc8179};
+    use fusuma_platform_embedded::eink::uc8179::{Config, Uc8179};
     let panel = Uc8179::new(Recorder::default(), Config::EPD_7IN5);
     let mut d = EinkDriver::new_mono(Showcase::new(800, 480), panel, policy()).unwrap();
     let mut now = 0u64;
@@ -396,7 +396,7 @@ fn the_showcase_on_a_7_5_inch_uc8179_is_a_full_refresh_then_a_partial_one_with_t
 
 #[test]
 fn a_four_gray_panel_gets_the_whole_picture_in_levels_with_smooth_edges_for_every_refresh() {
-    use fusuma_platform_eink::uc8179::{Config, Uc8179};
+    use fusuma_platform_embedded::eink::uc8179::{Config, Uc8179};
     let panel = Uc8179::new(Recorder::default(), Config::EPD_7IN5).with_gray4();
     // A panel with no gray mode is refused, a gray one is taken.
     assert!(
@@ -404,7 +404,7 @@ fn a_four_gray_panel_gets_the_whole_picture_in_levels_with_smooth_edges_for_ever
             Showcase::new(800, 480),
             Ssd1680::new(
                 Recorder::default(),
-                fusuma_platform_eink::ssd1680::Config::EPD_2IN9
+                fusuma_platform_embedded::eink::ssd1680::Config::EPD_2IN9
             ),
             Backend::Integer,
             policy()

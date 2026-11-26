@@ -12,6 +12,7 @@ toolchain:
 | Board | Chip | Screen | Toolchain |
 |---|---|---|---|
 | `p4-7in`: Waveshare ESP32-P4 7" touch board | ESP32-P4 | 1024x600 DSI with a frame buffer, GT911 touch | `nightly-2026-09-15` |
+| `s3-epaper-154`: Waveshare ESP32-S3-ePaper-1.54 | ESP32-S3 | 200x200 e-paper (SSD1681) over SPI, one key (file from vendor source, not run) | `esp` (espup) |
 | `s3-amoled-143`: Waveshare ESP32-S3-Touch-AMOLED-1.43 | ESP32-S3 | 466x466 round AMOLED over QSPI, FT3168 touch (file from vendor source, not run) | `esp` (espup) |
 | `s3-amoled-164`: Waveshare ESP32-S3-Touch-AMOLED-1.64 | ESP32-S3 | 280x456 CO5300 AMOLED over QSPI, FT3168 touch (16 MB flash, no OTA slot) | `esp` (espup) |
 | `s3-amoled-206`: Waveshare ESP32-S3-Touch-AMOLED-2.06 watch | ESP32-S3 | 410x502 CO5300 AMOLED over QSPI, FT3168 touch | `esp` (espup) |

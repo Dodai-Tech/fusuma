@@ -15,7 +15,7 @@ fn main() {
     println!("cargo::rerun-if-env-changed=MCU");
     println!("cargo::rerun-if-changed=boards");
     for (key, values) in [
-        ("fusuma_display", "\"co5300\", \"ek79007\", \"ssd1677\", \"uc8179\""),
+        ("fusuma_display", "\"co5300\", \"ek79007\", \"ssd1677\", \"ssd1680\", \"uc8179\""),
         ("fusuma_touch", "\"ft3168\", \"gt911\""),
         ("fusuma_backlight", "\"ledc\""),
     ] {
@@ -85,7 +85,7 @@ fn main() {
     println!("cargo::rustc-cfg=fusuma_display=\"{}\"", controller.name);
     // An e-paper controller: the run loop is the e-paper one, whichever it is.
     println!("cargo::rustc-check-cfg=cfg(fusuma_eink)");
-    if matches!(controller.name, "ssd1677" | "uc8179") {
+    if matches!(controller.name, "ssd1677" | "ssd1680" | "uc8179") {
         println!("cargo::rustc-cfg=fusuma_eink");
     }
     if let Some(t) = board.touch.as_ref().and_then(|t| t.wiring.controller) {
