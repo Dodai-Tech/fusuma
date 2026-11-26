@@ -1317,3 +1317,269 @@ fn an_image_view_draws_its_picture_and_a_bad_one_fails_the_build_with_a_name() {
         fusuma_ui::BuildError::BadImage
     );
 }
+
+#[test]
+fn chart_views_scale_their_values_between_the_smallest_and_largest_or_a_given_range() {
+    use fusuma::scale_samples;
+    let (d, n) = scale_samples(&[10, 20, 30], 10, 30);
+    assert_eq!((n, &d[..3]), (3, &[0u8, 128, 255][..]));
+    // A range wider than the data: the values sit inside it; values outside are held to the ends.
+    let (d, _) = scale_samples(&[0, 50, 100, 200, -5], 0, 100);
+    assert_eq!(&d[..5], &[0, 128, 255, 255, 0]);
+    // An empty or flat range is all zeros and never divides by zero.
+    assert_eq!(scale_samples(&[5, 5], 5, 5).0[..2], [0, 0]);
+    assert_eq!(scale_samples(&[], 0, 0).1, 0);
+    // More than the chart holds: the first 32.
+    let many: Vec<i32> = (0..100).collect();
+    assert_eq!(scale_samples(&many, 0, 99).1, fusuma_ui::CHART_MAX);
+
+    let v = fusuma::line_chart(&[3, 9, 4, 12]).size(120, 60);
+    let mut a = Mini3::new(&v);
+    a.frame();
+    let (ch_id, ch_rect) = {
+        let ch = a.tree.semantics().find(|s| s.name == "Chart").unwrap();
+        (ch.id, ch.rect)
+    };
+    assert_eq!((ch_rect.w, ch_rect.h), (120, 60));
+    assert_eq!(a.tree.chart_samples(ch_id), Some(&[0u8, 170, 28, 255][..]));
+    // New data in the same node: the samples change, and the same data repaints nothing.
+    let w = fusuma::bar_chart(&[1, 2, 3])
+        .range(&[1, 2, 3], 0, 4)
+        .size(120, 60);
+    a.show(&w);
+    assert_eq!(a.tree.chart_samples(ch_id), Some(&[64u8, 128, 191][..]));
+    a.frame();
+    assert!(!a.tree.needs_frame());
+    a.show(&w);
+    assert!(!a.tree.needs_frame(), "the same chart is no change");
+    // The picture: a bar of the full range is the primary colour up to its height.
+    let b = a.tree.rect(ch_id).unwrap();
+    let mut lit = 0;
+    for y in b.y..b.bottom() {
+        if a.scr
+            .pixel(b.x + 2 + (120 - 4) / 3 * 2 + 4, y)
+            .map(fusuma_render::Color::to_rgb565)
+            == Some(THEME.colors.primary.to_rgb565())
+        {
+            lit += 1;
+        }
+    }
+    assert!(
+        lit > 25,
+        "the third bar (191 of 255) is lit up to three quarters: {lit}"
+    );
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Cal {
+    Day(u8),
+    Month(i32),
+    Step(fusuma::TimePart, i32),
+}
+
+#[test]
+fn a_calendar_puts_the_days_under_their_weekdays_and_sends_the_day_and_the_month_arrows() {
+    // June 2025 starts on a Sunday and has 30 days.
+    let view = |sel: Option<u8>, sunday: bool| {
+        let c = fusuma::calendar(2025, 6, sel, Cal::Day, Cal::Month);
+        if sunday { c.sunday_first() } else { c }
+    };
+    let mut a = Mini4::new(&view(Some(15), false));
+    a.frame();
+    assert!(a.names().iter().any(|n| n == "June 2025"));
+    for d in ["Mo", "Th", "Su"] {
+        assert!(a.names().iter().any(|n| n == d), "{d}");
+    }
+    // 30 days are on the page, 31 is not.
+    for d in 1..=30 {
+        assert!(a.names().iter().any(|n| *n == d.to_string()), "day {d}");
+    }
+    assert!(!a.names().iter().any(|n| n == "31"));
+    // Weeks start on Monday: the 1st is in the last column, the 2nd in the first column of the next row.
+    let rect = |a: &Mini4, n: &str| {
+        let id = a
+            .tree
+            .semantics()
+            .filter(|s| s.name == n)
+            .last()
+            .unwrap()
+            .id;
+        a.tree.rect(id).unwrap()
+    };
+    let (d1, d2, d8) = (rect(&a, "1"), rect(&a, "2"), rect(&a, "8"));
+    let mo = rect(&a, "Mo");
+    let su = rect(&a, "Su");
+    assert_eq!(d1.x, su.x, "the 1st is a Sunday: the last column");
+    assert_eq!(d2.x, mo.x, "the 2nd starts the next week");
+    assert!(d2.y > d1.y);
+    assert_eq!(
+        d8.x, d1.x,
+        "the 8th is a Sunday too: the same column a week later"
+    );
+    assert_eq!(d8.y, d2.y, "and on the row of the 2nd (Monday to Sunday)");
+    assert_eq!(rect(&a, "9").x, d2.x);
+    // The 15th is selected: the main action's colour.
+    let d15 = rect(&a, "15");
+    assert_eq!(
+        a.scr
+            .pixel(d15.x + 3, d15.y + d15.h as i32 / 2)
+            .unwrap()
+            .to_rgb565(),
+        THEME.colors.primary.to_rgb565()
+    );
+    assert_ne!(
+        a.scr
+            .pixel(d8.x + 3, d8.y + d8.h as i32 / 2)
+            .unwrap()
+            .to_rgb565(),
+        THEME.colors.primary.to_rgb565()
+    );
+    // Messages.
+    assert_eq!(a.tap("20"), Some(Cal::Day(20)));
+    assert_eq!(a.tap(">"), Some(Cal::Month(1)));
+    assert_eq!(a.tap("<"), Some(Cal::Month(-1)));
+    // Sunday first: the 1st is in the first column.
+    a.show(&view(None, true));
+    let (d1, su) = (rect(&a, "1"), rect(&a, "Su"));
+    assert_eq!(d1.x, su.x);
+    assert!(a.tree.semantics().filter(|s| s.name == "Su").count() == 1);
+    // February 2024: 29 days, the 1st a Thursday; moving the month changes the grid in the same nodes.
+    let before = a.tree.len();
+    a.show(&fusuma::calendar(2024, 2, None, Cal::Day, Cal::Month));
+    assert_eq!(a.tree.len(), before, "the same 42 cells");
+    assert!(a.names().iter().any(|n| n == "February 2024"));
+    assert!(a.names().iter().any(|n| n == "29") && !a.names().iter().any(|n| n == "30"));
+    // The last row is empty for a month that fits in four weeks: February 2021 started on a Monday.
+    a.show(&fusuma::calendar(2021, 2, None, Cal::Day, Cal::Month));
+    let h = |a: &Mini4, n: &str| {
+        a.tree
+            .rect(
+                a.tree
+                    .semantics()
+                    .filter(|s| s.name == n)
+                    .last()
+                    .unwrap()
+                    .id,
+            )
+            .unwrap()
+    };
+    assert!(
+        h(&a, "28").bottom() < i32::from(H),
+        "four rows only, nothing below the 28th"
+    );
+}
+
+#[test]
+fn a_time_picker_shows_two_digits_and_sends_the_part_and_the_direction() {
+    let view = |h: u8, m: u8| fusuma::time_picker(h, m, Cal::Step);
+    let mut a = Mini4::new(&view(9, 5));
+    a.frame();
+    for n in ["09", "05", ":"] {
+        assert!(a.names().iter().any(|x| x == n), "{n}");
+    }
+    let plus: Vec<_> = a
+        .tree
+        .semantics()
+        .filter(|s| s.name == "+")
+        .map(|s| s.id)
+        .collect();
+    let minus: Vec<_> = a
+        .tree
+        .semantics()
+        .filter(|s| s.name == "-")
+        .map(|s| s.id)
+        .collect();
+    assert_eq!((plus.len(), minus.len()), (2, 2));
+    let press = |a: &mut Mini4, id: NodeId| {
+        a.frame();
+        a.tree.focus(id);
+        a.frame();
+        let r = a.tree.rect(id).unwrap();
+        let p = Point::new(r.x + 3, r.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            a.tree.pointer(e);
+        }
+        let mut got = None;
+        while let Some(act) = a.tree.pop_action() {
+            got = a.host.message(&a.tree, act).or(got);
+        }
+        got
+    };
+    assert_eq!(
+        press(&mut a, plus[0]),
+        Some(Cal::Step(fusuma::TimePart::Hour, 1))
+    );
+    assert_eq!(
+        press(&mut a, minus[1]),
+        Some(Cal::Step(fusuma::TimePart::Minute, -1))
+    );
+    // Through the app's arithmetic: 23:55 plus a step of each wraps to 00:00.
+    let (h, m) = fusuma::step_time(23, 55, fusuma::TimePart::Hour, 1);
+    let (h, m) = fusuma::step_time(h, m, fusuma::TimePart::Minute, 1);
+    assert_eq!((h, m), (0, 0));
+    a.show(&view(h, m));
+    assert_eq!(a.names().iter().filter(|n| *n == "00").count(), 2);
+}
+
+struct Mini4 {
+    tree: Tree<400>,
+    host: Host<Cal, 128>,
+    scr: Screen,
+}
+
+impl Mini4 {
+    fn new<V: View<Cal>>(v: &V) -> Self {
+        let mut m = Self {
+            tree: Tree::new(),
+            host: Host::new(),
+            scr: screen(),
+        };
+        let root = m.tree.column(None, Style::new().padding(4).gap(4)).unwrap();
+        m.host.sync(&mut m.tree, Some(root), v).unwrap();
+        m
+    }
+
+    fn show<V: View<Cal>>(&mut self, v: &V) {
+        let root = self.tree.root_id();
+        self.host.sync(&mut self.tree, root, v).unwrap();
+        self.frame();
+    }
+
+    fn frame(&mut self) {
+        self.tree.update(&self.scr, &THEME, BOUNDS);
+        self.tree
+            .paint_frame(&mut self.scr, &THEME, BOUNDS)
+            .unwrap();
+    }
+
+    fn tap(&mut self, name: &str) -> Option<Cal> {
+        self.frame();
+        let id = self
+            .tree
+            .semantics()
+            .filter(|s| s.name == name)
+            .last()
+            .unwrap_or_else(|| panic!("no '{name}'"))
+            .id;
+        self.tree.focus(id);
+        self.frame();
+        let r = self.tree.rect(id).unwrap();
+        let p = Point::new(r.x + 3, r.y + 3);
+        for e in [Pointer::Down(p), Pointer::Up(p), Pointer::Leave] {
+            self.tree.pointer(e);
+        }
+        let mut got = None;
+        while let Some(a) = self.tree.pop_action() {
+            got = self.host.message(&self.tree, a).or(got);
+        }
+        got
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.tree
+            .semantics()
+            .filter(|s| !s.name.is_empty())
+            .map(|s| s.name.to_owned())
+            .collect()
+    }
+}

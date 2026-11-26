@@ -328,6 +328,7 @@ impl<const N: usize> Tree<N> {
             | Kind::Slider { .. }
             | Kind::Splitter { .. }
             | Kind::Image { .. }
+            | Kind::Chart { .. }
             | Kind::Toast { .. }
             | Kind::TextInput { .. } => self.measure_widget(i, renderer, theme),
             Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. } => {

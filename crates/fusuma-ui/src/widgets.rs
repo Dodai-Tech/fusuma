@@ -478,6 +478,11 @@ impl<const N: usize> Tree<N> {
             Kind::TextInput { .. } => {
                 Size::new(theme.control_height.saturating_mul(6), theme.control_height)
             }
+            Kind::Chart { .. } if theme.cells => Size::new(24, 4),
+            Kind::Chart { .. } => Size::new(
+                theme.control_height.saturating_mul(6),
+                theme.control_height.saturating_mul(3),
+            ),
             Kind::Image { w, h, .. } if theme.cells => {
                 // In cells a picture is as many cells as fit about 8 pixels each across and 16 down.
                 Size::new(u32::from(w).div_ceil(8), u32::from(h).div_ceil(16))
@@ -667,6 +672,81 @@ impl<const N: usize> Tree<N> {
                 self.ring(i, r, theme, theme.radii.sm)
             }
             Kind::TextInput { .. } => self.paint_text_input(i, r, theme),
+            Kind::Chart { data, len, style } => {
+                let c = &theme.colors;
+                let cnt = usize::from(len);
+                // A little room round the plot so a dot or the edge of a bar is not cut off.
+                let plot = rect.inset(theme.border_width.max(2));
+                if plot.w < 2 || plot.h < 2 {
+                    return Ok(());
+                }
+                let base = plot.bottom();
+                // The baseline and two faint lines between it and the top.
+                r.fill_rect(Rect::new(plot.x, base - 1, plot.w, 1), 0, c.border)?;
+                for k in 1..3 {
+                    let y = base - (plot.h as i32 * k) / 3;
+                    r.fill_rect(Rect::new(plot.x, y, plot.w, 1), 0, c.surface_raised)?;
+                }
+                if cnt == 0 {
+                    return Ok(());
+                }
+                let color = if n.disabled_eff { c.border } else { c.primary };
+                // Where sample `k` is: spread across the width (a single sample is in the middle).
+                let at = |k: usize| {
+                    let x = if cnt == 1 {
+                        plot.x + plot.w as i32 / 2
+                    } else {
+                        plot.x + (plot.w as i64 - 1) as i32 * k as i32 / (cnt as i32 - 1)
+                    };
+                    let v = i32::from(data[k]);
+                    let y = base - 1 - (plot.h as i32 - 1) * v / 255;
+                    Point::new(x, y)
+                };
+                match style {
+                    crate::tree::ChartStyle::Bars => {
+                        let slot = plot.w / cnt as u32;
+                        let bar = slot.saturating_sub(slot / 4).max(1);
+                        for k in 0..cnt {
+                            let h = ((plot.h as i64 * i64::from(data[k])) / 255) as u32;
+                            if h > 0 {
+                                let x = plot.x + (slot * k as u32 + (slot - bar) / 2) as i32;
+                                r.fill_rect(
+                                    Rect::new(x, base - h as i32, bar, h),
+                                    bar.min(4) / 2,
+                                    color,
+                                )?;
+                            }
+                        }
+                    }
+                    crate::tree::ChartStyle::Line | crate::tree::ChartStyle::Area => {
+                        if style == crate::tree::ChartStyle::Area && cnt > 1 {
+                            // The area as one column of pixels' width per step, so it works on every renderer and
+                            // stays inside the integer renderer's path limit.
+                            for k in 0..cnt - 1 {
+                                let (a, b) = (at(k), at(k + 1));
+                                let top = a.y.min(b.y);
+                                let wide = (b.x - a.x).max(1) as u32;
+                                r.fill_rect(
+                                    Rect::new(a.x, top, wide, (base - 1 - top).max(0) as u32),
+                                    0,
+                                    crate::theme::mix(c.surface, color, 250),
+                                )?;
+                            }
+                        }
+                        for k in 0..cnt.saturating_sub(1) {
+                            r.stroke_path(
+                                &[PathCmd::MoveTo(at(k)), PathCmd::LineTo(at(k + 1))],
+                                2,
+                                color,
+                            )?;
+                        }
+                        for k in 0..cnt {
+                            r.fill_circle(at(k), 2, color)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
             Kind::Image { rgba, w, h } => {
                 let Some(img) = fusuma_render::Image::new(u32::from(w), u32::from(h), rgba) else {
                     return Ok(());
@@ -1587,5 +1667,136 @@ mod tests {
         );
         assert!(t.image(None, 1, 1, &TALL).is_ok());
         assert_eq!(t.len(), 1, "a refused image leaves no node behind");
+    }
+
+    fn chart_pic(style: crate::tree::ChartStyle, samples: &[u8]) -> (VelloCpu, Rect) {
+        use fusuma_render::Renderer;
+        let mut t = Tree::<4>::new();
+        let root = t.column(None, Style::new().padding(10)).unwrap();
+        let ch = t.chart(Some(root), style, samples).unwrap();
+        t.set_style(
+            ch,
+            Style::new()
+                .width(crate::tree::Length::Fixed(100))
+                .height(crate::tree::Length::Fixed(60)),
+        );
+        let mut r = screen();
+        t.update(&r, &THEME, Rect::new(0, 0, 200, 200));
+        r.clear(THEME.colors.background).unwrap();
+        t.paint(&mut r, &THEME).unwrap();
+        let rect = t.rect(ch).unwrap();
+        (r, rect)
+    }
+
+    fn lit(r: &VelloCpu, g: Rect, x: i32) -> std::vec::Vec<i32> {
+        (g.y..g.bottom())
+            .filter(|&y| r.pixel(x, y) == Some(THEME.colors.primary))
+            .collect()
+    }
+
+    #[test]
+    fn bars_are_as_tall_as_their_sample_and_leave_gaps_between() {
+        use crate::tree::ChartStyle;
+        // Four bars at 255, 128, 64 and 0 of the height: the plot is 60 - 4 = 56 high.
+        let (r, g) = chart_pic(ChartStyle::Bars, &[255, 128, 64, 0]);
+        let slot = (100 - 4) / 4;
+        let mid = |k: i32| g.x + 2 + slot * k + slot / 2;
+        let heights: std::vec::Vec<usize> = (0..4).map(|k| lit(&r, g, mid(k)).len()).collect();
+        assert!((54..=56).contains(&heights[0]), "{heights:?}");
+        assert!((26..=29).contains(&heights[1]), "{heights:?}");
+        assert!((13..=15).contains(&heights[2]), "{heights:?}");
+        assert_eq!(heights[3], 0, "{heights:?}");
+        // The bars are on the baseline, and a gap between two bars is empty.
+        let ys = lit(&r, g, mid(0));
+        assert!(*ys.last().unwrap() >= g.bottom() - 4, "{ys:?}");
+        assert!(lit(&r, g, g.x + 2 + slot).is_empty() || lit(&r, g, g.x + 2 + slot - 1).is_empty());
+    }
+
+    #[test]
+    fn a_line_goes_through_its_samples_from_edge_to_edge_and_an_area_fills_under_it() {
+        use crate::tree::ChartStyle;
+        let (r, g) = chart_pic(ChartStyle::Line, &[0, 255, 0]);
+        // The three samples: bottom-left, top-middle, bottom-right; the line is lit at each (a dot), and the picture has no fill.
+        let left = lit(&r, g, g.x + 3);
+        let top = lit(&r, g, g.x + 2 + 48);
+        let right = lit(&r, g, g.x + 2 + 95);
+        assert!(!left.is_empty() && !top.is_empty() && !right.is_empty());
+        assert!(
+            top[0] < left[0] - 40,
+            "the middle sample is high: {top:?} {left:?}"
+        );
+        // Between them it rises: a column a quarter along is lit higher than the left end.
+        let q = lit(&r, g, g.x + 2 + 24);
+        assert!(q.iter().any(|y| *y < left[0] - 10 && *y > top[0]), "{q:?}");
+        // Under the line there is nothing in a line chart; in an area chart the column under the peak is filled to the baseline.
+        let under = lit(&r, g, g.x + 2 + 48).len();
+        assert!(under < 12, "just the line: {under}");
+        let (ra, ga) = chart_pic(ChartStyle::Area, &[0, 255, 0]);
+        let ai = ra.pixel(ga.x + 2 + 48, ga.bottom() - 8).unwrap();
+        assert_ne!(ai, THEME.colors.background, "filled under the peak");
+        assert_ne!(ai, THEME.colors.primary, "in a tint, not the line's colour");
+    }
+
+    #[test]
+    fn a_chart_keeps_its_first_samples_and_repaints_only_when_they_change() {
+        use crate::tree::{CHART_MAX, ChartStyle};
+        let mut t = Tree::<4>::new();
+        let many: std::vec::Vec<u8> = (0..100).map(|i| i as u8).collect();
+        let c = t.chart(None, ChartStyle::Line, &many).unwrap();
+        assert_eq!(t.chart_samples(c).map(<[u8]>::len), Some(CHART_MAX));
+        assert_eq!(t.chart_samples(c).unwrap()[31], 31);
+        let mut r = screen();
+        let b = Rect::new(0, 0, 200, 100);
+        t.update(&r, &THEME, b);
+        t.paint_frame(&mut r, &THEME, b).unwrap();
+        assert!(!t.needs_frame());
+        t.set_chart(c, ChartStyle::Line, &many);
+        assert!(!t.needs_frame(), "the same data is a no-op");
+        t.set_chart(c, ChartStyle::Bars, &many);
+        assert!(t.needs_frame(), "another style is a change");
+        t.update(&r, &THEME, b);
+        t.paint_frame(&mut r, &THEME, b).unwrap();
+        t.set_chart(c, ChartStyle::Bars, &[1, 2, 3]);
+        assert_eq!(t.chart_samples(c), Some(&[1u8, 2, 3][..]));
+        assert!(t.needs_frame());
+        // No samples, one sample and a tiny box do not fail.
+        t.set_chart(c, ChartStyle::Line, &[]);
+        t.update(&r, &THEME, b);
+        t.paint(&mut r, &THEME).unwrap();
+        t.set_chart(c, ChartStyle::Area, &[200]);
+        t.update(&r, &THEME, b);
+        t.paint(&mut r, &THEME).unwrap();
+        t.set_style(
+            c,
+            Style::new()
+                .width(crate::tree::Length::Fixed(3))
+                .height(crate::tree::Length::Fixed(3)),
+        );
+        t.update(&r, &THEME, b);
+        t.paint(&mut r, &THEME).unwrap();
+        assert_eq!(
+            t.semantics()
+                .filter(|s| s.role == crate::semantic::Role::Image)
+                .count(),
+            1
+        );
+        // Not a chart: ignored.
+        assert_eq!(Tree::<2>::new().chart_samples(c), None);
+    }
+
+    #[test]
+    fn a_line_chart_draws_on_the_integer_renderer_with_the_most_samples() {
+        use crate::tree::ChartStyle;
+        use fusuma_render_integer::{Embedded, Frame};
+        let samples: std::vec::Vec<u8> = (0..32).map(|i| ((i * 37) % 256) as u8).collect();
+        for style in [ChartStyle::Line, ChartStyle::Area, ChartStyle::Bars] {
+            let mut t = Tree::<4>::new();
+            let root = t.column(None, Style::new().padding(4)).unwrap();
+            t.chart(Some(root), style, &samples).unwrap();
+            let mut r = Embedded::new(Frame::new(200, 120, std::vec![0u16; 200 * 120]).unwrap());
+            t.update(&r, &THEME, Rect::new(0, 0, 200, 120));
+            t.paint(&mut r, &THEME)
+                .unwrap_or_else(|e| panic!("{style:?}: {e:?}"));
+        }
     }
 }

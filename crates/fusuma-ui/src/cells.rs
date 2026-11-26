@@ -816,6 +816,35 @@ impl<const N: usize> Tree<N> {
                 }
                 pen.put(rect.x + 1 + inner, row, ']', off);
             }
+            Kind::Chart { data, len, .. } => {
+                // A sparkline: each column is the sample under it, drawn in eighths of a cell with the block characters.
+                const EIGHTHS: [char; 9] = [
+                    ' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}',
+                    '\u{2587}', '\u{2588}',
+                ];
+                let on = look.style(if disabled { c.border } else { c.primary }, None, attrs);
+                let cnt = usize::from(len);
+                if cnt == 0 || rect.w == 0 || rect.h == 0 {
+                    return;
+                }
+                for cx in 0..rect.w as usize {
+                    let k = if cnt == 1 {
+                        0
+                    } else {
+                        cx * (cnt - 1) / (rect.w as usize - 1).max(1)
+                    };
+                    let total = (usize::from(data[k]) * rect.h as usize * 8) / 255;
+                    for cy in 0..rect.h as usize {
+                        // Rows are counted from the bottom.
+                        let from_bottom = rect.h as usize - 1 - cy;
+                        let left = total.saturating_sub(from_bottom * 8).min(8);
+                        let ch = EIGHTHS[left];
+                        if ch != ' ' {
+                            pen.put(rect.x + cx as i32, rect.y + cy as i32, ch, on);
+                        }
+                    }
+                }
+            }
             Kind::Image { rgba, w, h } => {
                 // A coarse picture: each cell takes the colour of the pixel at its middle (a background colour), or, with no
                 // colours, a shade by how bright that pixel is.

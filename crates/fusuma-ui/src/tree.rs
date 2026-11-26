@@ -77,6 +77,21 @@ pub struct NodeId {
     pub(crate) generation: u8,
 }
 
+/// How many samples a chart holds.
+pub const CHART_MAX: usize = 32;
+
+/// How a chart draws its samples.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ChartStyle {
+    /// A line through the samples.
+    #[default]
+    Line,
+    /// The area under the line, filled.
+    Area,
+    /// One bar for each sample.
+    Bars,
+}
+
 /// The direction a container lays its children out in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Axis {
@@ -270,6 +285,12 @@ pub(crate) enum Kind {
     /// Progress in thousandths, 0 to 1000.
     Progress {
         permille: u16,
+    },
+    /// A chart of up to [`CHART_MAX`] samples, each 0 to 255 of the chart's height: a line, bars, or an area under a line.
+    Chart {
+        data: [u8; CHART_MAX],
+        len: u8,
+        style: ChartStyle,
     },
     /// A picture of `w` x `h` pixels, RGBA, row by row, that lives for the whole program (flash on a chip, `include_bytes!` on a
     /// computer). It is drawn at its own size, centred in its box and cut to it.
@@ -1152,6 +1173,58 @@ impl<const N: usize> Tree<N> {
             },
             Style::DEFAULT,
         )
+    }
+
+    /// Adds a chart of `samples` (each 0 to 255 of the height; the first [`CHART_MAX`] are kept): a line, an area or bars. It is
+    /// sized by the style, or the theme's if the style has none.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn chart(
+        &mut self,
+        parent: Option<NodeId>,
+        style: ChartStyle,
+        samples: &[u8],
+    ) -> Result<NodeId, BuildError> {
+        let mut data = [0u8; CHART_MAX];
+        let len = samples.len().min(CHART_MAX);
+        data[..len].copy_from_slice(&samples[..len]);
+        self.add(
+            parent,
+            Kind::Chart {
+                data,
+                len: len as u8,
+                style,
+            },
+            Style::DEFAULT,
+        )
+    }
+
+    /// Replaces the samples of chart `id` (and its style); redraws only if something changed.
+    pub fn set_chart(&mut self, id: NodeId, style: ChartStyle, samples: &[u8]) {
+        let Some(i) = self.slot(id) else { return };
+        let len = samples.len().min(CHART_MAX);
+        if let Kind::Chart {
+            data,
+            len: l,
+            style: st,
+        } = &mut self.nodes[i].kind
+            && (usize::from(*l) != len || data[..len] != samples[..len] || *st != style)
+        {
+            data[..len].copy_from_slice(&samples[..len]);
+            *l = len as u8;
+            *st = style;
+            self.request(i, Flags::PAINT);
+        }
+    }
+
+    /// The samples of chart `id`.
+    #[must_use]
+    pub fn chart_samples(&self, id: NodeId) -> Option<&[u8]> {
+        match &self.nodes[self.slot(id)?].kind {
+            Kind::Chart { data, len, .. } => Some(&data[..usize::from(*len)]),
+            _ => None,
+        }
     }
 
     /// Adds an image: `width` x `height` pixels of straight RGBA, row by row. It is as big as the picture unless the style gives

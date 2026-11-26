@@ -2,6 +2,7 @@
 //! views that describe the screen. Re-exported at the top of `fusuma`.
 
 mod blocks;
+mod calendar;
 mod components;
 mod container;
 mod host;
@@ -15,13 +16,17 @@ mod widgets;
 pub use blocks::{
     Avatar, Badge, Divider, Section, Stepper, avatar, badge, divider, section, stepper,
 };
+pub use calendar::{
+    CALENDAR_CELLS, Calendar, MINUTE_STEP, MONTHS, TimePart, TimePicker, WEEKDAYS, calendar,
+    days_in_month, first_cell, is_leap, shift_month, step_time, time_picker, weekday,
+};
 pub use components::{
-    Breadcrumbs, Gauge, Image, Kbd, PAGE_SLOTS, PageDots, PageSlot, Pagination, STARS, SUGGESTIONS,
-    Segmented, Select, Spinner, Splitter, StepState, Steps, Table, Timeline, accordion, alert,
-    banner, breadcrumbs, carousel, chip, combobox, dismissible_alert, empty_state, gauge, image,
-    kbd, page_dots, page_window, pagination, rating, segmented, select, skeleton, snackbar,
-    spinner, split_view, split_view_vertical, splitter, stat_card, step_state, steps, table, tag,
-    timeline, tree_item,
+    Breadcrumbs, Chart, Gauge, Image, Kbd, PAGE_SLOTS, PageDots, PageSlot, Pagination, STARS,
+    SUGGESTIONS, Segmented, Select, Spinner, Splitter, StepState, Steps, Table, Timeline,
+    accordion, alert, area_chart, banner, bar_chart, breadcrumbs, carousel, chip, combobox,
+    dismissible_alert, empty_state, gauge, image, kbd, line_chart, page_dots, page_window,
+    pagination, rating, scale_samples, segmented, select, skeleton, snackbar, spinner, split_view,
+    split_view_vertical, splitter, stat_card, step_state, steps, table, tag, timeline, tree_item,
 };
 pub use container::{
     Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, grid,

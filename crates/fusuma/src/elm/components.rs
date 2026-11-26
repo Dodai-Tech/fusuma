@@ -7,7 +7,8 @@
 use core::fmt::Write;
 
 use fusuma_ui::{
-    BuildError, CrossAlign, Length, NodeId, Round, SmallText, Style, Surface, TextRole, Tone,
+    BuildError, CHART_MAX, ChartStyle, CrossAlign, Length, NodeId, Round, SmallText, Style,
+    Surface, TextRole, Tone,
 };
 
 use super::{
@@ -1313,3 +1314,117 @@ pub fn tree_item<'a, M: Clone + 'a>(
     .gap(2)
     .align(CrossAlign::Center)
 }
+
+// ── Charts ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// A line, area or bar chart of up to [`CHART_MAX`] values, scaled to its height.
+#[derive(Clone, Copy, Debug)]
+pub struct Chart {
+    data: [u8; CHART_MAX],
+    len: usize,
+    style: ChartStyle,
+    size: Option<(u32, u32)>,
+}
+
+/// `values` scaled to 0 to 255 between `lo` and `hi` (a value outside is held to the ends; `hi <= lo` is all zero), the first
+/// [`CHART_MAX`] of them.
+#[must_use]
+pub fn scale_samples(values: &[i32], lo: i32, hi: i32) -> ([u8; CHART_MAX], usize) {
+    let mut data = [0u8; CHART_MAX];
+    let len = values.len().min(CHART_MAX);
+    let span = i64::from(hi) - i64::from(lo);
+    for (slot, v) in data.iter_mut().zip(values) {
+        *slot = if span <= 0 {
+            0
+        } else {
+            let along = (i64::from(*v) - i64::from(lo)).clamp(0, span);
+            ((along * 255 + span / 2) / span) as u8
+        };
+    }
+    (data, len)
+}
+
+fn chart_of(style: ChartStyle, values: &[i32]) -> Chart {
+    let lo = values.iter().copied().min().unwrap_or(0);
+    let hi = values.iter().copied().max().unwrap_or(0);
+    let (data, len) = scale_samples(values, lo, hi);
+    Chart {
+        data,
+        len,
+        style,
+        size: None,
+    }
+}
+
+/// A line through `values`, scaled between their smallest and largest (change that with [`Chart::range`]).
+#[must_use]
+pub fn line_chart(values: &[i32]) -> Chart {
+    chart_of(ChartStyle::Line, values)
+}
+
+/// The same with the area under the line filled.
+#[must_use]
+pub fn area_chart(values: &[i32]) -> Chart {
+    chart_of(ChartStyle::Area, values)
+}
+
+/// One bar for each value. Bars start at the bottom, so the smallest value is a short bar and not none: give a range from 0
+/// with [`Chart::range`] when the bars should show proportions.
+#[must_use]
+pub fn bar_chart(values: &[i32]) -> Chart {
+    chart_of(ChartStyle::Bars, values)
+}
+
+impl Chart {
+    /// Scales between `lo` and `hi` instead of the data's own smallest and largest, so two charts of the same thing agree and a
+    /// bar chart can start at 0. `values` must be the ones the chart was made from.
+    #[must_use]
+    pub fn range(mut self, values: &[i32], lo: i32, hi: i32) -> Self {
+        let (data, len) = scale_samples(values, lo, hi);
+        self.data = data;
+        self.len = len;
+        self
+    }
+
+    /// `width` x `height` pixels (the theme's size by default).
+    #[must_use]
+    pub const fn size(mut self, width: u32, height: u32) -> Self {
+        self.size = Some((width, height));
+        self
+    }
+
+    fn sync<M: Clone, const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        node: NodeId,
+    ) {
+        cx.tree.set_chart(node, self.style, &self.data[..self.len]);
+        cx.tree.set_style(
+            node,
+            match self.size {
+                Some((w, h)) => Style::new()
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h)),
+                None => Style::new(),
+            },
+        );
+    }
+}
+
+impl<M: Clone> View<M> for Chart {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        let node = cx.tree.chart(parent, self.style, &self.data[..self.len])?;
+        self.sync(cx, node);
+        Ok(node)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        self.sync(cx, node);
+    }
+}
+
+impl ViewMarker for Chart {}

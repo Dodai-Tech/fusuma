@@ -65,8 +65,8 @@ pub use theme::{
 };
 pub use transition::Edge;
 pub use tree::{
-    Action, ActionKind, Axis, BuildError, CrossAlign, Length, NodeId, SmallText, Style, TEXT_CAP,
-    Tree,
+    Action, ActionKind, Axis, BuildError, CHART_MAX, ChartStyle, CrossAlign, Length, NodeId,
+    SmallText, Style, TEXT_CAP, Tree,
 };
 pub use virtual_list::Window;
 pub use wake::Wake;
