@@ -50,6 +50,16 @@ pub trait Bus {
     /// # Errors
     /// The pin error, or a timeout.
     fn wait_busy(&mut self) -> Result<(), Self::Error>;
+
+    /// Waits until the busy pin says the controller is done, for a controller whose busy line is **low** while it works (the
+    /// UC81xx family: the driver asks its status register first, then reads the pin). The default is [`wait_busy`](Self::wait_busy),
+    /// which is right only for a bus wired for the other polarity; a bus for a UC81xx panel overrides it.
+    ///
+    /// # Errors
+    /// The pin error, or a timeout.
+    fn wait_busy_low(&mut self) -> Result<(), Self::Error> {
+        self.wait_busy()
+    }
 }
 
 /// A bus that records what it was sent, for tests of the sequences and of a driver on top.
@@ -72,6 +82,8 @@ pub enum Call {
     Reset,
     /// A wait for the busy pin.
     Busy,
+    /// A wait for the busy pin, which is low while the controller works.
+    BusyLow,
     /// A one byte read.
     Read,
     /// A delay in milliseconds.
@@ -98,6 +110,11 @@ impl Bus for Recorder {
 
     fn wait_busy(&mut self) -> Result<(), Self::Error> {
         self.log.push(Call::Busy);
+        Ok(())
+    }
+
+    fn wait_busy_low(&mut self) -> Result<(), Self::Error> {
+        self.log.push(Call::BusyLow);
         Ok(())
     }
 

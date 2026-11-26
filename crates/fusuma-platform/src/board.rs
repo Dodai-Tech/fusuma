@@ -140,7 +140,7 @@ const fn opt(name: &'static str, default: i64, min: i64, max: i64) -> OptionSpec
 }
 
 /// The controllers Fusuma's ESP drivers know (`fusuma-platform-esp`). A board made of these is one file.
-pub const CONTROLLERS: [Controller; 6] = [
+pub const CONTROLLERS: [Controller; 7] = [
     Controller {
         name: "co5300",
         kind: PartKind::Display,
@@ -189,6 +189,26 @@ pub const CONTROLLERS: [Controller; 6] = [
             pin("en", 1, false),
         ],
         options: &[opt("data_rate_mhz", 10, 1, 40), opt("mirror_x", 0, 0, 1)],
+        chips: &[],
+        sizes: &[],
+        offset: false,
+    },
+    Controller {
+        name: "uc8179",
+        kind: PartKind::Display,
+        bus: "spi",
+        // The same wiring as the SSD1677's; its busy line is low while it works (the driver knows).
+        pins: &[
+            pin("sck", 1, true),
+            pin("mosi", 1, true),
+            pin("miso", 1, false),
+            pin("cs", 1, true),
+            pin("dc", 1, true),
+            pin("rst", 1, true),
+            pin("busy", 1, true),
+            pin("en", 1, false),
+        ],
+        options: &[opt("data_rate_mhz", 4, 1, 20)],
         chips: &[],
         sizes: &[],
         offset: false,

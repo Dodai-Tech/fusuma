@@ -127,11 +127,12 @@ esp_err_t fusuma_epd_reset(void) {
     return ESP_OK;
 }
 
-esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms) {
+esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms, int active_low) {
     TickType_t start = xTaskGetTickCount();
-    // A short wait first: the line takes a moment to rise after a command that starts work.
+    // A short wait first: the line takes a moment to change after a command that starts work.
     vTaskDelay(pdMS_TO_TICKS(2));
-    while (gpio_get_level(s_busy)) {
+    // Busy is high for the SSD16xx and low for the UC81xx.
+    while ((gpio_get_level(s_busy) != 0) != (active_low != 0)) {
         if ((xTaskGetTickCount() - start) * portTICK_PERIOD_MS > timeout_ms) return ESP_ERR_TIMEOUT;
         vTaskDelay(pdMS_TO_TICKS(5));
     }

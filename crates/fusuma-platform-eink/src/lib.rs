@@ -20,6 +20,7 @@ pub mod ssd1677;
 pub mod ssd1680;
 pub mod ssd2677;
 pub mod sticky;
+pub mod uc8179;
 
 /// The brightness of an RGB565 pixel, 0 to 255 (Rec. 601 weights).
 #[must_use]

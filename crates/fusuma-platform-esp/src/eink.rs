@@ -7,8 +7,12 @@ use esp_idf_svc::sys::fusuma_esp as ffi;
 use fusuma::platform::{Machine, Render, Settings};
 use fusuma::render::Point;
 use fusuma::{App, Input, Key, TouchTracker};
+#[cfg_attr(fusuma_display = "uc8179", allow(unused_imports))]
 use fusuma_platform_eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
+#[cfg_attr(fusuma_display = "uc8179", allow(unused_imports))]
 use fusuma_platform_eink::sticky::{Sticky, Variant};
+#[cfg_attr(not(fusuma_display = "uc8179"), allow(unused_imports))]
+use fusuma_platform_eink::uc8179::{Config as Uc8179Config, Uc8179};
 use fusuma_platform_eink::bus::Bus;
 use fusuma_platform_eink::{EinkDriver, Panel, RefreshPolicy};
 use fusuma_platform_embedded::{HeldTouch, orient};
@@ -83,7 +87,60 @@ impl Bus for EspBus {
     fn wait_busy(&mut self) -> Result<(), EspError> {
         // A full refresh takes a few seconds; ten is a dead panel.
         // SAFETY: plain call after init.
-        check(unsafe { ffi::fusuma_epd_wait_busy(10_000) })
+        check(unsafe { ffi::fusuma_epd_wait_busy(10_000, 0) })
+    }
+
+    fn wait_busy_low(&mut self) -> Result<(), EspError> {
+        // The UC81xx's busy line is low while it works.
+        // SAFETY: plain call after init.
+        check(unsafe { ffi::fusuma_epd_wait_busy(20_000, 1) })
+    }
+}
+
+/// The panel this firmware drives, by what the board file names.
+enum Chosen {
+    #[cfg_attr(fusuma_display = "uc8179", allow(dead_code))]
+    Sticky(Sticky<EspBus>),
+    #[cfg_attr(not(fusuma_display = "uc8179"), allow(dead_code))]
+    Uc8179(Uc8179<EspBus>),
+}
+
+impl Panel for Chosen {
+    type Error = EspError;
+
+    fn size(&self) -> (u32, u32) {
+        match self {
+            Self::Sticky(p) => p.size(),
+            Self::Uc8179(p) => p.size(),
+        }
+    }
+
+    fn full(&mut self, frame: &[u8]) -> Result<(), EspError> {
+        match self {
+            Self::Sticky(p) => p.full(frame),
+            Self::Uc8179(p) => p.full(frame),
+        }
+    }
+
+    fn partial(&mut self, region: fusuma::render::Rect, data: &[u8]) -> Result<(), EspError> {
+        match self {
+            Self::Sticky(p) => p.partial(region, data),
+            Self::Uc8179(p) => p.partial(region, data),
+        }
+    }
+
+    fn sleep(&mut self) -> Result<(), EspError> {
+        match self {
+            Self::Sticky(p) => p.sleep(),
+            Self::Uc8179(p) => p.sleep(),
+        }
+    }
+
+    fn screen(&self) -> fusuma::Screen {
+        match self {
+            Self::Sticky(p) => p.screen(),
+            Self::Uc8179(p) => p.screen(),
+        }
     }
 }
 
@@ -159,30 +216,48 @@ pub(crate) fn run_here<A: App>(
 
     let bus = EspBus::open()?;
     let mirror = board::option(OPTIONS, "mirror_x") == 1;
-    let panel = if (WIDTH, HEIGHT) == (800, 480) {
-        Sticky::detect(bus, mirror).map_err(|e| anyhow::anyhow!("probing the panel: {e:?}"))?
-    } else {
-        Sticky::Ssd1677(Ssd1677::new(
-            bus,
-            Ssd1677Config {
-                mirror_x: mirror,
-                ..Ssd1677Config::new(WIDTH, HEIGHT)
+    // Which controller the board file names decides the panel; an 800x480 SSD1677 board may be either of the Sticky's two.
+    #[cfg(fusuma_display = "uc8179")]
+    let (panel, policy) = {
+        let _ = mirror;
+        // Waveshare's 7.5 inch: about four seconds for a full refresh, 0.4 for a partial, a clean-up now and then.
+        (
+            Chosen::Uc8179(Uc8179::new(bus, Uc8179Config { width: WIDTH, height: HEIGHT })),
+            RefreshPolicy {
+                min_interval_ms: 800,
+                settle_ms: 150,
+                full_every: 20,
+                ..RefreshPolicy::DEFAULT
             },
-        ))
+        )
     };
-    let variant = panel.variant();
+    #[cfg(not(fusuma_display = "uc8179"))]
+    let (panel, policy) = {
+        let s = if (WIDTH, HEIGHT) == (800, 480) {
+            Sticky::detect(bus, mirror).map_err(|e| anyhow::anyhow!("probing the panel: {e:?}"))?
+        } else {
+            Sticky::Ssd1677(Ssd1677::new(
+                bus,
+                Ssd1677Config {
+                    mirror_x: mirror,
+                    ..Ssd1677Config::new(WIDTH, HEIGHT)
+                },
+            ))
+        };
+        // The newer panel only does full refreshes, several seconds each: settle longer and never wait for the clean-up.
+        let policy = match s.variant() {
+            Variant::Ssd1677 => RefreshPolicy::DEFAULT,
+            Variant::Ssd2677 => RefreshPolicy {
+                min_interval_ms: 3_000,
+                settle_ms: 400,
+                full_every: 0,
+                ..RefreshPolicy::DEFAULT
+            },
+        };
+        log::info!("panel: {:?}", s.variant());
+        (Chosen::Sticky(s), policy)
+    };
     let glass = panel.screen();
-    log::info!("panel: {variant:?}");
-    // The newer panel only does full refreshes, several seconds each: settle longer and never wait for the clean-up.
-    let policy = match variant {
-        Variant::Ssd1677 => RefreshPolicy::DEFAULT,
-        Variant::Ssd2677 => RefreshPolicy {
-            min_interval_ms: 3_000,
-            settle_ms: 400,
-            full_every: 0,
-            ..RefreshPolicy::DEFAULT
-        },
-    };
 
     let (w, h) = panel.size();
     let settings = match options.settings {

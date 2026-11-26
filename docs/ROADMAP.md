@@ -473,7 +473,14 @@ has shipped with, told apart by register 0x70 in `Sticky::detect`).
   sleep and the OK-key wake, battery gauge and RTC, the partition table. **Before flashing, back the board up:** `just showcase-esp-backup`
   reads the whole flash to `~/.fusuma/backups` with a checksum and `just showcase-esp-restore-flash` writes it back (`install --backup` does it first)
 - [ ] On a Waveshare SSD1680 module (sequences follow Waveshare's V2/V4 drivers): `board.toml` `controller = "ssd1680"`
-- [ ] UC8176 / UC8179 (4.2 and 7.5 inch), four grays (two bit planes), tri-colour, Spectra 6, landscape on a portrait panel
+- [x] **UC8179** (Waveshare's 7.5 inch `epd7in5_V2`, 800x480, black and white): `Uc8179` follows that driver's own sequences (read from its
+  source: init, `init_part`, the old and inverted new data, the partial window, sleep); the busy line is **low** while it works, so
+  `Bus::wait_busy_low` and the C side's `active_low` exist; `controller = "uc8179"` in a board file (a built-in preset for the panel is
+  `epaper-7in5`; no board file for a Waveshare ESP32 driver board yet, its pins are not known). Tested against a recording bus and as the
+  showcase on a 800x480 one-bit canvas; **not run on a panel**
+- [ ] The 4.2 inch UC8176 (it needs a look-up table of waveforms), four grays (a two-bit picture, which the pipeline does not make yet:
+  the UC8179's four-gray mode is `init_4Gray` and two planes, ready to follow it), tri-colour and Spectra 6 panels, landscape on a
+  portrait panel
 - [x] **A one-bit framebuffer** (`MonoFrame` in `fusuma-render-integer`: the integer renderer draws on it, eight pixels a byte, a set
   bit is white, colours thresholded or ordered-dithered as they are drawn, scroll by whole bytes; `EinkDriver::new_mono`; the ESP
   loop uses it): 48 KB for 800x480 where RGB565 is 768 KB, nothing to pack; a partial refresh is checked to be exactly the change

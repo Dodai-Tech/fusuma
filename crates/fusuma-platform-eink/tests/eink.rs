@@ -345,3 +345,51 @@ fn a_partial_refresh_of_the_one_bit_canvas_is_exactly_the_change_in_the_whole_pi
         "partial over the old picture equals the new whole picture"
     );
 }
+
+#[test]
+fn the_showcase_on_a_7_5_inch_uc8179_is_a_full_refresh_then_a_partial_one_with_the_chips_polarities()
+ {
+    use fusuma_platform_eink::uc8179::{Config, Uc8179};
+    let panel = Uc8179::new(Recorder::default(), Config::EPD_7IN5);
+    let mut d = EinkDriver::new_mono(Showcase::new(800, 480), panel, policy()).unwrap();
+    let mut now = 0u64;
+    let run = |d: &mut EinkDriver<Showcase, Uc8179<Recorder>>, now: &mut u64| {
+        for _ in 0..80 {
+            let s = d.step(*now).unwrap();
+            *now += 10;
+            if s.refreshed.is_some() {
+                return s.refreshed;
+            }
+        }
+        None
+    };
+    assert_eq!(run(&mut d, &mut now), Some(Refresh::Full));
+    let log = d.panel_mut().bus_mut().log.clone();
+    let old = data_of(&log, 0x10).remove(0);
+    let new = data_of(&log, 0x13).remove(0);
+    assert_eq!(old.len(), 100 * 480);
+    assert!(
+        old.iter().zip(&new).all(|(a, b)| *a == !*b),
+        "the new data is the old one inverted"
+    );
+    assert!(ink(&old) > 1000, "there is something on the page");
+    // Keys, until a partial refresh comes: the chip is put in its partial mode (a reset) and gets the window.
+    let mut partial = None;
+    for _ in 0..4 {
+        d.input(Input::Key(Key::Next));
+        now += 1000;
+        if let Some(Refresh::Partial(r)) = run(&mut d, &mut now) {
+            partial = Some(r);
+            break;
+        }
+    }
+    let r = partial.expect("a key press ends in a partial refresh");
+    let log = d.panel_mut().bus_mut().log.clone();
+    assert_eq!(r.x % 8, 0);
+    let win = data_of(&log, 0x90).pop().unwrap();
+    assert_eq!(win.len(), 9);
+    assert_eq!(u32::from(win[0]) << 8 | u32::from(win[1]), r.x as u32);
+    assert_eq!(*win.last().unwrap(), 0x01);
+    let part = data_of(&log, 0x13).pop().unwrap();
+    assert_eq!(part.len(), (r.w as usize / 8) * r.h as usize);
+}

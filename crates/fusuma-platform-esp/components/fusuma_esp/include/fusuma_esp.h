@@ -78,8 +78,9 @@ esp_err_t fusuma_epd_command(uint8_t command);
 esp_err_t fusuma_epd_data(const uint8_t *data, size_t len);
 // Pulses reset: low for 10 ms, high, 10 ms more.
 esp_err_t fusuma_epd_reset(void);
-// Waits until the busy line is low (it is high while the panel works); ESP_ERR_TIMEOUT after `timeout_ms`.
-esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms);
+// Waits until the panel is done: the busy line is low when it is idle (`active_low` 0, the SSD16xx family) or high when it is
+// idle (`active_low` 1, the UC81xx family, which is low while it works); ESP_ERR_TIMEOUT after `timeout_ms`.
+esp_err_t fusuma_epd_wait_busy(uint32_t timeout_ms, int active_low);
 
 // ── Plain GPIO, for power pins and keys. ─────────────────────────────────────────────────────────────────────────
 // Makes `pin` an output at `level` (0 or 1).

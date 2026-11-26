@@ -16,6 +16,7 @@ The app draws as always, on the integer renderer or Vello on the CPU. This crate
   - `ssd1680::Ssd1680`: Waveshare's 1.54, 2.13 and 2.9 inch modules,
   - `ssd1677::Ssd1677`: 800x480 panels, with the mirrored wiring of the reTerminal Sticky,
   - `ssd2677::Ssd2677`: the newer Sticky panel, full refresh only, waveform from the temperature,
+  - `uc8179::Uc8179`: Waveshare's 7.5 inch (800x480), partial refresh, a busy line that is low while it works,
   - `sticky::Sticky::detect`: asks the chip which of the two is in a Sticky (register 0x70) and gives that one.
 - **`bus::Bus`**: what a controller needs from the chip (command, data, reset, busy, an optional read-back and delay), so a
   runtime (`fusuma-platform-esp` over SPI) implements four functions. `bus::Recorder` is the test bus.
