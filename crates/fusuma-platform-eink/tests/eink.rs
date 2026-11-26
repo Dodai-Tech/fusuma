@@ -90,23 +90,38 @@ fn run(backend: Backend) {
     assert_eq!(s.refreshed, None);
     assert_eq!(d.panel_mut().bus_mut().log.len(), n);
 
-    // Vello on the CPU keeps asking for frames after a focus change on this page and draws none (it does so on any
-    // screen, e-paper or not; see the roadmap), so the key press is checked on the integer renderer only.
-    if backend != Backend::Integer {
-        return;
+    // A key press moves the focus: one small partial refresh, after the screen has settled and not before. The renderers
+    // measure text a little differently, so the first focus can land on a widget past the 128 px edge: nothing to show,
+    // and the driver must go quiet (once a bug: a frame asked for for ever); the next key then shows.
+    let mut now = 2000u64;
+    let mut shown = None;
+    let mut asked_at = 0u64;
+    for key in 0..3 {
+        d.input(Input::Key(Key::Next));
+        asked_at = now;
+        for _ in 0..60 {
+            now += 10;
+            let s = d.step(now).unwrap();
+            if s.refreshed.is_some() {
+                shown = Some(s);
+                break;
+            }
+        }
+        if shown.is_some() {
+            break;
+        }
+        assert_eq!(
+            d.step(now + 10).unwrap().wake,
+            fusuma::Wake::Never,
+            "key {key}: quiet"
+        );
     }
-    // A key press moves the focus: that is one small partial refresh, after the screen has settled.
-    d.input(Input::Key(Key::Next));
-    // A few frames for the app to settle, 10 ms apart, then it waits for the screen to be quiet.
-    let (mut now, mut s) = (2000u64, d.step(2000).unwrap());
-    while s.wake == fusuma::Wake::Now && now < 2090 {
-        now += 10;
-        s = d.step(now).unwrap();
-        assert_eq!(s.refreshed, None, "not before the screen was quiet");
-    }
-    assert_eq!(s.refreshed, None, "waits for the settle time: {s:?}");
-    assert!(matches!(s.wake, fusuma::Wake::At(ms) if ms <= 100), "{s:?}");
-    let s = d.step(now + 100).unwrap();
+    let s = shown.expect("a key press ends in a refresh");
+    assert!(
+        now - asked_at >= 100,
+        "not before the settle time: {} ms",
+        now - asked_at
+    );
     let Some(Refresh::Partial(r)) = s.refreshed else {
         panic!("a partial refresh: {s:?}");
     };

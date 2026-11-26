@@ -187,6 +187,9 @@ impl<const N: usize> Tree<N> {
             .map(|d| d.intersect(&screen))
             .filter(|d| d.w > 0 && d.h > 0)
         else {
+            // A change nobody can see (a focus ring on a tile below the edge, a node with no area) asked for a paint and
+            // damaged nothing: the request is answered, or the app asks for a frame for ever.
+            self.clear_flag(Flags::PAINT);
             return Ok(None);
         };
         // The parts to draw: the whole changed area, unless the pixels of a scroll could be moved.

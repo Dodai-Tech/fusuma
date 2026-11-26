@@ -266,6 +266,33 @@ mod tests {
     }
 
     #[test]
+    fn a_paint_nobody_can_see_is_answered_and_asks_for_no_more_frames() {
+        // A button below the bottom edge: a change to it (a focus ring) asks for a paint but damages nothing on the screen.
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new().gap(4)).unwrap();
+        let top = t.button(Some(root), "top", ButtonVariant::Primary).unwrap();
+        let below = t
+            .button(Some(root), "below", ButtonVariant::Primary)
+            .unwrap();
+        let small = Rect::new(0, 0, 200, 40);
+        t.update(&screen(), &THEME, small);
+        t.paint_frame(&mut screen(), &THEME, small).unwrap();
+        assert!(!t.needs_frame());
+        let seen = t.rect(top).unwrap();
+        let hidden = t.rect(below).unwrap();
+        assert!(hidden.y >= 40 && seen.y < 40, "{seen:?} {hidden:?}");
+        t.set_variant(below, ButtonVariant::Secondary);
+        assert!(t.needs_frame(), "the change asked for a paint");
+        t.update(&screen(), &THEME, small);
+        let shown = t.paint_frame(&mut screen(), &THEME, small).unwrap();
+        assert_eq!(shown, None, "nothing on the screen changed");
+        assert!(
+            !t.needs_frame(),
+            "and the request is answered: no frame for ever"
+        );
+    }
+
+    #[test]
     fn no_motion_budget_puts_it_there_at_once_and_odd_calls_are_harmless() {
         let (mut t, b) = page();
         let home = x_of(&mut t, b);

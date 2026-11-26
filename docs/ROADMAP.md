@@ -420,8 +420,8 @@ has shipped with, told apart by register 0x70 in `Sticky::detect`).
 - [ ] On a Waveshare SSD1680 module (sequences follow Waveshare's V2/V4 drivers): `board.toml` `controller = "ssd1680"`
 - [ ] UC8176 / UC8179 (4.2 and 7.5 inch), four grays (two bit planes), tri-colour, Spectra 6, landscape on a portrait panel
 - [ ] A one-bit framebuffer renderer (an 800x480 RGB565 frame is 768 KB, PSRAM only; one bit is 48 KB)
-- [ ] **Bug (not e-paper):** after `Key::Next` on the Overview page the showcase on Vello CPU asks for a frame forever and draws
-  none (integer is fine); the e-paper key test runs on the integer backend only until it is fixed
+- [x] **Fixed (was not e-paper):** a paint nobody can see (a focus ring on a widget past the edge) left its request set, so the
+  app asked for a frame for ever and drew none; `paint_frame` now answers it (`a_paint_nobody_can_see_is_answered...`, red without the fix)
 
 ## Text UI
 
