@@ -22,7 +22,7 @@ pub use components::{
 };
 pub use container::{
     Animated, Classed, Column, Container, Named, Row, Show, animate, card, class, column, named,
-    row, show,
+    row, show, wrap,
 };
 pub use host::Host;
 pub use keyed::{Custom, Each, Imperative, Memo, each, imperative, memo};

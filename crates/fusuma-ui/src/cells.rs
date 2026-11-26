@@ -557,7 +557,7 @@ impl<const N: usize> Tree<N> {
         let disabled = state == ButtonState::Disabled;
         let ink = if disabled { c.text_disabled } else { c.text };
         match n.kind {
-            Kind::Stack(_) => {
+            Kind::Stack(_) | Kind::Flow { .. } => {
                 if let Some(bg) = look.theme.surface_in(n.class, n.style.background) {
                     pen.fill(rect, ' ', look.style(c.text, Some(bg), Attrs::NONE));
                 }

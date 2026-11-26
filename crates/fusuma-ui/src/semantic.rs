@@ -146,7 +146,7 @@ impl<const N: usize> Tree<N> {
             up = self.nodes[p].parent.map(usize::from);
         }
         let (role, name, hint, icon, checked, selected, value) = match &n.kind {
-            Kind::Stack(_) => (Role::Group, "", "", None, None, None, None),
+            Kind::Stack(_) | Kind::Flow { .. } => (Role::Group, "", "", None, None, None, None),
             Kind::Spacer => (Role::Spacer, "", "", None, None, None, None),
             Kind::Label { text, role } => {
                 let r = match role {

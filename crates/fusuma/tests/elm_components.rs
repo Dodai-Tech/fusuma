@@ -549,3 +549,56 @@ fn an_accordion_opens_and_closes_what_is_under_it_and_keeps_it() {
     a.frame(&mut r);
     assert!(a.tree.is_hidden(kept));
 }
+
+#[test]
+fn a_wrap_of_chips_breaks_lines_at_the_width_it_is_given_and_follows_a_resize() {
+    #[derive(Clone, Copy)]
+    struct S;
+    let names = ["Wi-Fi", "Bluetooth", "GPS", "NFC", "Hotspot", "Airplane"];
+    let mut tree = Tree::<40>::new();
+    let mut host = Host::<Msg, 16>::new();
+    let root = tree.column(None, Style::new()).unwrap();
+    let _ = S;
+    let v = fusuma::wrap((
+        chip(names[0], true).on_press(Msg::Chip(0)),
+        chip(names[1], false).on_press(Msg::Chip(1)),
+        chip(names[2], false).on_press(Msg::Chip(2)),
+        chip(names[3], false).on_press(Msg::Chip(3)),
+        chip(names[4], false).on_press(Msg::Chip(4)),
+        chip(names[5], false).on_press(Msg::Chip(5)),
+    ))
+    .width(Length::Fill(1))
+    .gap(6);
+    host.sync(&mut tree, Some(root), &v).unwrap();
+    let rows = |wide: u32, tree: &mut Tree<40>| {
+        let r = screen();
+        tree.update(&r, &THEME, Rect::new(0, 0, wide, 400));
+        let mut ys: Vec<i32> = tree
+            .semantics()
+            .filter(|s| names.contains(&s.name))
+            .map(|s| s.rect.y)
+            .collect();
+        ys.dedup();
+        ys.len()
+    };
+    let wide = rows(900, &mut tree);
+    let mid = rows(360, &mut tree);
+    let narrow = rows(120, &mut tree);
+    assert_eq!(wide, 1, "all six in a line on a wide screen");
+    assert!(
+        mid >= 2 && mid < narrow,
+        "wider screen, fewer lines: {wide} {mid} {narrow}"
+    );
+    assert_eq!(
+        rows(900, &mut tree),
+        1,
+        "and back to one line when it widens"
+    );
+    // Every chip stays inside the width it was given.
+    rows(120, &mut tree);
+    assert!(
+        tree.semantics()
+            .filter(|s| names.contains(&s.name))
+            .all(|s| s.rect.right() <= 120 || s.rect.w > 120)
+    );
+}

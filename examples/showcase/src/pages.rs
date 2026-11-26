@@ -6,7 +6,7 @@ use fusuma::{
     Children, alert, avatar, badge, banner, breadcrumbs, button, card, checkbox, chip, column,
     divider, each, gauge, gestures, icon, item, menu, named, pagination, paragraph, progress,
     radio, row, scroll, section, segmented, slider, snackbar, stat_card, stepper, steps, switch,
-    tab, tab_bar, tag, text, text_field, text_fmt, toast,
+    tab, tab_bar, tag, text, text_field, text_fmt, toast, wrap,
 };
 use fusuma::{CrossAlign, Id, Length, Swipe, SwipeDir};
 
@@ -266,16 +266,12 @@ fn seats_text(n: u32) -> fusuma::SmallText {
     t
 }
 
-/// `children` in a row, or one under the other on a tiny panel.
+/// `children` side by side, wrapping onto the next line where the screen is too narrow (a tiny panel stacks them).
 fn side_by_side<'a, C: Children<PageMsg> + 'a>(
     look: Look,
     children: C,
 ) -> impl fusuma::View<PageMsg> + 'a {
-    if look.micro {
-        column(children).gap(look.sm)
-    } else {
-        row(children).gap(look.md)
-    }
+    wrap(children).width(Length::Fill(1)).gap(look.sm)
 }
 
 /// The Components page: messages, a segmented control, chips, breadcrumbs, pagination and steps. A tiny panel gets the

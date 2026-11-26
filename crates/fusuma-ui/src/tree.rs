@@ -216,6 +216,11 @@ pub enum BuildError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Stack(Axis),
+    /// A row that wraps: children go left to right and a child that does not fit starts the next line. `wrap_w` is the width
+    /// it was last laid out at (0 until the first pass), which a line's breaks depend on.
+    Flow {
+        wrap_w: u32,
+    },
     Label {
         text: SmallText,
         role: TextRole,
@@ -837,7 +842,7 @@ impl<const N: usize> Tree<N> {
                 let i = self.slot(p).ok_or(BuildError::NoSuchParent)?;
                 if !matches!(
                     self.nodes[i].kind,
-                    Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. }
+                    Kind::Stack(_) | Kind::Flow { .. } | Kind::Scroll { .. } | Kind::Dialog { .. }
                 ) {
                     return Err(BuildError::NotContainer);
                 }
@@ -888,6 +893,16 @@ impl<const N: usize> Tree<N> {
     /// [`BuildError`] when the node cannot be added there.
     pub fn row(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
         self.add(parent, Kind::Stack(Axis::Row), style)
+    }
+
+    /// Adds a row that wraps onto more lines when its children do not fit its width: `gap` is between children and between
+    /// lines. Give it `Length::Fill(1)` (or a fixed width) so there is a width to wrap at; else it wraps at what is left of the
+    /// parent's.
+    ///
+    /// # Errors
+    /// [`BuildError`] when the node cannot be added there.
+    pub fn flow(&mut self, parent: Option<NodeId>, style: Style) -> Result<NodeId, BuildError> {
+        self.add(parent, Kind::Flow { wrap_w: 0 }, style)
     }
 
     /// Adds an icon: the character `icon` of the icon font (look it up by name with `fusuma::fonts::FontSet::icon`),

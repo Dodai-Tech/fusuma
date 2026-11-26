@@ -248,7 +248,7 @@ impl<const N: usize> Tree<N> {
             return Ok(());
         }
         match n.kind {
-            Kind::Stack(_) | Kind::Scroll { .. } => {
+            Kind::Stack(_) | Kind::Flow { .. } | Kind::Scroll { .. } => {
                 if let Some(color) = theme.surface_in(n.class, n.style.background) {
                     r.fill_rect(rect, theme.radius(n.style.round), color)?;
                 }

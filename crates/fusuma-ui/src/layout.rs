@@ -40,6 +40,19 @@ fn size_of(axis: Axis, main: u32, cross: u32) -> Size {
     }
 }
 
+/// Where a walk over the lines of a flow is.
+#[derive(Clone, Copy, Debug, Default)]
+struct FlowCursor {
+    started: bool,
+    left: u32,
+    next: Option<u16>,
+    after: Option<u16>,
+    x: u32,
+    y: u32,
+    line_h: u32,
+    widest: u32,
+}
+
 fn weight(w: u16) -> u32 {
     u32::from(w.max(1))
 }
@@ -115,6 +128,15 @@ impl<const N: usize> Tree<N> {
             // Measure: every node after its children, the ones whose subtree changed (a node that did not keeps its
             // size). A new size of the screen, a theme or a font changes them all.
             let all = core::mem::take(&mut self.measure_all) || moved;
+            if all {
+                // A new screen: a flow wraps at what the screen gives it again, not at the width it had (which could only ever
+                // make it narrower).
+                for n in &mut self.nodes {
+                    if let Kind::Flow { wrap_w } = &mut n.kind {
+                        *wrap_w = 0;
+                    }
+                }
+            }
             let mut cur = Some(self.leftmost_leaf(root));
             while let Some(i) = cur {
                 if all || self.nodes[i].sub.has(Flags::LAYOUT) {
@@ -175,11 +197,11 @@ impl<const N: usize> Tree<N> {
         }
     }
 
-    /// Remembers for every paragraph the width it was placed at; true when one changed.
+    /// Remembers for every paragraph and flow the width it was placed at; true when one changed.
     fn settle_paragraphs(&mut self) -> bool {
         let mut changed = false;
         for n in &mut self.nodes {
-            if let Kind::Paragraph { wrap_w, .. } = &mut n.kind
+            if let Kind::Paragraph { wrap_w, .. } | Kind::Flow { wrap_w } = &mut n.kind
                 && n.alive
             {
                 let width = n.rect.w.saturating_sub(n.style.padding.saturating_mul(2));
@@ -270,6 +292,15 @@ impl<const N: usize> Tree<N> {
                 };
                 Self::measure_paragraph(renderer, theme, text.as_str(), role, wrap)
             }
+            Kind::Flow { wrap_w } => {
+                // Wrapped to its own width if that is fixed, else the one it was last placed at, else the screen's.
+                let avail = match n.style.width {
+                    Length::Fixed(w) => w.saturating_sub(pad),
+                    _ if wrap_w > 0 => wrap_w,
+                    _ => self.bounds.map_or(u32::MAX, |b| b.w).saturating_sub(pad),
+                };
+                self.flow_size(i, avail)
+            }
             Kind::Spacer => Size::new(0, 0),
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
@@ -315,8 +346,130 @@ impl<const N: usize> Tree<N> {
         Size::new(w, h)
     }
 
+    /// The next non-skipped child at or after `c`.
+    fn live(&self, mut c: Option<u16>) -> Option<u16> {
+        while let Some(ci) = c {
+            if !self.nodes[usize::from(ci)].skipped() {
+                break;
+            }
+            c = self.nodes[usize::from(ci)].next;
+        }
+        c
+    }
+
+    /// The next child of flow `i` and where it goes, breaking lines at `avail` (a child wider than that has a line of its
+    /// own): `(child, x, y, line height)`. Start with [`FlowCursor::new`]; `None` at the end. Nothing is allocated, so a
+    /// layout walks the children once.
+    fn flow_next(
+        &self,
+        i: usize,
+        avail: u32,
+        cur: &mut FlowCursor,
+    ) -> Option<(usize, u32, u32, u32)> {
+        let gap = self.nodes[i].style.gap;
+        if cur.left == 0 {
+            // Start a line: how many children fit it, and how tall it is.
+            let at = if cur.started {
+                cur.after
+            } else {
+                self.live(self.nodes[i].first)
+            };
+            let first = at?;
+            let (mut width, mut height, mut count) = (0u32, 0u32, 0u32);
+            let mut d = Some(first);
+            while let Some(di) = d {
+                let s = self.nodes[usize::from(di)].size;
+                let add = if count > 0 {
+                    gap.saturating_add(s.w)
+                } else {
+                    s.w
+                };
+                if count > 0 && width.saturating_add(add) > avail {
+                    break;
+                }
+                width = width.saturating_add(add);
+                height = height.max(s.h);
+                count += 1;
+                d = self.live(self.nodes[usize::from(di)].next);
+            }
+            if cur.started {
+                cur.y = cur.y.saturating_add(cur.line_h).saturating_add(gap);
+            }
+            cur.started = true;
+            cur.left = count;
+            cur.line_h = height;
+            cur.x = 0;
+            cur.next = Some(first);
+            cur.after = d;
+            cur.widest = cur.widest.max(width);
+        }
+        let ci = cur.next?;
+        let out = (usize::from(ci), cur.x, cur.y, cur.line_h);
+        cur.x = cur
+            .x
+            .saturating_add(self.nodes[usize::from(ci)].size.w)
+            .saturating_add(gap);
+        cur.next = self.live(self.nodes[usize::from(ci)].next);
+        cur.left -= 1;
+        Some(out)
+    }
+
+    /// The size of flow `i` wrapped at `avail`: the widest line and the height of all lines.
+    fn flow_size(&self, i: usize, avail: u32) -> Size {
+        let mut cur = FlowCursor::default();
+        while self.flow_next(i, avail, &mut cur).is_some() {}
+        let h = if cur.started {
+            cur.y.saturating_add(cur.line_h)
+        } else {
+            0
+        };
+        Size::new(cur.widest, h)
+    }
+
+    /// Puts the children of a flow inside it, line by line.
+    fn place_flow(&mut self, i: usize) {
+        let st = self.nodes[i].style;
+        let inner = self.nodes[i].rect.inset(st.padding);
+        let mut c = self.nodes[i].first;
+        while let Some(ci) = c {
+            let ci = usize::from(ci);
+            if self.nodes[ci].hidden {
+                // No room, and no place: it keeps the state of what it holds for when it comes back.
+                let at = self.nodes[i].rect;
+                self.set_rect(ci, Rect::new(at.x, at.y, 0, 0));
+            }
+            c = self.nodes[ci].next;
+        }
+        let mut cur = FlowCursor::default();
+        while let Some((ci, x, y, line_h)) = self.flow_next(i, inner.w, &mut cur) {
+            let s = self.nodes[ci].size;
+            let h = match (self.nodes[ci].style.height, st.align) {
+                (Length::Fixed(f), _) => f,
+                (_, CrossAlign::Stretch) => line_h,
+                _ => s.h,
+            };
+            let dy = match st.align {
+                CrossAlign::Start | CrossAlign::Stretch => 0,
+                CrossAlign::Center => line_h.saturating_sub(h) / 2,
+                CrossAlign::End => line_h.saturating_sub(h),
+            };
+            let (sx, sy) = self.nodes[ci].shift;
+            let rect = Rect::new(
+                offset(inner.x, i64::from(x)),
+                offset(inner.y, i64::from(y) + i64::from(dy)),
+                s.w,
+                h,
+            );
+            self.set_rect(ci, rect.translate(i32::from(sx), i32::from(sy)));
+        }
+    }
+
     /// Puts the children of a container inside it.
     fn place_children(&mut self, i: usize) {
+        if matches!(self.nodes[i].kind, Kind::Flow { .. }) {
+            self.place_flow(i);
+            return;
+        }
         let (axis, scrolls) = match self.nodes[i].kind {
             Kind::Stack(axis) => (axis, false),
             Kind::Scroll { .. } => (Axis::Column, true),
@@ -444,7 +597,7 @@ impl<const N: usize> Tree<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::{ButtonVariant, TextRole};
+    use crate::theme::{ButtonVariant, Surface, TextRole};
     use fusuma_render::Renderer;
     use fusuma_render_vello_cpu::VelloCpu;
 
@@ -464,6 +617,195 @@ mod tests {
         Style::new()
             .width(Length::Fixed(w))
             .height(Length::Fixed(h))
+    }
+
+    /// A flow of `n` boxes of `w` x `h` (heights `h + i % 3` when `ragged`) under a root of `room` wide.
+    fn flow_of(
+        n: usize,
+        w: u32,
+        h: u32,
+        gap: u32,
+        room: u32,
+        align: CrossAlign,
+        ragged: bool,
+    ) -> (
+        Tree<64>,
+        std::vec::Vec<crate::tree::NodeId>,
+        crate::tree::NodeId,
+    ) {
+        let mut t = Tree::<64>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let f = t
+            .flow(
+                Some(root),
+                Style::new().width(Length::Fill(1)).gap(gap).align(align),
+            )
+            .unwrap();
+        let kids = (0..n)
+            .map(|i| {
+                let extra = if ragged { (i % 3) as u32 } else { 0 };
+                t.spacer(Some(f), fixed(w, h + extra)).unwrap()
+            })
+            .collect();
+        t.update(&screen(), &THEME, Rect::new(0, 0, room, 400));
+        (t, kids, f)
+    }
+
+    #[test]
+    fn a_flow_wraps_at_its_width_with_gaps_between_children_and_lines() {
+        // Three 30 wide boxes with a gap of 5 fit 100 (30+5+30+5+30 = 100): a line of three, then the rest.
+        let (t, k, f) = flow_of(7, 30, 10, 5, 100, CrossAlign::Start, false);
+        let at = |i: usize| rect(&t, k[i]);
+        assert_eq!((at(0).x, at(0).y), (0, 0));
+        assert_eq!((at(1).x, at(1).y), (35, 0));
+        assert_eq!((at(2).x, at(2).y), (70, 0), "the third fits exactly");
+        assert_eq!(
+            (at(3).x, at(3).y),
+            (0, 15),
+            "the fourth starts the next line, a gap below"
+        );
+        assert_eq!((at(5).x, at(5).y), (70, 15));
+        assert_eq!((at(6).x, at(6).y), (0, 30));
+        assert_eq!(rect(&t, f).h, 10 * 3 + 5 * 2, "three lines and two gaps");
+        // One pixel narrower: only two fit a line.
+        let (t, k, _) = flow_of(7, 30, 10, 5, 99, CrossAlign::Start, false);
+        assert_eq!((rect(&t, k[2]).x, rect(&t, k[2]).y), (0, 15));
+        // Wide enough for everything: one line.
+        let (t, k, f) = flow_of(7, 30, 10, 5, 1000, CrossAlign::Start, false);
+        assert!(k.iter().all(|c| rect(&t, *c).y == 0));
+        assert_eq!(rect(&t, f).h, 10);
+    }
+
+    #[test]
+    fn a_flow_aligns_children_of_different_heights_on_each_line() {
+        // Heights 10, 11, 12, 10, 11, 12: lines of three, 12 tall.
+        for (align, dy1) in [
+            (CrossAlign::Start, 0),
+            (CrossAlign::Center, 0),
+            (CrossAlign::End, 1),
+            (CrossAlign::Stretch, 0),
+        ] {
+            let (t, k, _) = flow_of(6, 30, 10, 0, 90, align, true);
+            let r1 = rect(&t, k[1]);
+            assert_eq!(r1.y, dy1, "{align:?}: the 11 high one in a 12 high line");
+            let r0 = rect(&t, k[0]);
+            let want0 = match align {
+                CrossAlign::Start => 0,
+                CrossAlign::Center => 1,
+                CrossAlign::End => 2,
+                CrossAlign::Stretch => 0,
+            };
+            assert_eq!(r0.y, want0, "{align:?}");
+            if align == CrossAlign::Stretch {
+                assert_eq!((r0.h, r1.h), (10, 11), "a fixed height stays as it is");
+            }
+            assert_eq!(
+                rect(&t, k[3]).y >= 12,
+                true,
+                "the second line is below the first"
+            );
+        }
+    }
+
+    #[test]
+    fn a_flow_stretches_children_without_a_height_to_the_line() {
+        let mut t = Tree::<16>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let f = t
+            .flow(
+                Some(root),
+                Style::new()
+                    .width(Length::Fill(1))
+                    .align(CrossAlign::Stretch),
+            )
+            .unwrap();
+        let tall = t
+            .spacer(
+                Some(f),
+                Style::new()
+                    .width(Length::Fixed(20))
+                    .height(Length::Fixed(60)),
+            )
+            .unwrap();
+        let b = t.button(Some(f), "Ok", ButtonVariant::Primary).unwrap();
+        t.update(&screen(), &THEME, Rect::new(0, 0, 200, 100));
+        assert_eq!(rect(&t, b).h, 60, "a button takes the height of the line");
+        assert_eq!(rect(&t, tall).h, 60);
+    }
+
+    #[test]
+    fn a_flow_with_a_child_wider_than_it_gives_that_child_a_line_and_never_loops() {
+        let mut t = Tree::<16>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let f = t
+            .flow(Some(root), Style::new().width(Length::Fill(1)).gap(2))
+            .unwrap();
+        let a = t.spacer(Some(f), fixed(20, 5)).unwrap();
+        let big = t.spacer(Some(f), fixed(500, 7)).unwrap();
+        let b = t.spacer(Some(f), fixed(20, 5)).unwrap();
+        t.update(&screen(), &THEME, Rect::new(0, 0, 100, 100));
+        assert_eq!(rect(&t, a).y, 0);
+        assert_eq!(rect(&t, big).y, 7, "on its own line");
+        assert_eq!(rect(&t, big).w, 500);
+        assert_eq!(
+            rect(&t, b).y,
+            7 + 7 + 2 - 5 + 5 - 5 + 5,
+            "and the next after it"
+        );
+        // An empty flow and one of only hidden children take no height.
+        let mut e = Tree::<4>::new();
+        let r = e.column(None, Style::new()).unwrap();
+        let f = e.flow(Some(r), Style::new()).unwrap();
+        let h = e.spacer(Some(f), fixed(10, 10)).unwrap();
+        e.set_hidden(h, true);
+        e.update(&screen(), &THEME, Rect::new(0, 0, 50, 50));
+        assert_eq!((rect(&e, f).w, rect(&e, f).h), (0, 0));
+    }
+
+    #[test]
+    fn a_flow_of_content_width_is_as_wide_as_its_widest_line_and_follows_the_room_it_has() {
+        // No width given: it wraps at the room the screen has, and is as wide as its widest line.
+        let mut t = Tree::<16>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let f = t.flow(Some(root), Style::new().gap(4)).unwrap();
+        for _ in 0..5 {
+            t.spacer(Some(f), fixed(40, 10)).unwrap();
+        }
+        t.update(&screen(), &THEME, Rect::new(0, 0, 130, 100));
+        // 40+4+40+4+40 = 128 fits 130: lines of three and two.
+        assert_eq!((rect(&t, f).w, rect(&t, f).h), (128, 24));
+        // The screen narrows: it wraps again at the new width.
+        t.update(&screen(), &THEME, Rect::new(0, 0, 100, 100));
+        assert_eq!((rect(&t, f).w, rect(&t, f).h), (84, 10 * 3 + 4 * 2));
+        t.update(&screen(), &THEME, Rect::new(0, 0, 130, 100));
+        assert_eq!(
+            (rect(&t, f).w, rect(&t, f).h),
+            (128, 24),
+            "and widens again"
+        );
+    }
+
+    #[test]
+    fn a_flow_keeps_its_place_in_a_scroll_and_with_padding_and_a_background() {
+        let mut t = Tree::<16>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let f = t
+            .flow(
+                Some(root),
+                Style::new()
+                    .width(Length::Fixed(100))
+                    .padding(10)
+                    .gap(5)
+                    .background(Surface::Raised),
+            )
+            .unwrap();
+        let a = t.spacer(Some(f), fixed(40, 10)).unwrap();
+        let b = t.spacer(Some(f), fixed(40, 10)).unwrap();
+        t.update(&screen(), &THEME, Rect::new(0, 0, 200, 200));
+        // Inside 100 - 20 = 80: 40 + 5 + 40 = 85 does not fit, so two lines.
+        assert_eq!((rect(&t, a).x, rect(&t, a).y), (10, 10));
+        assert_eq!((rect(&t, b).x, rect(&t, b).y), (10, 25));
+        assert_eq!((rect(&t, f).w, rect(&t, f).h), (100, 10 + 10 + 5 + 10 + 10));
     }
 
     #[test]

@@ -9,6 +9,7 @@ use super::{Children, Cx, View, ViewMarker};
 enum Shape {
     Column,
     Row,
+    Wrap,
     Card,
 }
 
@@ -40,6 +41,17 @@ pub const fn column<C>(children: C) -> Column<C> {
 pub const fn row<C>(children: C) -> Row<C> {
     Container {
         shape: Shape::Row,
+        style: Style::DEFAULT,
+        children,
+    }
+}
+
+/// Children side by side that wrap onto the next line when they do not fit the width (give it `.width(Length::Fill(1))` or
+/// a fixed width; the gap is between children and between lines): a row of chips, tags or buttons on any size of screen.
+#[must_use]
+pub const fn wrap<C>(children: C) -> Row<C> {
+    Container {
+        shape: Shape::Wrap,
         style: Style::DEFAULT,
         children,
     }
@@ -125,6 +137,7 @@ impl<M: Clone, C: Children<M>> View<M> for Container<C> {
     ) -> Result<NodeId, BuildError> {
         let node = match self.shape {
             Shape::Row => cx.tree.row(parent, self.style())?,
+            Shape::Wrap => cx.tree.flow(parent, self.style())?,
             Shape::Column | Shape::Card => cx.tree.column(parent, self.style())?,
         };
         self.children.build_all(cx, node)?;
