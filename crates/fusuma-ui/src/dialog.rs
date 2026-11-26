@@ -546,6 +546,19 @@ mod tests {
     }
 
     #[test]
+    fn a_bottom_sheet_in_bounds_at_the_edge_of_the_range_does_not_overflow() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let sheet = t
+            .bottom_sheet(Some(root), Style::new().height(Length::Fixed(500)))
+            .unwrap();
+        t.open_dialog(sheet);
+        t.advance(&THEME, 1000);
+        t.update(&screen(), &THEME, Rect::new(0, i32::MIN, 100, u32::MAX));
+        t.update(&screen(), &THEME, Rect::new(0, i32::MAX - 10, 100, 5));
+    }
+
+    #[test]
     fn a_closed_dialog_takes_no_room_and_its_widgets_cannot_be_reached() {
         let u = ui();
         assert!(!u.t.is_dialog_open(u.dialog));

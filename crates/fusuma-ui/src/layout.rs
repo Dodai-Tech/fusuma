@@ -254,7 +254,12 @@ impl<const N: usize> Tree<N> {
                 } else if sheet {
                     let s = self.nodes[i].size;
                     let h = s.h.min(bounds.h / 4 * 3);
-                    Rect::new(bounds.x, bounds.bottom() - h as i32, bounds.w, h)
+                    Rect::new(
+                        bounds.x,
+                        offset(bounds.bottom(), -i64::from(h)),
+                        bounds.w,
+                        h,
+                    )
                 } else {
                     let s = self.nodes[i].size;
                     let w = s.w.min(bounds.w.saturating_sub(margin.saturating_mul(2)));

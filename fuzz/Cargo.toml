@@ -14,6 +14,9 @@ fusuma-anim = { path = "../crates/fusuma-anim" }
 fusuma-ui = { path = "../crates/fusuma-ui" }
 fusuma-render-integer = { path = "../crates/fusuma-render-integer" }
 fusuma-render-vello-cpu = { path = "../crates/fusuma-render-vello-cpu" }
+fusuma-platform-eink = { path = "../crates/fusuma-platform-eink" }
+fusuma = { path = "../crates/fusuma" }
+fusuma-platform-embedded = { path = "../crates/fusuma-platform-embedded" }
 
 # Not part of the main workspace (needs nightly).
 [workspace]
@@ -42,6 +45,20 @@ bench = false
 [[bin]]
 name = "ui"
 path = "fuzz_targets/ui.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "eink"
+path = "fuzz_targets/eink.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dates"
+path = "fuzz_targets/dates.rs"
 test = false
 doc = false
 bench = false

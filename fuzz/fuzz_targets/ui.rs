@@ -3,7 +3,7 @@
 //! wrong parents, removing, changing text and style, disabling, pointer events in any order,
 //! layout in absurd bounds, animation and painting.
 
-use fusuma_ui::{BuildError, ButtonVariant, CrossAlign, Key, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
+use fusuma_ui::{BuildError, ButtonVariant, ChartStyle, CrossAlign, Key, Length, NodeId, Pointer, Style, TextRole, Theme, Tree};
 use fusuma_render::{Point, Rect, Renderer};
 use fusuma_render_integer::{Embedded, Frame};
 use libfuzzer_sys::fuzz_target;
@@ -51,11 +51,11 @@ fuzz_target!(|data: &[u8]| {
     while let (Some(op), Some(a), Some(b)) = (it.next(), it.next(), it.next()) {
         let pick = |ids: &[NodeId], k: u8| ids.get(usize::from(k) % ids.len().max(1)).copied();
         let point = Point::new(i32::from(a) * 3 - 30, i32::from(b) * 3 - 30);
-        match op % 19 {
+        match op % 22 {
             0..=4 => {
                 // The parent is sometimes none, sometimes stale, sometimes a leaf.
                 let parent = if a % 5 == 0 { None } else { pick(&ids, a) };
-                let added: Result<NodeId, BuildError> = match op % 19 {
+                let added: Result<NodeId, BuildError> = match op % 22 {
                     0 => tree.column(parent, style(a, b)),
                     1 => tree.row(parent, style(b, a)),
                     2 => tree.label(parent, &"éa".repeat(usize::from(b % 30)), [TextRole::Title, TextRole::Body, TextRole::Caption][usize::from(a) % 3]),
@@ -185,6 +185,59 @@ fuzz_target!(|data: &[u8]| {
                         }
                     }
                 }
+            }
+            19 => {
+                // The newer nodes: wrapping rows and grids, charts, gauges, spinners, splitters, images, text areas, sheets.
+                static PIXELS: [u8; 16] = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 9, 9, 9, 9];
+                let parent = if a % 5 == 0 { None } else { pick(&ids, a) };
+                let samples: Vec<u8> = (0..usize::from(b % 40)).map(|i| (i as u8).wrapping_mul(a)).collect();
+                let added = match b % 11 {
+                    0 => tree.flow(parent, style(a, b)),
+                    1 => tree.grid(parent, a % 9, style(b, a)),
+                    2 => tree.chart(parent, [ChartStyle::Line, ChartStyle::Area, ChartStyle::Bars][usize::from(a) % 3], &samples),
+                    3 => tree.gauge(parent, u16::from(a) * 9, &"7".repeat(usize::from(b % 6))),
+                    4 => tree.spinner(parent),
+                    5 => tree.splitter(parent, u16::from(a) * 9),
+                    6 => tree.image(parent, u32::from(a % 3) + 1, u32::from(b % 3) + 1, &PIXELS),
+                    7 => tree.text_area(parent, "one\ntwo\nthree", a % 6),
+                    8 => tree.bottom_sheet(parent, style(a, b)),
+                    9 => tree.menu(parent, style(a, b)),
+                    _ => tree.text_input(parent, "x"),
+                };
+                if let Ok(id) = added {
+                    ids.push(id);
+                }
+            }
+            20 => {
+                // Interaction state that is set on whatever is picked: a drag and a drop, direction, charts and gauges changed.
+                if let Some(id) = pick(&ids, a) {
+                    tree.set_draggable(id, b % 2 == 0);
+                    tree.set_drop_target(id, b % 3 == 0);
+                    tree.set_gauge(id, u16::from(b) * 11);
+                    tree.set_chart(id, ChartStyle::Bars, &[b, a, b]);
+                    let _ = (tree.chart_samples(id), tree.gauge_value(id), tree.spinner_phase(id));
+                }
+                tree.set_rtl(a % 2 == 0);
+                let _ = (tree.dragging(), tree.drag_over(), tree.drag_ghost());
+                // A drag in any order: down, far moves, up, leave, escape.
+                for e in [Pointer::Down(point), Pointer::Move(Point::new(point.x + 40, point.y + 30)), Pointer::Move(point), Pointer::Up(point)] {
+                    tree.pointer(e);
+                }
+                if b % 4 == 0 {
+                    tree.key(Key::Cancel);
+                }
+            }
+            21 => {
+                // Text areas: line breaks, moves between lines, on whatever has the focus.
+                if let Some(id) = pick(&ids, b) {
+                    let _ = tree.focus(id);
+                    tree.set_input_cursor(id, usize::from(a));
+                }
+                use fusuma_ui::Edit::{Down, End, Home, Newline, SelectAll, Up};
+                let all = [Newline, Up(false), Down(false), Up(true), Down(true), Home(false), End(true), SelectAll];
+                tree.edit(all[usize::from(a) % all.len()]);
+                tree.key([Key::Activate, Key::Up, Key::Down][usize::from(b) % 3]);
+                tree.type_text(["a\nb", "\n\n", "é"][usize::from(a) % 3]);
             }
             _ => {
                 if let Some(id) = pick(&ids, a) {

@@ -155,6 +155,11 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   (`open_clips`), and a path with points near the ends of `i32` overflowed the integer renderer's crossing maths (`crossing`, in
   `i128` when needed). `MonoFrame` is checked against the colour frame (exact for hard edges, within 8 to 15 % of the inked
   pixels for smooth ones), since the conformance suite compares colours and one bit has two
+- [x] **Fuzzing covers the newer code**: `ui` now builds and drives flows, grids, charts, gauges, spinners, splitters, images, text areas,
+  bottom sheets, drags and right-to-left; new targets `dates` (calendar and time arithmetic, the page window) and `eink` (the
+  planner, byte regions, packing, one-bit drawing with its padding). They found five overflows in the first minutes (a bottom sheet
+  at the edge of the range, a drag grab offset, a bar chart with more samples than pixels, and boxes near the ends of `i32` in the
+  chart, gauge, spinner and splitter), all fixed with a test; each target ran clean for 8 more minutes afterwards
 - [ ] **Known gaps in the layer:** no gradients, shadows, blur, opacity layers or shaders (see *Effects and shaders*); the integer
   renderer has no dashes, no image scaling and no clip other than a rectangle; the GPU backend is not fuzzed (no GPU in CI)
 - [ ] Vello multithreading on the desktop (`vello_cpu`'s `multithreading` feature; unknown whether the partial

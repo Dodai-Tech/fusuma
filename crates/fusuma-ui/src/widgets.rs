@@ -26,6 +26,17 @@ fn pxs(base: i32, d: i64) -> i32 {
     (i64::from(base) + d).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
+/// Whether a box is small enough to draw with plain arithmetic: within a million pixels of the origin on every side. A decorative
+/// widget (a chart, a gauge, a spinner, an image, a splitter) in a larger box is wholly off every real screen, so it is skipped
+/// and its sums never meet the edge of `i32`.
+fn sane(r: Rect) -> bool {
+    const LIMIT: i64 = 1 << 20;
+    i64::from(r.x).abs() < LIMIT
+        && i64::from(r.y).abs() < LIMIT
+        && i64::from(r.w) < LIMIT
+        && i64::from(r.h) < LIMIT
+}
+
 impl<const N: usize> Tree<N> {
     /// What pressing node `i` does, from the pointer or the keyboard: the one place the widgets'
     /// behaviour lives.
@@ -682,6 +693,9 @@ impl<const N: usize> Tree<N> {
             }
             Kind::TextInput { .. } => self.paint_text_input(i, r, theme),
             Kind::Chart { data, len, style } => {
+                if !sane(rect) {
+                    return Ok(());
+                }
                 let c = &theme.colors;
                 let cnt = usize::from(len);
                 // A little room round the plot so a dot or the edge of a bar is not cut off.
@@ -713,12 +727,16 @@ impl<const N: usize> Tree<N> {
                 };
                 match style {
                     crate::tree::ChartStyle::Bars => {
-                        let slot = plot.w / cnt as u32;
+                        // More samples than pixels: a slot is one pixel wide and the extra samples share it.
+                        let slot = (plot.w / cnt as u32).max(1);
                         let bar = slot.saturating_sub(slot / 4).max(1);
                         for (k, v) in data.iter().take(cnt).enumerate() {
                             let h = ((plot.h as i64 * i64::from(*v)) / 255) as u32;
                             if h > 0 {
-                                let x = plot.x + (slot * k as u32 + (slot - bar) / 2) as i32;
+                                let x = plot.x.saturating_add(
+                                    (slot.saturating_mul(k as u32) + slot.saturating_sub(bar) / 2)
+                                        as i32,
+                                );
                                 r.fill_rect(
                                     Rect::new(x, base - h as i32, bar, h),
                                     bar.min(4) / 2,
@@ -757,6 +775,9 @@ impl<const N: usize> Tree<N> {
                 Ok(())
             }
             Kind::Image { rgba, w, h } => {
+                if !sane(rect) {
+                    return Ok(());
+                }
                 let Some(img) = fusuma_render::Image::new(u32::from(w), u32::from(h), rgba) else {
                     return Ok(());
                 };
@@ -767,6 +788,9 @@ impl<const N: usize> Tree<N> {
                 Self::in_clip(r, rect, |r| r.draw_image(&img, at))
             }
             Kind::Splitter { .. } => {
+                if !sane(rect) {
+                    return Ok(());
+                }
                 // A thin bar; a short grip in the middle that lights while it is held or has the focus.
                 let c = &theme.colors;
                 let vertical = self.splitter_is_vertical(i);
@@ -870,6 +894,9 @@ impl<const N: usize> Tree<N> {
                 Ok(())
             }
             Kind::Spinner { phase } => {
+                if !sane(rect) {
+                    return Ok(());
+                }
                 let side = rect.w.min(rect.h);
                 let stroke = (side / 8).clamp(2, theme.track_height.max(2) * 2);
                 let sq = Rect::new(
@@ -884,6 +911,9 @@ impl<const N: usize> Tree<N> {
                 crate::gauge::stroke_arc_from(r, sq, stroke, i32::from(phase), 900, color)
             }
             Kind::Gauge { permille, text } => {
+                if !sane(rect) {
+                    return Ok(());
+                }
                 let side = rect.w.min(rect.h);
                 let stroke = (side / 10).clamp(2, theme.track_height.max(2) * 2);
                 let sq = Rect::new(
@@ -1806,6 +1836,35 @@ mod tests {
             t.update(&r, &THEME, Rect::new(0, 0, 200, 120));
             t.paint(&mut r, &THEME)
                 .unwrap_or_else(|e| panic!("{style:?}: {e:?}"));
+        }
+    }
+
+    #[test]
+    fn the_newer_widgets_survive_absurd_boxes_and_more_samples_than_pixels() {
+        // Found by the fuzzer: boxes near the ends of i32 overflowed the sums of a chart, a gauge, a spinner and a splitter, and a bar
+        // chart with more samples than pixels forced a bar wider than its slot.
+        use fusuma_render_integer::{Embedded, Frame};
+        let mut r = Embedded::new(Frame::new(48, 40, std::vec![0u16; 48 * 40]).unwrap());
+        for bounds in [
+            Rect::new(i32::MIN, i32::MAX, u32::MAX, u32::MAX),
+            Rect::new(i32::MAX - 3, i32::MIN + 3, 5, 5),
+            Rect::new(0, 0, 3, 40),
+            Rect::new(0, 0, 0, 0),
+        ] {
+            let mut t = Tree::<16>::new();
+            let root = t.column(None, Style::new()).unwrap();
+            let samples: std::vec::Vec<u8> = (0..32).map(|i| i * 8).collect();
+            t.chart(Some(root), crate::tree::ChartStyle::Bars, &samples)
+                .unwrap();
+            t.chart(Some(root), crate::tree::ChartStyle::Area, &samples)
+                .unwrap();
+            t.gauge(Some(root), 700, "70").unwrap();
+            t.spinner(Some(root)).unwrap();
+            t.splitter(Some(root), 400).unwrap();
+            static PX: [u8; 4] = [1, 2, 3, 255];
+            t.image(Some(root), 1, 1, &PX).unwrap();
+            t.update(&r, &THEME, bounds);
+            t.paint(&mut r, &THEME).unwrap();
         }
     }
 }

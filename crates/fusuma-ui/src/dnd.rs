@@ -84,7 +84,7 @@ impl<const N: usize> Tree<N> {
         let r = self.nodes[i].rect;
         self.dragging = Some(DragState {
             source: self.id_of(i),
-            grab: Point::new(start.x - r.x, start.y - r.y),
+            grab: Point::new(start.x.saturating_sub(r.x), start.y.saturating_sub(r.y)),
             at,
             over: None,
         });
@@ -525,5 +525,32 @@ mod tests {
             .map(|a| a.kind)
             .collect::<std::vec::Vec<_>>();
         assert!(got.contains(&ActionKind::DragCancelled), "{got:?}");
+    }
+
+    #[test]
+    fn a_drag_picked_up_at_the_edge_of_the_coordinate_range_does_not_overflow() {
+        let mut t = Tree::<8>::new();
+        let root = t.column(None, Style::new()).unwrap();
+        let b = t.button(Some(root), "x", ButtonVariant::Primary).unwrap();
+        t.set_draggable(b, true);
+        t.update(
+            &screen(),
+            &THEME,
+            Rect::new(i32::MAX - 60, i32::MIN + 5, 50, 50),
+        );
+        for p in [
+            Point::new(i32::MIN, i32::MAX),
+            Point::new(i32::MAX, i32::MIN),
+            Point::new(0, 0),
+        ] {
+            t.pointer(Pointer::Move(p));
+            t.pointer(Pointer::Down(p));
+            t.pointer(Pointer::Move(Point::new(
+                p.x.saturating_add(100),
+                p.y.saturating_sub(100),
+            )));
+            t.pointer(Pointer::Up(p));
+            t.pointer(Pointer::Leave);
+        }
     }
 }
