@@ -432,7 +432,10 @@ the same pixels as the hand-built page, a message log that replays to the same s
   and output rotation from this crate
 - [x] **A phone is a phone, not a watch:** `Display` carries the glass size and `Display::screen()` gives the `Screen` (see
   [Screens](#screens-one-description-on-every-platform)); the hosts' `display(...)` fill it
-- [ ] A `mobile` preset on the `fusuma` crate; lifecycle on the web (a page going to the background) through the same `Session`
+- [ ] A `mobile` feature on the `fusuma` crate (`fusuma = { features = ["android"] }` giving `fusuma::mobile`): tried, and `test_project.nu` refuses
+  it, rightly: a published crate may not depend, even optionally, on an unpublished one. It comes with publishing `fusuma-platform-mobile`
+  (the roadmap's condition: a host that runs an app). Until then an app depends on `fusuma-platform-mobile` itself. Lifecycle on the web (a
+  page going to the background) through the same `Session`
 
 ### Screens: one description on every platform
 
