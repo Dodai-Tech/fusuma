@@ -5,9 +5,9 @@
 
 use allocation_counter::measure;
 use fusuma::{
-    Host, PAGE_SLOTS, PageSlot, StepState, Tone, View, alert, banner, breadcrumbs, chip, column,
-    empty_state, page_window, pagination, segmented, skeleton, snackbar, stat_card, step_state,
-    steps, tag, text,
+    Host, PAGE_SLOTS, PageSlot, StepState, Tone, View, accordion, alert, banner, breadcrumbs, chip,
+    column, empty_state, page_window, pagination, segmented, skeleton, snackbar, stat_card,
+    step_state, steps, tag, text,
 };
 use fusuma_render::{Point, Probe, Rect};
 use fusuma_render_integer::{Embedded, Frame};
@@ -25,6 +25,7 @@ enum Msg {
     Page(u32),
     Undo,
     Chip(u8),
+    Fold,
 }
 
 #[derive(Clone, Copy)]
@@ -34,6 +35,7 @@ struct State {
     pages: u32,
     step: usize,
     chips: [bool; 3],
+    open: bool,
 }
 
 const SEGS: [&str; 3] = ["Day", "Week", "Month"];
@@ -60,6 +62,12 @@ fn view(s: &State) -> impl View<Msg> + use<'_> {
             chip("Wi-Fi", s.chips[0]).on_press(Msg::Chip(0)),
             chip("Bluetooth", s.chips[1]).on_press(Msg::Chip(1)),
             snackbar("Message deleted", "Undo", Msg::Undo),
+            accordion(
+                "More",
+                s.open,
+                Msg::Fold,
+                (text("Battery"), text("Storage")),
+            ),
             empty_state("Nothing here", "Add something to begin"),
             skeleton(Length::Fill(1), 12),
         ))
@@ -94,6 +102,7 @@ impl App {
                 pages: 20,
                 step: 1,
                 chips: [false; 3],
+                open: false,
             },
             last: None,
         };
@@ -119,6 +128,7 @@ impl App {
                     Msg::Seg(i) => self.state.seg = i,
                     Msg::Page(p) => self.state.page = p,
                     Msg::Chip(i) => self.state.chips[usize::from(i)] ^= true,
+                    Msg::Fold => self.state.open ^= true,
                     Msg::Crumb(_) | Msg::Undo => {}
                 }
                 got = Some(m);
@@ -510,4 +520,32 @@ fn a_gauge_draws_on_the_integer_renderer_at_every_size_and_value_and_follows_its
         None.or(tree.rect(g)),
         "the same node was kept"
     );
+}
+
+#[test]
+fn an_accordion_opens_and_closes_what_is_under_it_and_keeps_it() {
+    let mut a = App::new();
+    let mut r = screen();
+    a.frame(&mut r);
+    // The body is the second child of the accordion's column: hidden while closed (and then not among the named things).
+    let body = |a: &App| {
+        let head = a.find("More");
+        let col = a.tree.parent_of(head).unwrap();
+        a.tree.children(col).nth(1).unwrap()
+    };
+    let kept = body(&a);
+    assert!(a.tree.is_hidden(kept), "closed: hidden, and takes no room");
+    assert!(!a.names().iter().any(|n| n == "Battery"));
+    assert_eq!(a.tap("More"), Some(Msg::Fold));
+    a.frame(&mut r);
+    assert!(!a.tree.is_hidden(body(&a)));
+    assert!(a.names().iter().any(|n| n == "Battery") && a.names().iter().any(|n| n == "Storage"));
+    assert_eq!(
+        body(&a),
+        kept,
+        "the same node: what is in it keeps its state"
+    );
+    assert_eq!(a.tap("More"), Some(Msg::Fold));
+    a.frame(&mut r);
+    assert!(a.tree.is_hidden(kept));
 }

@@ -10,7 +10,9 @@ use fusuma_ui::{
     BuildError, CrossAlign, Length, NodeId, Round, SmallText, Style, Surface, TextRole, Tone,
 };
 
-use super::{Button, Cx, Handler, View, ViewMarker, button, card, column, row, spacer, text};
+use super::{
+    Button, Children, Cx, Handler, View, ViewMarker, button, card, column, row, show, spacer, text,
+};
 
 /// A message in a card with a bar of its tone down the side: a title and a line under it.
 #[must_use]
@@ -108,6 +110,24 @@ pub fn snackbar<'a, M: Clone + 'a>(
 pub fn chip<M>(label: &str, selected: bool) -> Button<'_, M> {
     let b = button(label);
     if selected { b.primary() } else { b }
+}
+
+/// A heading that opens and closes what is under it: the heading is a button (filled while open), the body is kept and hidden
+/// when closed, so what is in it keeps its state. `on_toggle` is what pressing the heading sends; the app flips `open`.
+#[must_use]
+pub fn accordion<'a, M: Clone + 'a, C: Children<M> + 'a>(
+    title: &'a str,
+    open: bool,
+    on_toggle: M,
+    body: C,
+) -> impl View<M> + 'a {
+    let head = button(title).on_press(on_toggle);
+    column((
+        if open { head.primary() } else { head },
+        show(open, column(body).gap(4).padding(4)),
+    ))
+    .gap(4)
+    .align(CrossAlign::Stretch)
 }
 
 // ── Segmented control ───────────────────────────────────────────────────────────────────────────────────────────

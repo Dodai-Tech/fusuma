@@ -19,3 +19,7 @@ of this crate.
   covered, solid.
 
 It passes the shared `fusuma_render::conformance` suite.
+
+**One bit.** `MonoFrame` is a black and white framebuffer (eight pixels a byte, a set bit white) the same renderer draws on, for e-paper and
+memory LCDs: 48 KB for an 800x480 picture where RGB565 is 768 KB. Colours become black or white as they are drawn, by a threshold
+(crisp) or an ordered dither (gray as dots); smooth edges are mixed with what is there first, then turned.

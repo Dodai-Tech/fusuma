@@ -245,13 +245,22 @@ the tree. On a chip the tree is a fixed arena with the widgets as a closed enum.
   of the default; a test draws with all five
 - [ ] Accessibility with `AccessKit` (the semantic tree exists; nothing is bridged to a platform yet)
 
-Components still missing, by what they need:
-
-- [ ] **Compositions of what exists** (cheap): spinner and skeleton (indeterminate states), banner, snackbar with an action,
-  segmented control, chips (selectable, removable), breadcrumbs, pagination, stat card, empty state
-- [ ] **Needs engine work:** accordion (hidden nodes now allow it), bottom sheet, image, multi-line editable text, combobox
-  and select, wrap and grid layouts, split view with a draggable divider, a table, a tree view, a carousel with page dots
-- [ ] **Data display for cars and watches:** gauge, line and bar chart, calendar, date and time pickers
+- [x] **Tones** (`Tone`: info, success, warning, danger; `Colors::{success, warning, info}` in every palette and in the generated
+  ones, found by the same contrast search as `danger`; `Surface::Tone` solid with black or white text that reads, `Surface::ToneSoft`
+  a tinted card): every tone stands out of every page at 3:1 and its text reads at 4.5:1 in all palettes
+- [x] **Components made of views** (`crates/fusuma/src/elm/components.rs`, no new node kinds, tested in `elm_components.rs`: what
+  each builds, which message each part sends, 0 allocations when nothing changed): `alert`, `banner`, `tag`, `stat_card`,
+  `empty_state`, `skeleton`, `snackbar` (with an action), `chip` (a toggle button: any number on), `segmented`, `breadcrumbs`,
+  `pagination` (`page_window` for every page of every size, checked against the rules), `steps`, `accordion` (the body is kept and
+  hidden, so it keeps its state). The showcase has a **Components** page (the 11th) that uses all but the accordion and answers each (a test presses every part)
+- [x] **Gauge** (`Kind::Gauge`, `Tree::gauge`, `gauge()` view): an arc of 270 degrees with a number, stroked from a sine table in
+  integers (no float, no allocation); 19 points, because the integer renderer holds about 20 segments of a stroked path
+- [ ] **Compositions still to do:** spinner and indeterminate progress (they need a timer-driven node), a bottom sheet, a
+  carousel with page dots, a rating, a key cap (`Kbd`), a timeline, a dismissible alert
+- [ ] **Needs engine work:** image, multi-line editable text, combobox and select, wrap and grid layouts (a row of buttons that
+  does not fit overflows: the showcase stacks them by hand on a tiny panel), split view with a draggable divider, a table,
+  a tree view
+- [ ] **Data display for cars and watches:** line and bar chart, calendar, date and time pickers (the gauge is the first piece)
 - [ ] **System:** right-to-left layout, text scaling, drag and drop
 - [ ] A `Widget` trait for custom widgets behind an `alloc` feature
 - [ ] Port the Hibari OS launcher to Fusuma widgets
@@ -398,8 +407,8 @@ derives the rest.
   (`wl_output` mm, rotation swaps the sizes)
 - [ ] Desktop (`winit` monitor size), web (no mm, `devicePixelRatio`), and a change (rotation, resize, keyboard) as an
   Elm message
-- [ ] A layout in the showcase that reads form factor, inputs and metrics (tiny panels: the watch tiles are cut off at 128 px;
-  keys as the main input)
+- [x] **A layout for tiny panels in the showcase** (`Showcase::micro()`: one tile to a row, no palette switcher, short words, buttons
+  stacked, small margins; looked at at 128x296 and 200x200). [ ] Still: one that reads `Inputs` and `Metrics`
 
 ### E-paper (reflective panels)
 
@@ -416,10 +425,14 @@ has shipped with, told apart by register 0x70 in `Sticky::detect`).
   `[buttons]` in the board file, `epaper_spi.c` in `fusuma_esp`, the e-paper run loop in `fusuma-platform-esp`, GT911 touch.
   Builds as firmware next to the watch's. The SSD2677 has no published partial refresh: every refresh is a full one
 - [ ] **On a Sticky:** which panel it has, the SSD2677's mirror and scan direction, the touch swap, real refresh times, deep
-  sleep and the OK-key wake, battery gauge and RTC, the partition table (read the Sticky's own before flashing, back up first)
+  sleep and the OK-key wake, battery gauge and RTC, the partition table. **Before flashing, back the board up:** `just showcase-esp-backup`
+  reads the whole flash to `~/.fusuma/backups` with a checksum and `just showcase-esp-restore-flash` writes it back (`install --backup` does it first)
 - [ ] On a Waveshare SSD1680 module (sequences follow Waveshare's V2/V4 drivers): `board.toml` `controller = "ssd1680"`
 - [ ] UC8176 / UC8179 (4.2 and 7.5 inch), four grays (two bit planes), tri-colour, Spectra 6, landscape on a portrait panel
-- [ ] A one-bit framebuffer renderer (an 800x480 RGB565 frame is 768 KB, PSRAM only; one bit is 48 KB)
+- [x] **A one-bit framebuffer** (`MonoFrame` in `fusuma-render-integer`: the integer renderer draws on it, eight pixels a byte, a set
+  bit is white, colours thresholded or ordered-dithered as they are drawn, scroll by whole bytes; `EinkDriver::new_mono`; the ESP
+  loop uses it): 48 KB for 800x480 where RGB565 is 768 KB, nothing to pack; a partial refresh is checked to be exactly the change
+  of the whole picture. Threshold 170 by default (a lower level loses the thin strokes of smooth text)
 - [x] **Fixed (was not e-paper):** a paint nobody can see (a focus ring on a widget past the edge) left its request set, so the
   app asked for a frame for ever and drew none; `paint_frame` now answers it (`a_paint_nobody_can_see_is_answered...`, red without the fix)
 
