@@ -45,6 +45,7 @@ now and then).
 | Board | Parts |
 |---|---|
 | `p4-7in`: Waveshare ESP32-P4 7" touch board | `ek79007`, `gt911`, `ledc` |
+| `s3-amoled-143`: Waveshare ESP32-S3-Touch-AMOLED-1.43 (466x466 round, CO5300 variant) | `co5300`, `ft3168`; read from the vendor's firmware, not run on a board; see docs/BOARDS.md |
 | `s3-amoled-164`: Waveshare ESP32-S3-Touch-AMOLED-1.64 (280x456) | `co5300`, `ft3168`; pins verified on a real board, CS is GPIO46 on this V2 board (9 on a V1) |
 | `s3-amoled-206`: Waveshare ESP32-S3-Touch-AMOLED-2.06 watch | `co5300`, `ft3168`; its 70 px corner radius is a guess by eye |
 
@@ -58,10 +59,11 @@ that did not say which PCB). Checklist, in the order that saved time:
 
 1. **Scan I2C before trusting a pinout.** Pairs of GPIOs, addresses 0x08..0x77: here only SDA 47 / SCL 48 answered
    (0x38 the FT3168, 0x6b the IMU), which ruled out the 1.8" board's SDA 15 / SCL 14 and its TCA9554 expander.
-2. **The controller is a CO5300, not the SH8601 the factory strings suggest.** Same QSPI framing (control opcode 0x02,
-   pixel opcode 0x32, the register as `reg << 8`), a different init. An init that returns OK says nothing: only the glass does.
-3. **Chip select differs between PCB revisions** (GPIO9 on V1, GPIO46 on V2). On the board here GPIO9 alone showed
-   nothing and both together lit the panel, so it is a V2: the file says `cs = 46` (a V1 board needs 9). Open: a `cs`
+2. **Waveshare calls the panel an SH8601; the init it runs is the one this crate's `co5300` driver sends** (`C4 80`, `3A 55`,
+   `35`, `53 20`, `63 FF`, `51`, `29`; control opcode 0x02, pixel opcode 0x32, the register as `reg << 8`). The first dark
+   screen was blamed on the controller; it was the chip select (next point). An init that returns OK says nothing: only the glass does.
+3. **Chip select differs between PCB revisions** (GPIO9 on V1, GPIO46 on V2; Waveshare's `ESP32-S3-Touch-AMOLED-1.64-v2`
+   firmware uses 46). On the board here GPIO9 alone showed nothing and both together lit the panel, so it is a V2: the file says `cs = 46` (a V1 board needs 9). Open: a `cs`
    list or a probe, so one image fits both. Not yet run through this crate's driver on the glass.
 4. **Start the clock low** (10 MHz) and raise it in steps; the first try at 40 MHz showed nothing.
 5. **The touch controller needs its reset pulsed** (`rst` under `[touch]`, GPIO8): without it every read is empty and a

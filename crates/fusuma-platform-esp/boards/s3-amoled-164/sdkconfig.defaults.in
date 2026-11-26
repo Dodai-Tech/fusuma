@@ -1,4 +1,4 @@
-# ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.64): 280x456 CO5300 AMOLED over QSPI, FT3168 touch, 8 MB octal PSRAM.
+# ESP32-S3 (Waveshare ESP32-S3-Touch-AMOLED-1.64): 280x456 QSPI AMOLED (CO5300 init) over QSPI, FT3168 touch, 8 MB octal PSRAM.
 CONFIG_IDF_TARGET="esp32s3"
 
 # Flash

@@ -121,7 +121,7 @@ def "test showcase: two boards with one chip are told apart by flash, else --boa
 
 def "test showcase: the boards come from their board files, with the chip target and toolchain" [] {
     let boards = load_boards
-    assert equal ($boards.name) ["p4-7in" "s3-amoled-164" "s3-amoled-206" "s3-sticky"]
+    assert equal ($boards.name) ["p4-7in" "s3-amoled-143" "s3-amoled-164" "s3-amoled-206" "s3-sticky"]
     for b in $boards {
         assert ($b.dir | path join sdkconfig.defaults.in | path exists) $"($b.name) has an sdkconfig template"
         assert ($b.dir | path join partitions.csv | path exists) $"($b.name) has a partition table"

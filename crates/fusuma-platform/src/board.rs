@@ -1517,6 +1517,10 @@ flash_mb = 32
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-206/board.toml"),
             ),
             (
+                "s3-amoled-143",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-143/board.toml"),
+            ),
+            (
                 "s3-amoled-164",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-164/board.toml"),
             ),
