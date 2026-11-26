@@ -373,6 +373,34 @@ the same pixels as the hand-built page, a message log that replays to the same s
   `Screen` needs the dpi or a form-factor hint from the host
 - [ ] A `mobile` preset on the `fusuma` crate; lifecycle on the web (a page going to the background) through the same `Session`
 
+### Screens: one description on every platform
+
+A `Screen` is the one value that describes the device, and every host fills it in the same way. Hosts and board files report
+**facts once**; an app never configures display hardware, it reads the result (`form_factor()`, the theme) and the toolkit
+derives the rest.
+
+- [x] Physical size and a declared form factor on `Screen` (`with_size_mm`, `with_form_factor`, `form_factor()`, `dpi()`,
+  `Display::screen()`); the order is declared, then the glass (short side under 55 mm a watch, under 85 a phone), then the width
+- [ ] **More form factors, declared and not guessed:** `Micro` (a tiny display, no touch: 128x64 and 240x135 boards, e-paper
+  tags; one value or short list per screen, driven by a button or an encoder) and `Panel` (a small touch board that is not
+  worn: 1.28 to 2.8 inch dev boards, a smart knob), below `Watch` (worn: the square with round corners, a crown, a tile grid),
+  `Phone`, `Tablet`, `Desktop`. Size alone cannot tell a 1.28 inch round board from a watch, so `board.toml` says
+  `form = "micro" | "panel" | "watch"`; with nothing declared, only a very small pixel size (under about 240 logical px) guesses `Micro`
+- [ ] **Display kind** (a property of the glass, across every form factor): `Emissive` or `Reflective` (e-ink, memory LCD),
+  the colour depth (1 bit, 4 or 16 grays, spot colours) and a refresh hint (`Fast` or `Slow`, in ms). Reflective gives, with
+  no code in the app: a mono or grayscale palette from `fusuma-palette`, animation `Off` (pages jump, scroll by whole steps),
+  and one batched damage rect per refresh, with a full clear now and then against ghosting
+- [ ] **Input kind** (touch, keys, encoder, pointer) as its own property, not part of the form factor: a micro board can
+  have touch and a watch can have only a crown; layout asks for it independently
+- [ ] **Board presets:** `preset = "..."` in `board.toml` fills in the whole `Screen` (size, mm, form, display kind, depth,
+  refresh, input) for known hardware (the S3 watch, the small S3 boards, common e-paper modules); custom hardware declares only
+  what it knows, every other field has a default
+- [ ] `SizeClass` (compact, medium, expanded by window width, for resizing) apart from the form factor, and `Metrics`
+  (touch target and spacing minimums per form factor); `Class` stays as the compatibility layer
+- [ ] Hosts report what they know: ESP `board.toml` (mm, shape, form, display kind), Android `DisplayMetrics` (`xdpi`), iOS
+  `UIScreen`, Wayland `wl_output` (mm), the web `devicePixelRatio` (no mm); a change (rotation, resize, keyboard) arrives as a
+  message in the Elm layer
+
 ## Text UI
 
 A separate platform with the same tree and widgets, each drawn in its cell form (`[x]`, `(•)`, `[███░░]`) in a
