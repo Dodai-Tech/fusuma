@@ -375,7 +375,7 @@ the same pixels as the hand-built page, a message log that replays to the same s
 
 ### E-paper (reflective panels)
 
-The app draws as always, on the integer renderer or Vello CPU; `fusuma_platform_embedded::eink` does the rest:
+The app draws as always, on the integer renderer or Vello CPU; the `fusuma-platform-eink` crate (it draws through `fusuma-platform-embedded`) does the rest:
 `EinkDriver` tells the app what the glass is (`Input::Screen`: `Palette::PAPER`, no motion), quantises the RGB565 picture to one
 bit a pixel (`pack_mono`: threshold or 4x4 ordered dither, eight pixels a byte, a set bit is white), batches damage with a
 `Planner` (settle time, minimum interval, one union rectangle, a full refresh against ghosting every N partial ones and

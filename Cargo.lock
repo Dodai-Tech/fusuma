@@ -1044,6 +1044,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusuma-platform-eink"
+version = "0.2.0"
+dependencies = [
+ "fusuma",
+ "fusuma-platform-embedded",
+ "fusuma-showcase",
+]
+
+[[package]]
 name = "fusuma-platform-embedded"
 version = "0.2.0"
 dependencies = [

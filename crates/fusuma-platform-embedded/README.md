@@ -21,3 +21,5 @@ checked without hardware. A runtime crate (`fusuma-platform-esp`, a Cortex-M one
 the board, a clock and a loop.
 
 No widget or drawing code lives here: CI fails if a `fusuma-platform-*` crate builds a widget tree.
+
+E-paper panels (one-bit packing, batched refresh, the SSD1680, SSD1677 and SSD2677 controllers) are in `fusuma-platform-eink`.

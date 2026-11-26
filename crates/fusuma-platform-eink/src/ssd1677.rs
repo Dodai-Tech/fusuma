@@ -179,7 +179,7 @@ impl<B: Bus> Ssd1677<B> {
 
     /// Where `region` (the app's, byte-aligned) is on the panel, and `data` as the panel takes it.
     fn on_panel(&mut self, region: Rect, data: &[u8]) -> (Rect, Vec<u8>) {
-        if self.config.mirror_x && self.config.width % 8 == 0 {
+        if self.config.mirror_x && self.config.width.is_multiple_of(8) {
             let mut out = core::mem::take(&mut self.scratch);
             mirror_rows(data, row_bytes(region), &mut out);
             let x = self.config.width - (region.x as u32 + region.w);

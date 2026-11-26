@@ -5,8 +5,8 @@
 use fusuma::platform::Backend;
 use fusuma::render::Rect;
 use fusuma::{Input, Key};
-use fusuma_platform_embedded::eink::ssd1680::{Bus, Call, Config, Recorder, Ssd1680};
-use fusuma_platform_embedded::eink::{EinkDriver, Panel, Refresh, RefreshPolicy};
+use fusuma_platform_eink::ssd1680::{Bus, Call, Config, Recorder, Ssd1680};
+use fusuma_platform_eink::{EinkDriver, Panel, Refresh, RefreshPolicy};
 use fusuma_showcase::Showcase;
 
 fn policy() -> RefreshPolicy {
@@ -14,7 +14,7 @@ fn policy() -> RefreshPolicy {
         min_interval_ms: 300,
         settle_ms: 100,
         full_every: 30,
-        dither: fusuma_platform_embedded::eink::Dither::default(),
+        dither: fusuma_platform_eink::Dither::default(),
     }
 }
 
@@ -202,7 +202,7 @@ fn the_sequences_name_the_window_the_data_goes_to() {
 
 #[test]
 fn the_showcase_on_the_sticky_800x480_lands_mirrored_on_the_panel() {
-    use fusuma_platform_embedded::eink::ssd1677::{Config, Ssd1677};
+    use fusuma_platform_eink::ssd1677::{Config, Ssd1677};
     let frame = |config: Config| {
         let panel = Ssd1677::new(Recorder::default(), config);
         let mut d =

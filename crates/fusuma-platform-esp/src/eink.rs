@@ -1,5 +1,5 @@
 //! A board whose screen is e-paper: power pins, the SPI bus, the panel (found by asking the chip), three keys and touch,
-//! run by `fusuma_platform_embedded::eink::EinkDriver`. The emissive boards go through `panel.rs` and `Driver` instead.
+//! run by `fusuma_platform_eink::EinkDriver`. The emissive boards go through `panel.rs` and `Driver` instead.
 
 use std::time::{Duration, Instant};
 
@@ -7,10 +7,10 @@ use esp_idf_svc::sys::fusuma_esp as ffi;
 use fusuma::platform::{Machine, Render, Settings};
 use fusuma::render::Point;
 use fusuma::{App, Input, Key, TouchTracker};
-use fusuma_platform_embedded::eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
-use fusuma_platform_embedded::eink::sticky::{Sticky, Variant};
-use fusuma_platform_embedded::eink::bus::Bus;
-use fusuma_platform_embedded::eink::{EinkDriver, Panel, RefreshPolicy};
+use fusuma_platform_eink::ssd1677::{Config as Ssd1677Config, Ssd1677};
+use fusuma_platform_eink::sticky::{Sticky, Variant};
+use fusuma_platform_eink::bus::Bus;
+use fusuma_platform_eink::{EinkDriver, Panel, RefreshPolicy};
 use fusuma_platform_embedded::{HeldTouch, orient};
 
 use crate::board::{

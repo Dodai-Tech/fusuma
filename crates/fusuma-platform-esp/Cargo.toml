@@ -19,11 +19,11 @@ publish = false
 # `vello-cpu` links Vello for a board that pins it in its `fusuma.toml`; without `fonts` text is the bitmap font.
 default = ["fonts"]
 # Link the `vello_cpu` renderer next to the integer one, which is always there.
-vello-cpu = ["fusuma/renderer-vello-cpu", "fusuma-platform-embedded/vello-cpu"]
+vello-cpu = ["fusuma/renderer-vello-cpu", "fusuma-platform-embedded/vello-cpu", "fusuma-platform-eink/vello-cpu"]
 # Smooth text with the default preset (Inter, JetBrains Mono): glyph atlases for the integer renderer (about 125 KB of
 # flash) and, with `vello-cpu`, the font files for Vello. Other families: the firmware turns on `fusuma/fonts-*` or
 # `fusuma-fonts/<family>` and picks them in `[fonts]`. Without it text is the bitmap font.
-fonts = ["fusuma/fonts-fusuma", "fusuma/icons", "fusuma-platform-embedded/fonts"]
+fonts = ["fusuma/fonts-fusuma", "fusuma/icons", "fusuma-platform-embedded/fonts", "fusuma-platform-eink/fonts"]
 # A scripted run of wheel scrolls and taps, so a board can be measured with nobody touching it (`demo.rs`).
 demo = []
 # Every font family of the catalog (about 600 KB of atlases), so `[fonts]` can pick any preset.
@@ -31,6 +31,7 @@ all-fonts = ["fonts", "fusuma/fonts-all"]
 
 [dependencies]
 fusuma-platform-embedded = { path = "../fusuma-platform-embedded", features = ["std"] }
+fusuma-platform-eink = { path = "../fusuma-platform-eink", features = ["std"] }
 fusuma = { path = "../fusuma", default-features = false, features = ["std", "toml", "renderer-integer"] }
 esp-idf-svc = { version = "0.53", features = ["experimental"] }
 log = "0.4"

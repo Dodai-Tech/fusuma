@@ -1,17 +1,7 @@
-//! E-paper and other reflective panels: a picture of black and white (or a few grays) that is slow to change.
-//!
-//! The app draws as it always does, on the integer renderer or on Vello. What differs is what happens after:
-//!
-//! * the RGB565 picture is **quantised** to one bit a pixel ([`pack_mono`]), by a threshold (crisp text) or an ordered
-//!   dither (photos, grays), and packed the way every e-paper controller takes it: eight pixels a byte, most
-//!   significant bit first, a set bit is white;
-//! * what changed is **batched**: a [`Planner`] collects the damage of many frames into one rectangle and shows it
-//!   when the panel may refresh (a minimum interval, a short settle time so a burst of changes is one refresh), and a
-//!   **full refresh** now and then clears the ghosts that partial refreshes leave;
-//! * a [`Panel`] sends the bytes to the controller ([`ssd1680`] is one, behind a bus the chip's HAL implements).
-//!
-//! [`EinkDriver`] runs all of it for an app: it tells the app what the glass is ([`fusuma::Input::Screen`]), so the
-//! theme turns to black and white and the motion stops without the app asking.
+#![doc = include_str!("../README.md")]
+#![no_std]
+
+extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -20,9 +10,7 @@ use fusuma::platform::Backend;
 use fusuma::render::Rect;
 use fusuma::{App, DisplayKind, Input, Screen, Shell};
 
-use crate::board::Pixels;
-use crate::driver::DriverError;
-use crate::surface::Surface;
+use fusuma_platform_embedded::{DriverError, Pixels, Surface};
 
 pub mod bus;
 pub mod ssd1677;
@@ -82,7 +70,7 @@ impl Dither {
 /// screen whose width is not a multiple of 8 (122 pixels: 16 bytes); [`pack_mono`] fills the extra pixels white.
 #[must_use]
 pub fn byte_region(region: Rect, width: u32, height: u32) -> Option<Rect> {
-    let r = crate::aligned(region, width, height, 1)?;
+    let r = fusuma_platform_embedded::aligned(region, width, height, 1)?;
     let x0 = r.x & !7;
     let x1 = (i64::from(r.x) + i64::from(r.w) + 7) & !7;
     Some(Rect::new(
@@ -317,7 +305,7 @@ pub struct EinkStep {
     pub wake: fusuma::Wake,
 }
 
-/// An app, a reflective panel and the surface the app draws on: the e-paper twin of [`Driver`](crate::Driver).
+/// An app, a reflective panel and the surface the app draws on: the e-paper twin of [`Driver`](fusuma_platform_embedded::Driver).
 #[derive(Debug)]
 pub struct EinkDriver<A, P> {
     shell: Shell<A>,

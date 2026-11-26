@@ -67,6 +67,7 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-platform`](crates/fusuma-platform) | the renderer choice, `fusuma.toml` and board files | yes |
 | [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | a window on Linux, macOS and Windows (`winit`) | no |
 | [`fusuma-platform-embedded`](crates/fusuma-platform-embedded) | what every board shares: `Board`, `Driver`, the frame step | yes |
+| [`fusuma-platform-eink`](crates/fusuma-platform-eink) | e-paper: one-bit packing, batched refresh, SSD1680/1677/2677 and the Sticky | yes |
 | [`fusuma-platform-esp`](crates/fusuma-platform-esp) | ESP-IDF boards described by files, drivers per controller (CO5300, EK79007, FT3168, GT911) | no |
 | [`fusuma-cells`](crates/fusuma-cells), [`fusuma-platform-tui`](crates/fusuma-platform-tui) | scaffolds of the text UI: a cell grid with ANSI output; a terminal | yes / no |
 
