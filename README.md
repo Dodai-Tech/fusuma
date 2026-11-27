@@ -75,6 +75,8 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-platform-esp`](crates/fusuma-platform-esp) | ESP-IDF boards described by files, drivers per controller (CO5300, SH8601, RM690B0, ST7789, GC9A01, EK79007, FT3168, FT5x06, CST816, CST92xx, GT911) | no |
 | [`fusuma-cells`](crates/fusuma-cells), [`fusuma-platform-tui`](crates/fusuma-platform-tui) | scaffolds of the text UI: a cell grid with ANSI output; a terminal | yes / no |
 
+How the crates are split, and why: [docs/CRATES.md](docs/CRATES.md).
+
 What is built and what comes next: [the roadmap](docs/ROADMAP.md). A renderer crate never depends on the toolkit,
 and a platform crate draws nothing itself; CI checks both.
 
