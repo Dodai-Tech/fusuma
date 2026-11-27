@@ -5,8 +5,10 @@ mod anim;
 mod app;
 mod blocks;
 mod cells;
+mod cyberdeck;
 #[cfg(test)]
 mod damage;
+mod decor;
 mod dialog;
 mod dnd;
 mod event;
@@ -45,6 +47,7 @@ mod widgets;
 pub use app::App;
 pub use blocks::Stepper;
 pub use cells::{CellMeasure, CellSink, CellTheme, CellThemeError, Emphasis, Glyphs};
+pub use decor::Decor;
 pub use event::Pointer;
 pub use focus::Key;
 pub use gesture::{LONG_PRESS_MS, SWIPE_PX, Swipe, SwipeDir};

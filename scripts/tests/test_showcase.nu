@@ -104,8 +104,9 @@ def "test showcase: each connected chip picks its board" [] {
     # Two S3 boards have 32 MB of flash (the watch and the Sticky), so the chip alone cannot say: --board settles it.
     assert error { pick_board { chip: "esp32s3", flash_mb: 32 } }
     assert equal (pick_board { chip: "esp32p4", flash_mb: 32 }).name "p4-7in"
-    # Two C6 boards have 4 MB (the e-paper and the 1.47 inch LCD), so the chip and the flash cannot say: --board settles it.
-    assert error { pick_board { chip: "esp32c6", flash_mb: 4 } }
+    # Two C6 boards have 8 MB (the 1.47 inch LCD and the 1.32 AMOLED), so the chip and the flash cannot say: --board settles it.
+    assert error { pick_board { chip: "esp32c6", flash_mb: 8 } }
+    assert equal (pick_board { chip: "esp32c6", flash_mb: 4 }).name "c6-epaper-154"
     assert equal (pick_board { chip: "esp32c6", flash_mb: 16 } ([{ name: "a", chip: "esp32c6", flash_mb: 16 }])).name "a"
     assert error { pick_board { chip: "esp32c3", flash_mb: 4 } }
 }

@@ -643,6 +643,7 @@ pub fn progress_page<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + '
             wid::BAR_LABEL,
             text_fmt(format_args!("{}%", s.permille / 10)),
         ),
+        (!look.lite).then(|| progress(s.permille).tall(80)),
         side_by_side(
             look,
             (

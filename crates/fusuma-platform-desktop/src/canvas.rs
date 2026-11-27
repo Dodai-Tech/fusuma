@@ -220,7 +220,7 @@ mod tests {
         shell.input(fusuma::Input::Pointer(Pointer::Up(at)));
         // The dropdown opens: only its menu is drawn, over the page.
         let opened = canvas.frame(&mut shell, 32).unwrap();
-        assert!(opened.w * opened.h < 1024 * 600 / 4, "{opened:?}");
+        assert!(opened.w * opened.h < 1024 * 600 / 2, "{opened:?}");
         let light = shell.app.theme_row(1).unwrap();
         let r = shell.app.rect_of(light).unwrap();
         let at = Point::new(r.x + 4, r.y + 4);

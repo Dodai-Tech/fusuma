@@ -666,6 +666,14 @@ impl<const N: usize> Tree<N> {
                 if let Some(fill) = look.fill {
                     r.fill_rect(rect, look.radius, fill)?;
                 }
+                if selected && theme.decor.hatch != 0 {
+                    crate::decor::hatch(
+                        r,
+                        rect,
+                        theme.decor.hatch,
+                        crate::cyberdeck::hatch_color(theme),
+                    )?;
+                }
                 let label = look.text;
                 let m = Self::measure_icon_text(r, theme, icon, text.as_str());
                 let x = px(rect.x, theme.spacing.md);
@@ -898,12 +906,30 @@ impl<const N: usize> Tree<N> {
                 self.ring(i, r, theme, thumb / 2)
             }
             Kind::Progress { permille } => {
+                let d = &theme.decor;
+                let color = if n.disabled_eff { c.border } else { c.primary };
+                if d.frame && rect.h > theme.track_height * 2 && rect.w > theme.track_height * 2 {
+                    return crate::decor::frame_progress(
+                        r,
+                        rect,
+                        permille,
+                        theme.track_height,
+                        color,
+                        c.border,
+                    );
+                }
                 let h = rect.h.min(theme.track_height);
                 let track = Rect::new(rect.x, px(rect.y, rect.h.saturating_sub(h) / 2), rect.w, h);
-                r.fill_rect(track, h / 2, c.surface_raised)?;
                 let w = (u64::from(track.w) * u64::from(permille) / 1000) as u32;
+                if d.dots != 0 {
+                    // A solid bar, then dots to the end.
+                    if w > 0 {
+                        r.fill_rect(Rect::new(track.x, track.y, w, h), 0, color)?;
+                    }
+                    return crate::decor::dotted(r, track, px(track.x, w), d.dots, c.border_strong);
+                }
+                r.fill_rect(track, h / 2, c.surface_raised)?;
                 if w > 0 {
-                    let color = if n.disabled_eff { c.border } else { c.primary };
                     r.fill_rect(Rect::new(track.x, track.y, w, h), (h / 2).min(w / 2), color)?;
                 }
                 Ok(())

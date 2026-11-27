@@ -316,6 +316,14 @@ fonts-list:
 fonts-fetch family="":
     nu scripts/fonts.nu fetch --family "{{ family }}"
 
+# ── Design files (design/, OpenPencil and Figma) ─────────────────────────────
+
+# Write the design tokens and spec from the theme constants, then build the .fig (needs bun) and check it
+design:
+    nu scripts/design.nu tokens
+    nu scripts/design.nu build
+    nu scripts/design.nu verify
+
 # ── Showcase (examples/showcase, examples/showcase-esp) ───────────────────────
 
 # Render every showcase page to PNG on the host (docs/screenshots)

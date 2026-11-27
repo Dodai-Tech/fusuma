@@ -41,8 +41,10 @@ backend = "auto"      # auto, integer, vello-cpu or vello-gpu
 preset = "legible"    # fusuma, material, legible, plex or noto
 
 [theme]
-palette = "forest"    # fusuma, forest, ocean, petrol or violet
+palette = "forest"    # fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime, cyberdeck or cyberdeck-cyan/-lime/-magenta/-amber/-violet
 ```
+
+Design tokens, a spec and an OpenPencil/Figma file for the design are generated from the theme: see [docs/DESIGN.md](docs/DESIGN.md).
 
 `examples/showcase` is a complete app: seven pages, a dialog, a text field, icons, a palette switcher.
 

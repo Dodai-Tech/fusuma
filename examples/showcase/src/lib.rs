@@ -26,6 +26,28 @@ const FILL_MS: u32 = 8000;
 #[must_use]
 pub const fn theme(dark: bool, palette: &Palette) -> Theme {
     let base = if dark { Theme::DARK } else { Theme::LIGHT }.with_colors(palette.colors(dark));
+    if palette.is_cyberdeck() {
+        // The design brings its own shapes, font and decoration: only the sizes are made for the big touch screen.
+        return Theme {
+            spacing: fusuma::Spacing {
+                xs: 4,
+                sm: 8,
+                md: 14,
+                lg: 24,
+            },
+            text: fusuma::TextSizes {
+                caption: 14,
+                body: 18,
+                title: 26,
+                icon: 24,
+            },
+            control_height: 56,
+            indicator: 24,
+            track_height: 6,
+            colors: palette.colors(dark),
+            ..Theme::CYBERDECK
+        };
+    }
     Theme {
         spacing: fusuma::Spacing {
             xs: 4,
@@ -89,6 +111,20 @@ fn palette_button_text(palette: &Palette) -> &'static str {
         "violet" => "Violet",
         "ember" => "Ember",
         "graphite" => "Graphite",
+        "rose" => "Rose",
+        "amber" => "Amber",
+        "mint" => "Mint",
+        "sky" => "Sky",
+        "indigo" => "Indigo",
+        "slate" => "Slate",
+        "crimson" => "Crimson",
+        "lime" => "Lime",
+        "cyberdeck" => "Cyberdeck",
+        "cyberdeck-cyan" => "Cyberdeck Cyan",
+        "cyberdeck-lime" => "Cyberdeck Lime",
+        "cyberdeck-magenta" => "Cyberdeck Magenta",
+        "cyberdeck-amber" => "Cyberdeck Amber",
+        "cyberdeck-violet" => "Cyberdeck Violet",
         _ => "Colours",
     }
 }
@@ -107,8 +143,28 @@ fn theme_button_text(palette: &Palette, dark: bool, watch: bool) -> Buf {
 }
 
 /// The names of a palette's row in the palette dropdown.
-const PALETTE_NAMES: [&str; 7] = [
-    "Fusuma", "Forest", "Ocean", "Petrol", "Violet", "Ember", "Graphite",
+const PALETTE_NAMES: [&str; 21] = [
+    "Fusuma",
+    "Forest",
+    "Ocean",
+    "Petrol",
+    "Violet",
+    "Ember",
+    "Graphite",
+    "Rose",
+    "Amber",
+    "Mint",
+    "Sky",
+    "Indigo",
+    "Slate",
+    "Crimson",
+    "Lime",
+    "Cyberdeck",
+    "Deck Cyan",
+    "Deck Lime",
+    "Deck Magenta",
+    "Deck Amber",
+    "Deck Violet",
 ];
 
 /// The pages in the sidebar.
@@ -274,7 +330,7 @@ pub struct Showcase {
     /// palette tile steps through them).
     theme_menu: Option<NodeId>,
     theme_rows: [Option<NodeId>; 2],
-    palette_rows: [Option<NodeId>; 7],
+    palette_rows: [Option<NodeId>; 21],
     status: Option<NodeId>,
     live: Live,
     clicks: u32,
@@ -343,7 +399,7 @@ impl Showcase {
             palette_button: None,
             theme_menu: None,
             theme_rows: [None; 2],
-            palette_rows: [None; 7],
+            palette_rows: [None; 21],
             status: None,
             live: Live::default(),
             clicks: 0,
@@ -653,7 +709,7 @@ impl Showcase {
             )?;
         }
         t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
-        self.palette_rows = [None; 7];
+        self.palette_rows = [None; 21];
         // The chevron of a dropdown, when the icon font has one.
         #[cfg(feature = "fonts")]
         let chevron = fusuma::fonts::FontSet::default_set().icon("expand_more");
@@ -685,12 +741,20 @@ impl Showcase {
                 self.theme_rows[i] = Some(id);
             }
             if !watch {
-                for (i, name) in PALETTE_NAMES.into_iter().enumerate() {
-                    self.palette_rows[i] = Some(t.list_item(
-                        Some(menu),
-                        name,
-                        Palette::ALL[i].name == self.palette.name,
-                    )?);
+                // Three columns of seven: 21 rows in one column would be taller than the screen.
+                let cols = t.row(Some(menu), Style::new().gap(sp.xs))?;
+                for chunk in 0..PALETTE_NAMES.len().div_ceil(7) {
+                    let column =
+                        t.column(Some(cols), Style::new().gap(sp.xs).width(Length::Fill(1)))?;
+                    for i in chunk * 7..(chunk * 7 + 7).min(PALETTE_NAMES.len()) {
+                        let id = t.list_item(
+                            Some(column),
+                            PALETTE_NAMES[i],
+                            Palette::ALL[i].name == self.palette.name,
+                        )?;
+                        t.set_style(id, Style::new().width(Length::Fill(1)));
+                        self.palette_rows[i] = Some(id);
+                    }
                 }
             }
             self.theme_menu = Some(menu);
@@ -1956,7 +2020,27 @@ mod tests {
             Some("Fusuma \u{b7} Dark")
         );
         for want in [
-            "forest", "ocean", "petrol", "violet", "ember", "graphite", "fusuma",
+            "forest",
+            "ocean",
+            "petrol",
+            "violet",
+            "ember",
+            "graphite",
+            "rose",
+            "amber",
+            "mint",
+            "sky",
+            "indigo",
+            "slate",
+            "crimson",
+            "lime",
+            "cyberdeck",
+            "cyberdeck-cyan",
+            "cyberdeck-lime",
+            "cyberdeck-magenta",
+            "cyberdeck-amber",
+            "cyberdeck-violet",
+            "fusuma",
         ] {
             next_palette(&mut s);
             assert_eq!(s.palette().name, want);
@@ -2341,6 +2425,48 @@ mod tests {
         App::resized(&mut s, 1280, 800, 200);
         assert!(!s.is_compact());
         let _ = &mut r;
+    }
+
+    /// The cyberdeck design on every page in both modes: it draws, nothing overflows, and its own colours and shapes are
+    /// the ones on show (the PNG is written when asked).
+    #[test]
+    fn every_page_draws_in_the_cyberdeck_design_in_both_modes() {
+        for dark in [true, false] {
+            for p in Page::ALL {
+                let (mut s, mut r) = app();
+                while Showcase::palette(&s).name != "cyberdeck" {
+                    next_palette(&mut s);
+                }
+                if !dark {
+                    toggle_theme(&mut s);
+                }
+                go(&mut s, p);
+                s.frame(&mut r).unwrap();
+                let t = s.theme();
+                assert_eq!(
+                    (t.radii.sm, t.elevation, t.fonts.body),
+                    (0, 0, fusuma::render::Font::Mono)
+                );
+                assert_ne!(t.decor, fusuma::Decor::NONE);
+                assert_eq!(
+                    t.colors,
+                    if dark {
+                        Palette::CYBERDECK.dark
+                    } else {
+                        Palette::CYBERDECK.light
+                    }
+                );
+                assert_eq!(r.pixel(1023, 599).unwrap(), t.colors.background);
+                if let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") {
+                    let name = std::format!(
+                        "{dir}/cyberdeck-{}-{}.png",
+                        if dark { "dark" } else { "light" },
+                        p.name()
+                    );
+                    std::fs::write(name, fusuma::renderers::vello_cpu::png(&r).unwrap()).unwrap();
+                }
+            }
+        }
     }
 
     #[test]

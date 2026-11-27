@@ -200,9 +200,17 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 
 - [x] `Theme` (colours, spacing, radii, text sizes, fonts, sizes, motion) with a dark and a light default; every
   widget reads only from it; `Theme::scaled(percent)` for the display scale
-- [x] **Palettes and accents**: fusuma, forest, ocean, petrol, violet, ember, graphite for dark and light, and any palette's main action
+- [x] **Palettes and accents**: fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime and cyberdeck with five accents (cyan, lime, magenta, amber, violet): 21 for dark and light, and any palette's main action
   on any other; `[theme]` in `fusuma.toml`, switched at run time. Every combination keeps the contrast rules
   (text 7:1, muted 4.5:1, text on the main action 4.5:1, the main action 3:1 on the page), checked by tests
+- [x] **Cyberdeck design** (`Theme::CYBERDECK`, `Palette::CYBERDECK`): near-black, mono text, one orange accent, 1 px outlines,
+  radii 0/2/3, no shadow; corner ticks on cards and panels, a hatch on the chosen row or tab, a dotted progress track and a
+  progress bar round the frame (`Decor`, all integer lines, no allocator). On a reflective glass the hatch and dots become
+  solid fills and the ticks stay. Colours, fonts, tokens, decoration and hooks sit in `crates/fusuma-ui/src/cyberdeck.rs`,
+  apart from the widgets, so a definition `id = "cyberdeck"` can generate it later. Open: whether it becomes the default
+  (or only on embedded, TUI and console, with the blue theme as "Classic"), and mono for all text or labels only
+- [x] **Design files** (`design/`, `docs/DESIGN.md`): W3C tokens and a written spec per system (cyberdeck, fusuma) generated from
+  `Theme` and `Palette`, and an OpenPencil/Figma `.fig` bound to them; the workspace tests fail when they are stale
 - [x] Material-style scrollbar: hidden at rest, shown while content moves, faded after 300 ms over 250 ms
 - [x] Per-widget style hooks (`Hooks`)
 - [ ] `dodai-fusuma` in `dodai-ui`: a first adapter exists on an unpushed local branch there; waits for that repo's

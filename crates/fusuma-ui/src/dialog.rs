@@ -383,6 +383,13 @@ impl<const N: usize> Tree<N> {
         if let Some(border) = look.border {
             r.stroke_rect(rect, radius, theme.border_width, border)?;
         }
+        crate::decor::ticks(
+            r,
+            rect,
+            theme.decor.ticks,
+            theme.border_width,
+            theme.colors.primary,
+        )?;
         Ok(())
     }
 }

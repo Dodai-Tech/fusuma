@@ -511,7 +511,11 @@ impl Screen {
         let t = base.scaled(self.scale()).with_motion(self.motion());
         // Grays do not show on a reflective glass, and a shadow is only grays.
         if self.is_reflective() {
-            Theme { elevation: 0, ..t }
+            Theme {
+                elevation: 0,
+                decor: t.decor.flat(),
+                ..t
+            }
         } else {
             t
         }
@@ -673,6 +677,17 @@ mod tests {
             Some(DisplayKind::Reflective)
         );
         assert_eq!(DisplayKind::from_name("lcd"), None);
+    }
+
+    #[test]
+    fn a_reflective_glass_draws_the_cyberdeck_design_in_plain_lines_and_solid_fills() {
+        let eink = Screen::new(296, 128).with_glass(DisplayKind::Reflective, 1, 300);
+        let t = eink.theme(&Theme::CYBERDECK);
+        assert_eq!((t.decor.hatch, t.decor.dots), (0, 0), "no pattern of greys");
+        assert_eq!(t.decor.ticks, Theme::CYBERDECK.decor.ticks, "lines stay");
+        assert_eq!(eink.palette(Palette::CYBERDECK), Palette::PAPER);
+        let lcd = Screen::new(800, 600);
+        assert_eq!(lcd.theme(&Theme::CYBERDECK).decor, Theme::CYBERDECK.decor);
     }
 
     #[test]

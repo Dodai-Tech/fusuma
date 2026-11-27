@@ -255,12 +255,28 @@ impl<M: Clone> View<M> for Checkbox<'_, M> {
 #[derive(Clone, Copy, Debug)]
 pub struct Progress {
     permille: u16,
+    height: Option<u32>,
 }
 
 /// A progress bar.
 #[must_use]
 pub const fn progress(permille: u16) -> Progress {
-    Progress { permille }
+    Progress {
+        permille,
+        height: None,
+    }
+}
+
+impl Progress {
+    /// `px` tall. A design that draws a box-shaped progress round its edge (cyberdeck) does so from here; others show a
+    /// bar in the middle.
+    #[must_use]
+    pub const fn tall(self, px: u32) -> Self {
+        Self {
+            height: Some(px),
+            ..self
+        }
+    }
 }
 
 impl<M: Clone> View<M> for Progress {
@@ -270,7 +286,14 @@ impl<M: Clone> View<M> for Progress {
         parent: Option<NodeId>,
     ) -> Result<NodeId, BuildError> {
         let node = cx.tree.progress_bar(parent, self.permille)?;
-        cx.tree.set_style(node, Style::new().width(Length::Fill(1)));
+        let style = Style::new().width(Length::Fill(1));
+        cx.tree.set_style(
+            node,
+            match self.height {
+                Some(h) => style.height(Length::Fixed(h)),
+                None => style,
+            },
+        );
         Ok(node)
     }
 

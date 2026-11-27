@@ -193,6 +193,14 @@ impl<const N: usize> Tree<N> {
         if let Some(fill) = fill {
             r.fill_rect(rect, look.radius, fill)?;
         }
+        if selected && theme.decor.hatch != 0 {
+            crate::decor::hatch(
+                r,
+                rect,
+                theme.decor.hatch,
+                crate::cyberdeck::hatch_color(theme),
+            )?;
+        }
         let m = Self::measure_icon_text(r, theme, icon, text.as_str());
         let size = m.size();
         let x = centred(rect, size).x;

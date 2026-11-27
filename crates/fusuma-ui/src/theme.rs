@@ -183,6 +183,8 @@ pub struct Theme {
     pub hooks: Hooks,
     /// Lengths are in character cells, not pixels (see [`Theme::CELLS`]): a few widgets measure themselves in cells.
     pub cells: bool,
+    /// Corner ticks, hatch, dotted tracks and a frame progress bar ([`Decor::NONE`](crate::decor::Decor::NONE) in the defaults).
+    pub decor: crate::decor::Decor,
 }
 
 /// A style class: a number a view gives a widget (`.class(..)` in `fusuma`) that the hooks of a design system map to a
@@ -768,8 +770,342 @@ impl Palette {
         },
     };
 
+    /// A warm pink-red on rose-tinted surfaces.
+    pub const ROSE: Self = Self {
+        name: "rose",
+        dark: Colors {
+            background: Color::rgb(18, 11, 11),
+            surface: Color::rgb(27, 20, 20),
+            surface_raised: Color::rgb(43, 33, 34),
+            border: Color::rgb(62, 54, 54),
+            border_strong: Color::rgb(131, 119, 119),
+            text: Color::rgb(245, 240, 241),
+            text_muted: Color::rgb(188, 173, 173),
+            text_disabled: Color::rgb(112, 102, 102),
+            primary: Color::rgb(255, 136, 145),
+            primary_hover: Color::rgb(255, 164, 169),
+            primary_active: Color::rgb(244, 114, 126),
+            on_primary: Color::rgb(35, 7, 10),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(251, 245, 245),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(242, 233, 233),
+            border: Color::rgb(227, 216, 216),
+            border_strong: Color::rgb(131, 119, 119),
+            text: Color::rgb(31, 25, 25),
+            text_muted: Color::rgb(96, 85, 85),
+            text_disabled: Color::rgb(172, 162, 162),
+            primary: Color::rgb(178, 53, 72),
+            primary_hover: Color::rgb(168, 43, 63),
+            primary_active: Color::rgb(151, 23, 50),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(139, 98, 3),
+            info: Color::rgb(0, 108, 186),
+        },
+    };
+    /// Golden amber on warm brown-black surfaces.
+    pub const AMBER: Self = Self {
+        name: "amber",
+        dark: Colors {
+            background: Color::rgb(17, 12, 8),
+            surface: Color::rgb(26, 21, 16),
+            surface_raised: Color::rgb(41, 35, 29),
+            border: Color::rgb(60, 55, 49),
+            border_strong: Color::rgb(128, 121, 113),
+            text: Color::rgb(244, 241, 238),
+            text_muted: Color::rgb(185, 175, 165),
+            text_disabled: Color::rgb(110, 104, 98),
+            primary: Color::rgb(240, 156, 23),
+            primary_hover: Color::rgb(255, 174, 64),
+            primary_active: Color::rgb(221, 141, 0),
+            on_primary: Color::rgb(30, 13, 0),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(249, 246, 242),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(239, 234, 228),
+            border: Color::rgb(224, 217, 210),
+            border_strong: Color::rgb(128, 121, 113),
+            text: Color::rgb(30, 26, 22),
+            text_muted: Color::rgb(93, 87, 80),
+            text_disabled: Color::rgb(170, 163, 157),
+            primary: Color::rgb(145, 91, 2),
+            primary_hover: Color::rgb(134, 84, 0),
+            primary_active: Color::rgb(116, 71, 0),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(139, 98, 3),
+            info: Color::rgb(0, 108, 186),
+        },
+    };
+    /// A fresh green-teal on cool green-tinted surfaces.
+    pub const MINT: Self = Self {
+        name: "mint",
+        dark: Colors {
+            background: Color::rgb(9, 15, 12),
+            surface: Color::rgb(17, 24, 20),
+            surface_raised: Color::rgb(30, 38, 34),
+            border: Color::rgb(51, 58, 54),
+            border_strong: Color::rgb(115, 125, 120),
+            text: Color::rgb(239, 243, 241),
+            text_muted: Color::rgb(167, 181, 174),
+            text_disabled: Color::rgb(99, 107, 103),
+            primary: Color::rgb(57, 206, 148),
+            primary_hover: Color::rgb(79, 222, 164),
+            primary_active: Color::rgb(29, 190, 133),
+            on_primary: Color::rgb(0, 23, 12),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(243, 248, 245),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(230, 237, 233),
+            border: Color::rgb(212, 221, 216),
+            border_strong: Color::rgb(115, 125, 120),
+            text: Color::rgb(23, 28, 25),
+            text_muted: Color::rgb(81, 91, 86),
+            text_disabled: Color::rgb(158, 167, 162),
+            primary: Color::rgb(1, 125, 85),
+            primary_hover: Color::rgb(0, 115, 78),
+            primary_active: Color::rgb(2, 98, 66),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(141, 99, 0),
+            info: Color::rgb(2, 109, 188),
+        },
+    };
+    /// A light, open blue on blue-tinted surfaces.
+    pub const SKY: Self = Self {
+        name: "sky",
+        dark: Colors {
+            background: Color::rgb(8, 14, 18),
+            surface: Color::rgb(17, 23, 27),
+            surface_raised: Color::rgb(30, 37, 42),
+            border: Color::rgb(50, 57, 61),
+            border_strong: Color::rgb(115, 124, 130),
+            text: Color::rgb(239, 242, 245),
+            text_muted: Color::rgb(167, 179, 187),
+            text_disabled: Color::rgb(99, 106, 111),
+            primary: Color::rgb(71, 189, 254),
+            primary_hover: Color::rgb(121, 203, 254),
+            primary_active: Color::rgb(34, 173, 242),
+            on_primary: Color::rgb(0, 20, 34),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(243, 247, 250),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(229, 236, 241),
+            border: Color::rgb(212, 220, 226),
+            border_strong: Color::rgb(115, 124, 130),
+            text: Color::rgb(23, 27, 31),
+            text_muted: Color::rgb(81, 89, 95),
+            text_disabled: Color::rgb(158, 166, 171),
+            primary: Color::rgb(1, 113, 162),
+            primary_hover: Color::rgb(0, 104, 150),
+            primary_active: Color::rgb(2, 89, 128),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(139, 98, 3),
+            info: Color::rgb(0, 108, 186),
+        },
+    };
+    /// Deep blue-violet on indigo-tinted surfaces.
+    pub const INDIGO: Self = Self {
+        name: "indigo",
+        dark: Colors {
+            background: Color::rgb(12, 13, 18),
+            surface: Color::rgb(21, 22, 28),
+            surface_raised: Color::rgb(34, 35, 43),
+            border: Color::rgb(54, 55, 62),
+            border_strong: Color::rgb(120, 122, 131),
+            text: Color::rgb(241, 241, 245),
+            text_muted: Color::rgb(174, 176, 189),
+            text_disabled: Color::rgb(103, 104, 112),
+            primary: Color::rgb(158, 169, 254),
+            primary_hover: Color::rgb(177, 188, 255),
+            primary_active: Color::rgb(139, 150, 255),
+            on_primary: Color::rgb(13, 15, 38),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(246, 246, 251),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(233, 235, 242),
+            border: Color::rgb(216, 218, 227),
+            border_strong: Color::rgb(120, 122, 131),
+            text: Color::rgb(25, 26, 31),
+            text_muted: Color::rgb(86, 87, 96),
+            text_disabled: Color::rgb(162, 164, 172),
+            primary: Color::rgb(85, 90, 194),
+            primary_hover: Color::rgb(77, 81, 184),
+            primary_active: Color::rgb(65, 66, 168),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(141, 99, 0),
+            info: Color::rgb(2, 109, 188),
+        },
+    };
+    /// A quiet blue-grey with the faintest tint, for a calm tool.
+    pub const SLATE: Self = Self {
+        name: "slate",
+        dark: Colors {
+            background: Color::rgb(11, 13, 17),
+            surface: Color::rgb(20, 22, 26),
+            surface_raised: Color::rgb(33, 36, 41),
+            border: Color::rgb(53, 56, 60),
+            border_strong: Color::rgb(119, 123, 128),
+            text: Color::rgb(240, 242, 244),
+            text_muted: Color::rgb(172, 177, 185),
+            text_disabled: Color::rgb(102, 105, 110),
+            primary: Color::rgb(161, 178, 203),
+            primary_hover: Color::rgb(177, 194, 220),
+            primary_active: Color::rgb(146, 163, 187),
+            on_primary: Color::rgb(14, 18, 23),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(245, 247, 249),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(232, 235, 239),
+            border: Color::rgb(215, 219, 224),
+            border_strong: Color::rgb(119, 123, 128),
+            text: Color::rgb(25, 27, 30),
+            text_muted: Color::rgb(85, 88, 93),
+            text_disabled: Color::rgb(161, 165, 170),
+            primary: Color::rgb(90, 106, 129),
+            primary_hover: Color::rgb(82, 97, 120),
+            primary_active: Color::rgb(68, 83, 105),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(139, 98, 3),
+            info: Color::rgb(0, 108, 186),
+        },
+    };
+    /// A strong red on red-tinted surfaces.
+    pub const CRIMSON: Self = Self {
+        name: "crimson",
+        dark: Colors {
+            background: Color::rgb(18, 11, 10),
+            surface: Color::rgb(27, 20, 19),
+            surface_raised: Color::rgb(43, 33, 32),
+            border: Color::rgb(62, 54, 53),
+            border_strong: Color::rgb(131, 119, 118),
+            text: Color::rgb(245, 241, 240),
+            text_muted: Color::rgb(188, 173, 171),
+            text_disabled: Color::rgb(112, 102, 101),
+            primary: Color::rgb(254, 139, 127),
+            primary_hover: Color::rgb(254, 166, 155),
+            primary_active: Color::rgb(245, 117, 105),
+            on_primary: Color::rgb(35, 7, 6),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(251, 245, 244),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(242, 233, 232),
+            border: Color::rgb(227, 216, 214),
+            border_strong: Color::rgb(131, 119, 118),
+            text: Color::rgb(31, 25, 24),
+            text_muted: Color::rgb(96, 85, 84),
+            text_disabled: Color::rgb(172, 162, 160),
+            primary: Color::rgb(179, 56, 49),
+            primary_hover: Color::rgb(168, 46, 40),
+            primary_active: Color::rgb(151, 27, 25),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(191, 58, 57),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(139, 98, 3),
+            info: Color::rgb(0, 108, 186),
+        },
+    };
+    /// A sharp yellow-green on green-tinted surfaces.
+    pub const LIME: Self = Self {
+        name: "lime",
+        dark: Colors {
+            background: Color::rgb(11, 14, 9),
+            surface: Color::rgb(20, 23, 18),
+            surface_raised: Color::rgb(34, 38, 30),
+            border: Color::rgb(54, 57, 51),
+            border_strong: Color::rgb(119, 124, 115),
+            text: Color::rgb(241, 242, 239),
+            text_muted: Color::rgb(173, 180, 168),
+            text_disabled: Color::rgb(102, 106, 99),
+            primary: Color::rgb(141, 197, 79),
+            primary_hover: Color::rgb(156, 213, 96),
+            primary_active: Color::rgb(126, 181, 62),
+            on_primary: Color::rgb(10, 22, 0),
+            danger: Color::rgb(253, 115, 109),
+            success: Color::rgb(90, 197, 118),
+            warning: Color::rgb(240, 177, 53),
+            info: Color::rgb(97, 176, 254),
+        },
+        light: Colors {
+            background: Color::rgb(245, 248, 243),
+            surface: Color::rgb(255, 255, 255),
+            surface_raised: Color::rgb(233, 237, 230),
+            border: Color::rgb(216, 220, 212),
+            border_strong: Color::rgb(119, 124, 115),
+            text: Color::rgb(25, 28, 23),
+            text_muted: Color::rgb(85, 90, 81),
+            text_disabled: Color::rgb(162, 166, 158),
+            primary: Color::rgb(75, 120, 0),
+            primary_hover: Color::rgb(68, 111, 0),
+            primary_active: Color::rgb(58, 95, 0),
+            on_primary: Color::rgb(255, 255, 255),
+            danger: Color::rgb(192, 59, 58),
+            success: Color::rgb(1, 123, 55),
+            warning: Color::rgb(141, 99, 0),
+            info: Color::rgb(2, 109, 188),
+        },
+    };
+
+    /// Near-black with white text and one orange main action: see [`Theme::CYBERDECK`].
+    pub const CYBERDECK: Self = crate::cyberdeck::PALETTE;
+    /// Cyberdeck with a cyan accent.
+    pub const CYBERDECK_CYAN: Self = crate::cyberdeck::CYAN;
+    /// Cyberdeck with an acid-lime accent.
+    pub const CYBERDECK_LIME: Self = crate::cyberdeck::LIME;
+    /// Cyberdeck with a magenta accent.
+    pub const CYBERDECK_MAGENTA: Self = crate::cyberdeck::MAGENTA;
+    /// Cyberdeck with an amber accent.
+    pub const CYBERDECK_AMBER: Self = crate::cyberdeck::AMBER;
+    /// Cyberdeck with a violet accent.
+    pub const CYBERDECK_VIOLET: Self = crate::cyberdeck::VIOLET;
+
     /// Every palette, the default first: the order a switcher steps through.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 21] = [
         Self::FUSUMA,
         Self::FOREST,
         Self::OCEAN,
@@ -777,8 +1113,21 @@ impl Palette {
         Self::VIOLET,
         Self::EMBER,
         Self::GRAPHITE,
+        Self::ROSE,
+        Self::AMBER,
+        Self::MINT,
+        Self::SKY,
+        Self::INDIGO,
+        Self::SLATE,
+        Self::CRIMSON,
+        Self::LIME,
+        Self::CYBERDECK,
+        Self::CYBERDECK_CYAN,
+        Self::CYBERDECK_LIME,
+        Self::CYBERDECK_MAGENTA,
+        Self::CYBERDECK_AMBER,
+        Self::CYBERDECK_VIOLET,
     ];
-
     /// The palette called `name`.
     #[must_use]
     pub fn named(name: &str) -> Option<&'static Self> {
@@ -797,6 +1146,25 @@ impl Palette {
     #[must_use]
     pub const fn colors(&self, dark: bool) -> Colors {
         if dark { self.dark } else { self.light }
+    }
+
+    /// Whether this is a cyberdeck palette (`cyberdeck` or `cyberdeck-<accent>`), which comes with a design of its own ([`Theme::CYBERDECK`]: ticks, hatch, mono
+    /// text) and not only colours.
+    #[must_use]
+    pub const fn is_cyberdeck(&self) -> bool {
+        let (a, b) = (self.name.as_bytes(), Self::CYBERDECK.name.as_bytes());
+        if a.len() < b.len() {
+            return false;
+        }
+        let mut i = 0;
+        while i < b.len() {
+            if a[i] != b[i] {
+                return false;
+            }
+            i += 1;
+        }
+        // "cyberdeck" itself or "cyberdeck-<accent>".
+        a.len() == b.len() || a[b.len()] == b'-'
     }
 
     /// This palette's own main action, as an accent.
@@ -889,7 +1257,7 @@ impl Default for Palette {
 
 impl Accent {
     /// Every palette's main action, in the palettes' order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 21] = [
         Palette::FUSUMA.accent(),
         Palette::FOREST.accent(),
         Palette::OCEAN.accent(),
@@ -897,8 +1265,21 @@ impl Accent {
         Palette::VIOLET.accent(),
         Palette::EMBER.accent(),
         Palette::GRAPHITE.accent(),
+        Palette::ROSE.accent(),
+        Palette::AMBER.accent(),
+        Palette::MINT.accent(),
+        Palette::SKY.accent(),
+        Palette::INDIGO.accent(),
+        Palette::SLATE.accent(),
+        Palette::CRIMSON.accent(),
+        Palette::LIME.accent(),
+        Palette::CYBERDECK.accent(),
+        Palette::CYBERDECK_CYAN.accent(),
+        Palette::CYBERDECK_LIME.accent(),
+        Palette::CYBERDECK_MAGENTA.accent(),
+        Palette::CYBERDECK_AMBER.accent(),
+        Palette::CYBERDECK_VIOLET.accent(),
     ];
-
     /// The accent called `name`.
     #[must_use]
     pub fn named(name: &str) -> Option<&'static Self> {
@@ -1071,7 +1452,12 @@ impl Theme {
         },
         hooks: Hooks::NONE,
         cells: false,
+        decor: crate::decor::Decor::NONE,
     };
+
+    /// The cyberdeck design: near-black, mono text, one orange accent, outlines and decoration, square corners. Colours are
+    /// [`Palette::CYBERDECK`]'s dark ones; use [`with_colors`](Self::with_colors) for the light.
+    pub const CYBERDECK: Self = crate::cyberdeck::THEME;
 
     /// The dark default measured in character cells, for a text UI: a cell is the unit of every length (a line is 1,
     /// a gap is 1 column), outlines are a cell, corners are square. Draw it with
@@ -1590,7 +1976,7 @@ mod tests {
         let e = std::format!("{}", ThemeError::UnknownPalette("green"));
         assert_eq!(
             e,
-            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet, ember, graphite"
+            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime, cyberdeck, cyberdeck-cyan, cyberdeck-lime, cyberdeck-magenta, cyberdeck-amber, cyberdeck-violet"
         );
     }
 
@@ -1605,12 +1991,52 @@ mod tests {
         assert_eq!(
             names,
             [
-                "fusuma", "forest", "ocean", "petrol", "violet", "ember", "graphite"
+                "fusuma",
+                "forest",
+                "ocean",
+                "petrol",
+                "violet",
+                "ember",
+                "graphite",
+                "rose",
+                "amber",
+                "mint",
+                "sky",
+                "indigo",
+                "slate",
+                "crimson",
+                "lime",
+                "cyberdeck",
+                "cyberdeck-cyan",
+                "cyberdeck-lime",
+                "cyberdeck-magenta",
+                "cyberdeck-amber",
+                "cyberdeck-violet"
             ]
         );
         let mut p = &Palette::ALL[0];
         for want in [
-            "forest", "ocean", "petrol", "violet", "ember", "graphite", "fusuma",
+            "forest",
+            "ocean",
+            "petrol",
+            "violet",
+            "ember",
+            "graphite",
+            "rose",
+            "amber",
+            "mint",
+            "sky",
+            "indigo",
+            "slate",
+            "crimson",
+            "lime",
+            "cyberdeck",
+            "cyberdeck-cyan",
+            "cyberdeck-lime",
+            "cyberdeck-magenta",
+            "cyberdeck-amber",
+            "cyberdeck-violet",
+            "fusuma",
         ] {
             p = p.next();
             assert_eq!(p.name, want);
@@ -1644,7 +2070,27 @@ mod tests {
         assert_eq!(
             Accent::ALL.map(|a| a.name),
             [
-                "fusuma", "forest", "ocean", "petrol", "violet", "ember", "graphite"
+                "fusuma",
+                "forest",
+                "ocean",
+                "petrol",
+                "violet",
+                "ember",
+                "graphite",
+                "rose",
+                "amber",
+                "mint",
+                "sky",
+                "indigo",
+                "slate",
+                "crimson",
+                "lime",
+                "cyberdeck",
+                "cyberdeck-cyan",
+                "cyberdeck-lime",
+                "cyberdeck-magenta",
+                "cyberdeck-amber",
+                "cyberdeck-violet"
             ]
         );
     }
