@@ -37,7 +37,7 @@ active_low = true
 
 [firmware]
 chip = "esp32c6"
-flash_mb = 4
+flash_mb = 8
 
 [hardware]
 ram_kb = 512
