@@ -279,6 +279,18 @@ impl<A: App> Shell<A> {
         self.app.changed()
     }
 
+    /// Draws what is inside the surfaces over what the host put there (see [`App::paint_above`]).
+    ///
+    /// # Errors
+    /// The renderer's error.
+    pub fn paint_above<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        self.app.paint_above(renderer, region)
+    }
+
     /// The layers of the picture (see [`App::layers`]): after a frame, the host fills the surfaces that
     /// [`LayerPlan::stale`](crate::LayerPlan::stale) lists for the rectangle the frame returned.
     #[must_use]

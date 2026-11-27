@@ -701,6 +701,9 @@ pub struct Tree<const N: usize> {
     pub(crate) pieces: crate::pieces::Pieces,
     /// The rectangles the last frame drew, cut to the screen.
     pub(crate) drawn: crate::pieces::Pieces,
+    /// Whether a host fills the surfaces and then calls `paint_above`: the children of a surface are then left out of the
+    /// normal pass and drawn over what the host put there. Off (the default) they are drawn in tree order like any others.
+    pub(crate) host_surfaces: bool,
     /// What really changed in the last frame, cut to the screen: the rectangle a renderer that draws everything each
     /// frame (the GPU) needs to read back and show, though it drew it all.
     pub(crate) changed: Option<Rect>,
@@ -763,6 +766,7 @@ impl<const N: usize> Tree<N> {
             pieces: crate::pieces::Pieces::new(),
             drawn: crate::pieces::Pieces::new(),
             changed: None,
+            host_surfaces: false,
             rest: None,
             shift: None,
             shift_laid: false,
@@ -938,7 +942,11 @@ impl<const N: usize> Tree<N> {
                 let i = self.slot(p).ok_or(BuildError::NoSuchParent)?;
                 if !matches!(
                     self.nodes[i].kind,
-                    Kind::Stack(_) | Kind::Flow { .. } | Kind::Scroll { .. } | Kind::Dialog { .. }
+                    Kind::Stack(_)
+                        | Kind::Flow { .. }
+                        | Kind::Scroll { .. }
+                        | Kind::Dialog { .. }
+                        | Kind::Surface { .. }
                 ) {
                     return Err(BuildError::NotContainer);
                 }

@@ -1,11 +1,16 @@
 //! The layers of a picture, back to front: what the toolkit draws and the places a host fills itself.
 //!
-//! The toolkit draws the whole interface as one layer (`LayerKind::Ui`). A host that has content the toolkit cannot
-//! draw (a video, a camera, a map, a native widget, a 3D view) puts a *surface* in the tree (`Tree::surface`): a node
-//! that takes room like any other and draws nothing. The plan lists the surfaces, in tree order, over the interface layer.
-//! After a frame the host fills the surfaces that the frame drew around or over (`LayerPlan::stale`), and fills one
-//! that changed by itself after it calls `Tree::surface_changed`, which makes that rectangle part of the next frame's
-//! damage. The same plan tells a GPU host which parts it may keep from the last frame.
+//! The toolkit draws the interface as one layer (`LayerKind::Ui`). A host that has content the toolkit cannot draw (a
+//! video, a camera, a map, a native widget, a 3D view) puts a *surface* in the tree (`Tree::surface`): a node that takes
+//! room like any other and draws nothing itself. The plan lists, back to front: the interface, then each surface in
+//! tree order (`LayerKind::Surface`), each followed by what the app put *inside* it (`LayerKind::Over`: the controls of a
+//! player, a caption), drawn over what the host shows.
+//!
+//! A host that fills surfaces calls `Tree::set_host_surfaces(true)`. After the interface is drawn it fills the surfaces
+//! that the frame drew around or over (`LayerPlan::stale`) and puts the pixels in the picture, then asks for the layers
+//! over them (`Tree::paint_above`). A surface that changed by itself calls `Tree::surface_changed`, which makes its
+//! rectangle part of the next frame's damage. A host that does not fill surfaces leaves the flag off, and what is
+//! inside a surface is drawn in tree order with the rest. A surface inside another one's children is not supported.
 
 use fusuma_render::Rect;
 
@@ -14,6 +19,9 @@ use crate::tree::{BuildError, Flags, Kind, NodeId, Style, Tree};
 /// The most surfaces a plan lists. More are left out (`LayerPlan::left_out` says how many).
 pub const MAX_SURFACES: usize = 8;
 
+/// The most layers a plan holds: the interface, and a surface and what is over it for each.
+const MAX_LAYERS: usize = 2 * MAX_SURFACES + 1;
+
 /// What a layer is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayerKind {
@@ -21,6 +29,8 @@ pub enum LayerKind {
     Ui,
     /// A place the host fills: the id the app gave it.
     Surface(u32),
+    /// What the app drew inside surface `id`, over what the host shows there (empty when the surface has no children).
+    Over(u32),
 }
 
 /// One layer and where it is.
@@ -35,7 +45,7 @@ pub struct Layer {
 /// The layers of the current picture, back to front: the interface first, then the surfaces in tree order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LayerPlan {
-    layers: [Layer; MAX_SURFACES + 1],
+    layers: [Layer; MAX_LAYERS],
     len: usize,
     left_out: usize,
 }
@@ -48,8 +58,7 @@ impl LayerPlan {
             kind: LayerKind::Ui,
             rect: screen,
         };
-        let mut layers = [empty; MAX_SURFACES + 1];
-        layers[0] = empty;
+        let layers = [empty; MAX_LAYERS];
         Self {
             layers,
             len: 1,
@@ -57,9 +66,10 @@ impl LayerPlan {
         }
     }
 
-    /// Adds a surface over the layers so far. Beyond [`MAX_SURFACES`] it is counted and left out.
-    pub fn push_surface(&mut self, id: u32, rect: Rect) {
-        if self.len > MAX_SURFACES {
+    /// Adds a surface over the layers so far, and over it what the app put inside it when `over` is set. Beyond
+    /// [`MAX_SURFACES`] it is counted and left out.
+    pub fn push_surface(&mut self, id: u32, rect: Rect, over: bool) {
+        if self.surfaces().count() >= MAX_SURFACES {
             self.left_out += 1;
             return;
         }
@@ -68,6 +78,13 @@ impl LayerPlan {
             rect,
         };
         self.len += 1;
+        if over {
+            self.layers[self.len] = Layer {
+                kind: LayerKind::Over(id),
+                rect,
+            };
+            self.len += 1;
+        }
     }
 
     /// The layers, back to front.
@@ -78,7 +95,16 @@ impl LayerPlan {
 
     /// The surfaces, in tree order.
     pub fn surfaces(&self) -> impl Iterator<Item = &Layer> {
-        self.layers().iter().skip(1)
+        self.layers()
+            .iter()
+            .filter(|l| matches!(l.kind, LayerKind::Surface(_)))
+    }
+
+    /// The layers over a surface (what the app put inside it), in tree order.
+    pub fn overs(&self) -> impl Iterator<Item = &Layer> {
+        self.layers()
+            .iter()
+            .filter(|l| matches!(l.kind, LayerKind::Over(_)))
     }
 
     /// The surfaces a frame that redrew `region` has to be filled again: the interface was drawn around or over them.
@@ -126,6 +152,73 @@ impl<const N: usize> Tree<N> {
         self.add(parent, Kind::Surface { id }, style)
     }
 
+    /// Says whether a host fills the surfaces and calls [`paint_above`](Self::paint_above) after each frame. When it does,
+    /// what is inside a surface is left out of the normal pass (the host's pixels would cover it); when it does not (the
+    /// default), it is drawn in tree order with the rest.
+    pub fn set_host_surfaces(&mut self, on: bool) {
+        if self.host_surfaces != on {
+            self.host_surfaces = on;
+            if let Some(r) = self.root.map(usize::from) {
+                let rect = self.nodes[r].rect;
+                self.add_damage(rect);
+                self.request(r, Flags::PAINT);
+            }
+        }
+    }
+
+    /// Draws what is inside each surface that overlaps `region`, over what the host put there: call it after the surfaces
+    /// were filled, with the rectangle the frame (and the filled surfaces) covered. A surface in a scrolling list is drawn
+    /// inside the list's edges.
+    ///
+    /// # Errors
+    /// The renderer's error.
+    pub fn paint_above<R: fusuma_render::Renderer>(
+        &self,
+        r: &mut R,
+        theme: &crate::theme::Theme,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        if !self.host_surfaces {
+            return Ok(());
+        }
+        let Some(root) = self.root.map(usize::from) else {
+            return Ok(());
+        };
+        let mut at = Some(root);
+        while let Some(i) = at {
+            if self.nodes[i].hidden {
+                at = self.next_after(i, root);
+                continue;
+            }
+            if matches!(self.nodes[i].kind, Kind::Surface { .. }) && self.nodes[i].first.is_some() {
+                let mut visible = self.nodes[i].rect;
+                let mut up = self.nodes[i].parent.map(usize::from);
+                while let Some(p) = up {
+                    if matches!(self.nodes[p].kind, Kind::Scroll { .. }) {
+                        visible = visible.intersect(&self.nodes[p].rect);
+                    }
+                    up = self.nodes[p].parent.map(usize::from);
+                }
+                let seen = visible.intersect(&region);
+                if !seen.is_empty() {
+                    r.save()?;
+                    let done = r
+                        .clip(seen)
+                        .and_then(|()| self.paint_walk(i, r, theme, Some(seen)));
+                    let back = r.restore();
+                    done?;
+                    back?;
+                }
+            }
+            at = self.nodes[i]
+                .first
+                .map(usize::from)
+                .filter(|_| !matches!(self.nodes[i].kind, Kind::Surface { .. }))
+                .or_else(|| self.next_after(i, root));
+        }
+        Ok(())
+    }
+
     /// Says that what the host shows in surface `id` changed: its rectangle is part of the next frame, so a host that
     /// fills the stale surfaces after the frame fills this one. Does nothing for a name that is not in the tree.
     pub fn surface_changed(&mut self, id: u32) {
@@ -157,7 +250,7 @@ impl<const N: usize> Tree<N> {
             if let Kind::Surface { id } = n.kind {
                 let r = n.rect.intersect(&screen);
                 if !r.is_empty() {
-                    plan.push_surface(id, r);
+                    plan.push_surface(id, r, n.first.is_some());
                 }
             }
             at = n

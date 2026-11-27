@@ -163,23 +163,30 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   last eight presents, a buffer of age `n` is given the union of the last `n` (age 0 or older than the history: all), and the
   window system is told this present's rectangle alone. Before, the whole picture was copied and presented every frame. A
   three-buffer swap-chain test checks every buffer equals the picture after every step
-- [x] **The GPU draws everything but hands on only what changed** (`Tree::changed`, `App::changed`, `Shell::changed`;
-  `GpuScene::set_damage` reads back only that rectangle): the read-back was the whole picture every frame (1024x600 here);
-  a hover on one row now reads back that row. A test compares the GPU picture with the CPU one after four page changes
+- [x] **A persistent GPU target** (`GpuScene`): the picture lives in the scene's own texture, a frame draws only the new
+  commands over it (`TargetInit::SrcOver`, the same rule the CPU scene follows: the scene is emptied after each render and
+  keeps its transform, paint and open clips), the damage rectangles narrow what is copied back to the CPU, and a scroll moves
+  the rows with a texture copy (`shift`, through a scratch texture: a texture cannot be copied onto itself) so only the strip
+  that came in is drawn. `retains_picture` is true again for the GPU: the whole-screen redraw is gone, and with it the
+  `changed` workaround. Before, I wrote that `vello_gpu` has no load operation: it has (`RenderOptions::target_init`). Tests:
+  a partial frame equals the whole picture, a translucent fill is drawn once, a shift down and up equals a redraw, GPU against
+  CPU after page changes, a close of a dialog, and 12 wheel turns across four pages
+- [x] **Web and a GPU swap chain need no buffer age**: because the scene keeps the picture, `present` copies the whole texture
+  into the swap chain image (on the GPU) and the toolkit draws only what changed. A surface that has no age (`wgpu`, a canvas)
+  is therefore never partly stale; the desktop CPU window keeps the age history, because there the buffer is the picture
 - [x] **A layer plan** (`LayerPlan`, `Tree::layers`, `App::layers`, `Shell::layers`; the idea is Xilem's `VisualLayerPlan`,
-  back-to-front layers with external placeholders the host fills): the interface is one layer, a `Kind::Surface` node
-  (`Tree::surface`, the `host_surface(id)` view) is a place the host fills (video, camera, map, a native view). It takes room,
-  draws nothing, is listed in tree order, is left out while hidden. After a frame the host fills `plan.stale(region)`; a surface
-  that changed by itself calls `Tree::surface_changed(id)` and joins the next frame's damage. Desktop: `run_with_surfaces(make,
-  options, fill)` and `Canvas::put`. The first node kind added by a component-level feature: a host-owned region cannot be a
-  spacer, because nothing could tell the host where it is
-- [ ] A **persistent GPU target that is drawn into only where it changed** (load the last frame, scissor to the damage): needs
-  a load operation in `vello_gpu`, which its `RenderOptions` does not have; until then the GPU draws the whole scene and only
-  the read-back and the present are narrowed. Needs a real GPU window and a profile to know it matters
-- [ ] **Buffer age and damage on the web and on a GPU swap chain** (`wgpu` `Surface` has no age; a canvas has none): the GPU
-  host would keep its own history as the desktop CPU one does
-- [ ] A surface **above** the interface (a video with controls over it needs the interface drawn with a hole): the plan has one
-  order, interface then surfaces
+  back-to-front layers with external placeholders the host fills), now with order above the host: `Ui`, then for each surface
+  `Surface(id)` and, when the app put something inside it, `Over(id)`. `host_surface(id).size(..).over((children))` is a surface
+  whose children are laid out as a column over what the host shows (a player's controls, a caption). A host that fills surfaces
+  says so (`App::host_surfaces`, `Tree::set_host_surfaces`): the interface pass leaves the inside of a surface out, the host
+  fills the stale surfaces (`plan.stale(region)`) and draws them into the picture as opaque images, and `paint_above` draws what
+  is inside, clipped to a scrolling parent. A host that does not fill surfaces leaves the flag off and the children are drawn in
+  tree order. Desktop: `run_with_surfaces(make, options, fill)` and `Canvas::frame_with`, the same on the CPU and the GPU
+  renderer. A surface that changed by itself calls `Tree::surface_changed(id)`. Not supported: a surface inside another one's
+  children; a dialog above a surface is drawn in its own order (a dialog's scrim is under what is over a surface)
+- [ ] A **native GPU texture** for a surface (a video decoder's frame as a `wgpu` texture, no copy through the CPU): the
+  surface pixels go through a copy now; Vello can draw an external texture (`ImageSource::external_texture`), the plan has the
+  place for it
 - [ ] A `Retained | Full` capability in place of the boolean, if a third kind of renderer needs it (not Iced's `Hinted`: neither
   source needs it)
 - [x] **Audit of the renderer layer** (all five crates): line coverage 96.8 % (`cargo llvm-cov`: integer 96 to 99 %, vello-cpu 99 %,

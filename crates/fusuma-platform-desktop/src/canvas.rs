@@ -27,6 +27,7 @@ pub struct Canvas {
     width: u32,
     height: u32,
     frame: Vec<u32>,
+    bufs: Bufs,
     backend: Backend,
 }
 
@@ -57,6 +58,7 @@ impl Canvas {
             width,
             height,
             frame: vec![0; (width as usize) * (height as usize)],
+            bufs: Bufs::default(),
             backend,
         })
     }
@@ -79,15 +81,34 @@ impl Canvas {
     /// One frame of the shell: time passes, the app draws what changed, and that part of the picture is
     /// updated. Returns the redrawn rectangle, or `None` when nothing changed.
     pub fn frame<A: App>(&mut self, shell: &mut Shell<A>, now_ms: u64) -> Option<Rect> {
+        self.frame_with(shell, now_ms, None)
+    }
+
+    /// Like [`frame`](Self::frame), with `fill` for the surfaces of the app's layer plan (see `fusuma::LayerPlan`): after the
+    /// interface is drawn, every surface it was drawn around or over is filled by `fill` and put in the picture, and then what
+    /// the app put inside the surfaces is drawn over it. The app is told the host fills its surfaces (`App::host_surfaces`),
+    /// so what is inside a surface is not drawn under the host's pixels. The pixels the host writes are opaque.
+    pub fn frame_with<A: App>(
+        &mut self,
+        shell: &mut Shell<A>,
+        now_ms: u64,
+        mut fill: Option<&mut crate::FillSurface>,
+    ) -> Option<Rect> {
+        shell.app.host_surfaces(fill.is_some());
         let (width, frame) = (self.width, &mut self.frame);
+        let bufs = &mut self.bufs;
         match &mut self.surface {
             Surface::Cpu(r) => {
                 let r: &mut VelloCpu = r;
                 r.with_scene(vello_cpu::Scene::reset);
-                let region = log_err(shell.frame(now_ms, r))?;
+                let drawn = log_err(shell.frame(now_ms, r))?;
                 // Only what changed is rasterised: the toolkit announced each separate rectangle itself, and a
                 // single one is announced here.
                 let single = shell.frame_rects().len() < 2;
+                let region = match fill.as_mut() {
+                    Some(f) => compose(shell, r, drawn, f, bufs, single),
+                    None => drawn,
+                };
                 r.with_scene(|s| {
                     if single {
                         vello_cpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
@@ -100,11 +121,16 @@ impl Canvas {
                 let r: &mut VelloGpu = r;
                 r.with_scene(vello_gpu::Scene::reset);
                 let drawn = log_err(shell.frame(now_ms, r))?;
-                // The GPU drew the whole screen, but only what changed is read back and handed on.
-                let region = shell.changed().map_or(drawn, |c| c.intersect(&drawn));
-                let region = if region.is_empty() { drawn } else { region };
+                // The scene keeps its picture, draws only what changed over it and reads back only that.
+                let single = shell.frame_rects().len() < 2;
+                let region = match fill.as_mut() {
+                    Some(f) => compose(shell, r, drawn, f, bufs, single),
+                    None => drawn,
+                };
                 r.with_scene(|s| {
-                    vello_gpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
+                    if single {
+                        vello_gpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
+                    }
                     blit(s.pixels(), width, region, frame);
                 });
                 Some(region)
@@ -113,29 +139,58 @@ impl Canvas {
     }
 }
 
-impl Canvas {
-    /// Puts pixels the host made into the picture, in the surface at `rect` (see `LayerPlan`): `pixels` is `rect.w` x
-    /// `rect.h`, `0x00RRGGBB`, row by row. What lies outside the picture is cut off; a buffer that is too short fills
-    /// what it covers.
-    pub fn put(&mut self, rect: Rect, pixels: &[u32]) {
-        let w = self.width as usize;
-        let rw = rect.w as usize;
-        if w == 0 || rw == 0 {
-            return;
+/// The buffers a surface is filled through.
+#[derive(Debug, Default)]
+struct Bufs {
+    pixels: Vec<u32>,
+    rgba: Vec<u8>,
+}
+
+/// Fills every surface that the frame drew around or over, puts it in the picture, and draws what is inside the surfaces over
+/// it. Returns the rectangle that changed: the frame's, and the surfaces.
+fn compose<A: App, R: fusuma::render::Renderer>(
+    shell: &mut Shell<A>,
+    r: &mut R,
+    drawn: Rect,
+    fill: &mut crate::FillSurface,
+    bufs: &mut Bufs,
+    single: bool,
+) -> Rect {
+    let Some(plan) = shell.layers() else {
+        return drawn;
+    };
+    let mut total = drawn;
+    let mut any = false;
+    let stale: Vec<_> = plan.stale(drawn).map(|l| (l.kind, l.rect)).collect();
+    for (kind, rect) in stale {
+        let fusuma::LayerKind::Surface(id) = kind else {
+            continue;
+        };
+        let (w, h) = (rect.w as usize, rect.h as usize);
+        bufs.pixels.clear();
+        bufs.pixels.resize(w * h, 0);
+        fill(id, rect, &mut bufs.pixels);
+        bufs.rgba.clear();
+        for p in &bufs.pixels {
+            bufs.rgba
+                .extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]);
         }
-        for (row, line) in pixels.chunks(rw).enumerate() {
-            let y = rect.y + row as i32;
-            if y < 0 || y as usize >= self.height as usize {
-                continue;
-            }
-            for (col, &p) in line.iter().enumerate() {
-                let x = rect.x + col as i32;
-                if x >= 0 && (x as usize) < w {
-                    self.frame[y as usize * w + x as usize] = p;
-                }
-            }
+        let Some(image) = fusuma::render::Image::new(rect.w, rect.h, &bufs.rgba) else {
+            continue;
+        };
+        if !single {
+            r.will_draw(rect);
         }
+        if let Err(e) = r.draw_image(&image, fusuma::render::Point::new(rect.x, rect.y)) {
+            log::error!("a surface could not be drawn: {e:?}");
+        }
+        total = total.union(&rect);
+        any = true;
     }
+    if any && let Err(e) = shell.paint_above(r, total) {
+        log::error!("what is over a surface could not be drawn: {e:?}");
+    }
+    total
 }
 
 fn log_err<T, E: core::fmt::Debug>(r: Result<Option<T>, E>) -> Option<T> {
@@ -216,22 +271,6 @@ mod tests {
         blit(&src, 0, Rect::new(0, 0, 4, 3), &mut dst);
         blit(&src, 4, Rect::new(i32::MAX, i32::MAX, 5, 5), &mut dst);
         blit(&src, 4, Rect::new(i32::MIN, 0, 9, 9), &mut dst);
-    }
-
-    #[test]
-    fn put_writes_a_surface_into_the_picture_and_cuts_it_to_the_edges() {
-        let mut canvas = Canvas::new(Backend::VelloCpu, 8, 6, FontSet::default()).unwrap();
-        canvas.put(Rect::new(2, 1, 3, 2), &[1, 2, 3, 4, 5, 6]);
-        let p = canvas.pixels();
-        assert_eq!(p[8 + 2..8 + 5], [1, 2, 3]);
-        assert_eq!(p[16 + 2..16 + 5], [4, 5, 6]);
-        assert_eq!(p[8 + 5], 0);
-        // Half outside, a short buffer and an empty rectangle do not panic.
-        canvas.put(Rect::new(-1, -1, 3, 3), &[9; 9]);
-        canvas.put(Rect::new(6, 4, 5, 5), &[7; 3]);
-        canvas.put(Rect::new(0, 0, 0, 4), &[1, 2]);
-        assert_eq!(canvas.pixels()[0], 9);
-        assert_eq!(canvas.pixels()[4 * 8 + 6], 7);
     }
 
     fn showcase_canvas(backend: Backend) -> Option<(Canvas, Shell<Showcase>)> {
@@ -399,7 +438,121 @@ mod tests {
         }
     }
 
+    /// Closing a dialog: after every frame of the fade the window's picture is what the CPU draws, and at the end nothing of
+    /// the dialog is left.
+    fn closing_a_dialog_leaves_nothing(backend: Backend) {
+        let Some((mut c, mut s)) = showcase_canvas(backend) else {
+            return;
+        };
+        let (mut cpu, mut cs) = showcase_canvas(Backend::VelloCpu).unwrap();
+        for (canvas, shell) in [(&mut c, &mut s), (&mut cpu, &mut cs)] {
+            canvas.frame(shell, 0);
+        }
+        let mut now = 0;
+        let mut step = |c: &mut Canvas,
+                        s: &mut Shell<Showcase>,
+                        cpu: &mut Canvas,
+                        cs: &mut Shell<Showcase>,
+                        n: u32| {
+            for _ in 0..n {
+                now += 16;
+                c.frame(s, now);
+                cpu.frame(cs, now);
+            }
+        };
+        s.app.ask_delete();
+        cs.app.ask_delete();
+        step(&mut c, &mut s, &mut cpu, &mut cs, 30);
+        let cancel = s.app.dialog_nodes()[1].unwrap();
+        let r = s.app.rect_of(cancel).unwrap();
+        let at = Point::new(r.x + 4, r.y + 4);
+        for sh in [&mut s, &mut cs] {
+            sh.input(fusuma::Input::Pointer(Pointer::Down(at)));
+            sh.input(fusuma::Input::Pointer(Pointer::Up(at)));
+        }
+        for n in 0..30 {
+            step(&mut c, &mut s, &mut cpu, &mut cs, 1);
+            let apart = c
+                .pixels()
+                .iter()
+                .zip(cpu.pixels())
+                .filter(|(g, p)| {
+                    [16, 8, 0]
+                        .iter()
+                        .any(|k| ((**g >> k) & 255).abs_diff((**p >> k) & 255) > 40)
+                })
+                .count();
+            assert!(
+                apart * 200 < cpu.pixels().len(),
+                "{apart} pixels apart {n} frames into the close"
+            );
+        }
+    }
+
+    #[test]
+    fn closing_a_dialog_leaves_nothing_on_the_cpu() {
+        closing_a_dialog_leaves_nothing(Backend::VelloCpu);
+    }
+
+    #[test]
+    fn closing_a_dialog_leaves_nothing_on_the_gpu() {
+        closing_a_dialog_leaves_nothing(Backend::VelloGpu);
+    }
+
+    /// Scrolling on the GPU moves the kept picture and draws the strip that came in: the window shows what the CPU shows.
+    #[test]
+    fn scrolling_on_the_gpu_matches_the_cpu() {
+        let Some((mut gpu, mut gs)) = showcase_canvas(Backend::VelloGpu) else {
+            eprintln!("no GPU here, skipped");
+            return;
+        };
+        let (mut cpu, mut cs) = showcase_canvas(Backend::VelloCpu).unwrap();
+        gpu.frame(&mut gs, 0).unwrap();
+        cpu.frame(&mut cs, 0).unwrap();
+        let mut now = 0;
+        for k in [0usize, 3, 5, 8] {
+            let page = fusuma_showcase::Page::ALL[k];
+            for (canvas, shell) in [(&mut gpu, &mut gs), (&mut cpu, &mut cs)] {
+                let row = shell.app.sidebar_item(page).unwrap();
+                let r = shell.app.rect_of(row).unwrap();
+                let at = Point::new(r.x + 4, r.y + 4);
+                shell.input(fusuma::Input::Pointer(Pointer::Down(at)));
+                shell.input(fusuma::Input::Pointer(Pointer::Up(at)));
+                for step in 1..=20 {
+                    canvas.frame(shell, now + step * 50);
+                }
+            }
+            now += 1000;
+            let centre = Point::new(600, 300);
+            for turn in 0..12 {
+                let dy = if turn < 8 { 37 } else { -53 };
+                for (canvas, shell) in [(&mut gpu, &mut gs), (&mut cpu, &mut cs)] {
+                    shell.input(fusuma::Input::Pointer(Pointer::Wheel(centre, dy)));
+                    for step in 1..=3 {
+                        canvas.frame(shell, now + step * 16);
+                    }
+                }
+                now += 100;
+                let apart = gpu
+                    .pixels()
+                    .iter()
+                    .zip(cpu.pixels())
+                    .filter(|(g, c)| {
+                        [16, 8, 0]
+                            .iter()
+                            .any(|s| ((**g >> s) & 255).abs_diff((**c >> s) & 255) > 40)
+                    })
+                    .count();
+                assert!(
+                    apart * 100 < cpu.pixels().len(),
+                    "{apart} pixels apart on page {k}, turn {turn}"
+                );
+            }
+        }
+    }
+
     /// The GPU draws the whole screen for every frame, but hands on only what changed.
+
     #[test]
     fn a_gpu_frame_reports_only_what_changed() {
         let Some((mut gpu, mut gs)) = showcase_canvas(Backend::VelloGpu) else {

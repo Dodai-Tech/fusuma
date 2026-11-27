@@ -136,7 +136,8 @@ fn frame(state: &Shared) {
                 }
             }
             Gfx::Gpu(gpu) => {
-                // The GPU scene starts every frame from nothing; it says so, and the toolkit draws all of it.
+                // The scene keeps its picture in its own texture and draws only what changed over it; the swap chain needs
+                // no history, because each present copies the whole texture (on the GPU).
                 gpu.renderer.with_scene(vello_gpu::Scene::reset);
                 if matches!(s.shell.frame(now, &mut gpu.renderer), Ok(Some(_))) {
                     use wgpu::CurrentSurfaceTexture::{Suboptimal, Success};

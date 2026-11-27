@@ -2,8 +2,8 @@
 //! The layer plan: a surface is a node the host fills. It takes room, draws nothing, is listed in tree order, is left
 //! out while hidden, and one that changed is part of the next frame.
 
-use fusuma::{Host, LayerKind, Length, View, button, column, host_surface, row};
-use fusuma_render::Rect;
+use fusuma::{Host, LayerKind, Length, View, button, column, host_surface, row, spacer};
+use fusuma_render::{Color, Probe, Rect, Renderer};
 use fusuma_render_integer::{Embedded, Frame};
 use fusuma_ui::{Style, Theme, Tree};
 
@@ -111,8 +111,113 @@ fn a_hidden_surface_is_not_listed_and_a_rebuilt_one_follows_its_view() {
 fn a_surface_that_does_not_fit_in_the_plan_is_counted() {
     let mut plan = fusuma::LayerPlan::ui(BOUNDS);
     for i in 0..(fusuma::MAX_SURFACES + 3) {
-        plan.push_surface(i as u32, Rect::new(0, 0, 1, 1));
+        plan.push_surface(i as u32, Rect::new(0, 0, 1, 1), false);
     }
     assert_eq!(plan.surfaces().count(), fusuma::MAX_SURFACES);
     assert_eq!(plan.left_out(), 3);
+}
+
+/// A player: a surface with a button inside it, at the bottom.
+fn player() -> impl View<()> {
+    host_surface(3)
+        .size(Length::Fixed(200), Length::Fixed(120))
+        .over((spacer(), button("Play")))
+}
+
+fn player_tree(host_fills: bool) -> (Tree<64>, Host<(), 16>, Screen) {
+    let mut tree = Tree::new();
+    let mut host = Host::<(), 16>::new();
+    tree.column(None, Style::new()).unwrap();
+    let root = tree.root_id();
+    host.sync(&mut tree, root, &player()).unwrap();
+    tree.set_host_surfaces(host_fills);
+    let mut r = screen();
+    tree.update(&r, &THEME, BOUNDS);
+    tree.paint_frame(&mut r, &THEME, BOUNDS).unwrap();
+    (tree, host, r)
+}
+
+fn button_rect(tree: &Tree<64>) -> Rect {
+    let plan = tree.layers();
+    let over = plan
+        .overs()
+        .next()
+        .expect("the surface has something over it")
+        .rect;
+    // The button is the last child: at the bottom of the surface.
+    Rect::new(over.x + 4, over.bottom() - 12, 8, 8)
+}
+
+#[test]
+fn what_is_inside_a_surface_is_a_layer_over_it() {
+    let (tree, _, _) = player_tree(true);
+    let kinds: Vec<_> = tree.layers().layers().iter().map(|l| l.kind).collect();
+    assert_eq!(
+        kinds,
+        [LayerKind::Ui, LayerKind::Surface(3), LayerKind::Over(3)]
+    );
+    // A surface with nothing inside has no layer over it.
+    let (plain, _) = build_tree_only();
+    assert_eq!(plain.layers().overs().count(), 0);
+}
+
+fn build_tree_only() -> (Tree<64>, Host<(), 16>) {
+    let (t, h, _) = build(false);
+    (t, h)
+}
+
+#[test]
+fn without_a_host_what_is_inside_a_surface_is_drawn_with_the_rest() {
+    let (tree, _, r) = player_tree(false);
+    let at = button_rect(&tree);
+    let bg = r.pixel(W as i32 - 2, H as i32 - 2).unwrap();
+    assert_ne!(r.pixel(at.x + 2, at.y + 2).unwrap(), bg, "the button shows");
+}
+
+#[test]
+fn with_a_host_it_is_drawn_after_the_host_fills_the_surface() {
+    let (tree, _, mut r) = player_tree(true);
+    let surface = tree.layers().surfaces().next().unwrap().rect;
+    let at = button_rect(&tree);
+    let bg = r.pixel(W as i32 - 2, H as i32 - 2).unwrap();
+    // The interface left the surface and what is inside it alone.
+    assert_eq!(
+        r.pixel(at.x + 2, at.y + 2).unwrap(),
+        bg,
+        "not drawn under the host"
+    );
+    // The host puts its picture there ...
+    let video = Color::rgb(200, 30, 200);
+    r.fill_rect(surface, 0, video).unwrap();
+    assert_ne!(r.pixel(surface.x + 1, surface.y + 1).unwrap(), bg);
+    // ... and then the button is drawn over it.
+    tree.paint_above(&mut r, &THEME, surface).unwrap();
+    let on = r.pixel(at.x + 2, at.y + 2).unwrap();
+    assert_ne!(on, video, "the button is over the picture");
+    assert_ne!(on, bg);
+    // Nothing else of the picture was touched.
+    assert_ne!(r.pixel(surface.x + 1, surface.y + 1).unwrap(), bg);
+    assert_eq!(r.pixel(surface.right() + 5, surface.y + 1).unwrap(), bg);
+}
+
+#[test]
+fn a_change_inside_a_surface_makes_it_stale() {
+    let (mut tree, mut host, mut r) = player_tree(true);
+    let surface = tree.layers().surfaces().next().unwrap().rect;
+    let root = tree.root_id();
+    // Rebuild with another label: the button changes, so the frame covers it and the surface is stale.
+    host.sync(
+        &mut tree,
+        root,
+        &host_surface(3)
+            .size(Length::Fixed(200), Length::Fixed(120))
+            .over((spacer(), button("Pause"))),
+    )
+    .unwrap();
+    tree.update(&r, &THEME, BOUNDS);
+    let drawn = tree
+        .paint_frame(&mut r, &THEME, BOUNDS)
+        .unwrap()
+        .expect("the label changed");
+    assert!(tree.layers().stale(drawn).any(|l| l.rect == surface));
 }

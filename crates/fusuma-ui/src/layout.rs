@@ -322,7 +322,7 @@ impl<const N: usize> Tree<N> {
                     n.style.width == Length::Content && wrap_w == 0,
                 )
             }
-            Kind::Spacer | Kind::Surface { .. } => Size::new(0, 0),
+            Kind::Spacer => Size::new(0, 0),
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
             | Kind::ListItem { .. }
@@ -337,7 +337,7 @@ impl<const N: usize> Tree<N> {
             | Kind::Chart { .. }
             | Kind::Toast { .. }
             | Kind::TextInput { .. } => self.measure_widget(i, renderer, theme),
-            Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. } => {
+            Kind::Stack(_) | Kind::Scroll { .. } | Kind::Dialog { .. } | Kind::Surface { .. } => {
                 let axis = match n.kind {
                     Kind::Stack(axis) => axis,
                     _ => Axis::Column,
@@ -540,7 +540,7 @@ impl<const N: usize> Tree<N> {
         let (axis, scrolls) = match self.nodes[i].kind {
             Kind::Stack(axis) => (axis, false),
             Kind::Scroll { .. } => (Axis::Column, true),
-            Kind::Dialog { .. } => (Axis::Column, false),
+            Kind::Dialog { .. } | Kind::Surface { .. } => (Axis::Column, false),
             _ => return,
         };
         let st = self.nodes[i].style;

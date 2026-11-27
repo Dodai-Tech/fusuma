@@ -11,9 +11,22 @@ use fusuma_render_vello_common::{
 };
 use vello_gpu::{
     RenderOptions, RenderSize, RenderTarget, RenderTargetConfig, Renderer as GpuRenderer,
-    Resources, TextureBindings,
+    Resources, TargetInit, TextureBindings,
 };
 use vello_gpu::{TextureId, TextureRegion};
+
+/// A place in a texture, for a copy.
+fn at(texture: &wgpu::Texture, x: u32, y: u32) -> wgpu::TexelCopyTextureInfo<'_> {
+    wgpu::TexelCopyTextureInfo {
+        texture,
+        mip_level: 0,
+        origin: wgpu::Origin3d { x, y, z: 0 },
+        aspect: wgpu::TextureAspect::All,
+    }
+}
+
+/// The most picture moves one frame may ask for.
+const MAX_SHIFTS: usize = 4;
 
 /// The Fusuma renderer on `vello_gpu`.
 pub type VelloGpu = Backend<GpuScene>;
@@ -52,8 +65,18 @@ pub struct GpuScene {
     depth: wgpu::TextureView,
     size: (u16, u16),
     pixels: Vec<u8>,
-    /// The part of the next frame that is read back (x, y, w, h); everything when none.
-    readback: Option<(u32, u32, u32, u32)>,
+    /// The parts of the next frame that matter (from [`Scene::add_damage`] and [`Scene::set_damage`]): what is read back
+    /// to the CPU. The GPU draws only what was drawn since the last render, wherever that is.
+    damage: Vec<(i32, i32, u32, u32)>,
+    /// Moves of the picture to make before the new commands are drawn over it ([`Scene::shift`]).
+    shifts: Vec<((i32, i32, u32, u32), i32)>,
+    /// A copy of rows being moved: a texture cannot be copied onto itself.
+    scratch: Option<wgpu::Texture>,
+    /// What the next shapes are drawn with, kept to put back after the scene is emptied.
+    translation: (f64, f64),
+    paint_transform: Affine,
+    /// Clips pushed and not yet popped, with the transform each had: emptying the scene drops them, and they come back.
+    open_clips: Vec<(KRect, Affine)>,
     dirty: bool,
     /// Images uploaded for the frame being recorded.
     bindings: TextureBindings,
@@ -111,6 +134,7 @@ impl GpuScene {
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -134,7 +158,12 @@ impl GpuScene {
             depth,
             size: (width, height),
             pixels: vec![0; usize::from(width) * usize::from(height) * 4],
-            readback: None,
+            damage: Vec::new(),
+            shifts: Vec::new(),
+            scratch: None,
+            translation: (0.0, 0.0),
+            paint_transform: Affine::IDENTITY,
+            open_clips: Vec::new(),
             dirty: true,
             bindings: TextureBindings::new(),
             next_texture: 0,
@@ -165,31 +194,21 @@ impl GpuScene {
         &self.texture
     }
 
-    /// Renders the scene and copies the picture into `target` (a texture of the same size and format that the host
-    /// shows, such as the current texture of a window surface or a canvas), with no read-back to the CPU. The
-    /// whole scene is drawn: a frame that draws only part of the screen would leave the rest empty.
+    /// Draws what was drawn since the last frame over the picture the scene keeps, and copies the whole picture into
+    /// `target` (a texture of the same size and format that the host shows, such as the current texture of a window
+    /// surface or a canvas), with no read-back to the CPU.
+    ///
+    /// The picture lives in the scene's own texture, so a frame that draws one button draws one button: the target
+    /// needs no history, which is what a swap chain cannot give (a surface has no buffer age). Only the copy to the
+    /// target is the whole picture, and that stays on the GPU.
     pub fn present(&mut self, target: &wgpu::Texture) {
         let (w, h) = self.size;
-        let view = self
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("fusuma present"),
             });
-        let rendered = self.renderer.render(
-            &self.scene,
-            &mut self.resources,
-            &mut encoder,
-            RenderTarget {
-                view: &view,
-                depth_view: Some(&self.depth),
-            },
-            &self.bindings,
-            RenderOptions::default(),
-        );
-        if rendered.is_err() {
+        if self.record(&mut encoder).is_none() {
             return;
         }
         encoder.copy_texture_to_texture(
@@ -212,43 +231,149 @@ impl GpuScene {
             },
         );
         self.queue.submit([encoder.finish()]);
+        self.forget_drawn();
         self.dirty = false;
+    }
+
+    /// Records the moves of the picture and then the new commands drawn over it into `encoder`. Returns the part that
+    /// matters to the CPU (x, y, width, height): what the frame named, or everything when it named nothing; `None`
+    /// when the scene failed to render, and the picture is left as it was.
+    fn record(&mut self, encoder: &mut wgpu::CommandEncoder) -> Option<(u32, u32, u32, u32)> {
+        let damage = std::mem::take(&mut self.damage);
+        let shifts = std::mem::take(&mut self.shifts);
+        let mut area: Option<(u32, u32, u32, u32)> = None;
+        let mut join = |r: Option<(u32, u32, u32, u32)>| {
+            if let Some((x, y, w, h)) = r {
+                area = Some(area.map_or((x, y, w, h), |(ax, ay, aw, ah)| {
+                    let (x0, y0) = (ax.min(x), ay.min(y));
+                    let (x1, y1) = ((ax + aw).max(x + w), (ay + ah).max(y + h));
+                    (x0, y0, x1 - x0, y1 - y0)
+                }));
+            }
+        };
+        for (region, dy) in shifts {
+            let clipped = self.clip_rect(region);
+            self.shift_picture(encoder, clipped, dy);
+            join(clipped);
+        }
+        let named = !damage.is_empty();
+        for r in damage {
+            join(self.clip_rect(r));
+        }
+        let view = self
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut options = RenderOptions::default();
+        // The scene holds only what was drawn since the last render, drawn over the picture.
+        options.target_init = TargetInit::SrcOver;
+        // A scene that fails to render leaves the previous picture; the error has nowhere to go
+        // through the `Renderer` trait, and the next frame tries again.
+        self.renderer
+            .render(
+                &self.scene,
+                &mut self.resources,
+                encoder,
+                RenderTarget {
+                    view: &view,
+                    depth_view: Some(&self.depth),
+                },
+                &self.bindings,
+                options,
+            )
+            .ok()?;
+        let whole = (0, 0, u32::from(self.size.0), u32::from(self.size.1));
+        Some(if named {
+            area.unwrap_or((0, 0, 0, 0))
+        } else {
+            whole
+        })
+    }
+
+    /// `region` cut to the surface; `None` when nothing is left.
+    fn clip_rect(&self, region: (i32, i32, u32, u32)) -> Option<(u32, u32, u32, u32)> {
+        let (w, h) = (i64::from(self.size.0), i64::from(self.size.1));
+        let x0 = i64::from(region.0).clamp(0, w);
+        let y0 = i64::from(region.1).clamp(0, h);
+        let x1 = (i64::from(region.0) + i64::from(region.2)).clamp(0, w);
+        let y1 = (i64::from(region.1) + i64::from(region.3)).clamp(0, h);
+        (x1 > x0 && y1 > y0).then(|| (x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32))
+    }
+
+    /// Moves the rows of `region` down by `dy` (up when negative) in the picture. What comes in at an edge is left as it
+    /// was; the frame draws it.
+    fn shift_picture(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        region: Option<(u32, u32, u32, u32)>,
+        dy: i32,
+    ) {
+        let Some((x, y, w, h)) = region else { return };
+        let by = dy.unsigned_abs();
+        if by == 0 || by >= h {
+            return;
+        }
+        let rows = h - by;
+        let (from, to) = if dy > 0 { (y, y + by) } else { (y + by, y) };
+        let (tw, th) = (u32::from(self.size.0), u32::from(self.size.1));
+        let device = &self.device;
+        let scratch = self.scratch.get_or_insert_with(|| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("fusuma shift"),
+                size: wgpu::Extent3d {
+                    width: tw,
+                    height: th,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
+        });
+        let extent = wgpu::Extent3d {
+            width: w,
+            height: rows,
+            depth_or_array_layers: 1,
+        };
+        encoder.copy_texture_to_texture(at(&self.texture, x, from), at(scratch, x, from), extent);
+        encoder.copy_texture_to_texture(at(scratch, x, from), at(&self.texture, x, to), extent);
+    }
+
+    /// Empties the scene once its commands are in the picture, keeping what the next commands are drawn with.
+    fn forget_drawn(&mut self) {
+        let paint = self.scene.paint().clone();
+        self.scene.reset();
+        // The images of the frame are in the picture; they are not needed any more.
+        self.bindings = TextureBindings::new();
+        // The clips still open come back, each under the transform it had.
+        for (rect, at) in &self.open_clips {
+            self.scene.set_transform(*at);
+            self.scene.push_clip_rect(rect);
+        }
+        self.scene
+            .set_transform(Affine::translate(self.translation));
+        self.scene.set_paint_transform(self.paint_transform);
+        self.scene.set_paint(paint);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn render(&mut self) {
-        let (w, h) = self.size;
-        let view = self
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("fusuma render"),
             });
-        // A scene that fails to render leaves the previous picture; the error has nowhere to go
-        // through the `Renderer` trait, and the next frame tries again.
-        let rendered = self.renderer.render(
-            &self.scene,
-            &mut self.resources,
-            &mut encoder,
-            RenderTarget {
-                view: &view,
-                depth_view: Some(&self.depth),
-            },
-            &self.bindings,
-            RenderOptions::default(),
-        );
-        if rendered.is_err() {
+        let Some(region) = self.record(&mut encoder) else {
             return;
-        }
-        // Only the part that changed is copied back (the whole picture when no hint was given).
-        let (rx, ry, rw, rh) = self
-            .readback
-            .take()
-            .unwrap_or((0, 0, u32::from(w), u32::from(h)));
+        };
+        let (w, _) = self.size;
+        // Only the part that matters is copied back to the CPU.
+        let (rx, ry, rw, rh) = region;
         if rw == 0 || rh == 0 {
             self.queue.submit([encoder.finish()]);
+            self.forget_drawn();
             return;
         }
         let row = (rw * 4).next_multiple_of(256);
@@ -280,6 +405,7 @@ impl GpuScene {
             },
         );
         self.queue.submit([encoder.finish()]);
+        self.forget_drawn();
         let (tx, rx_done) = std::sync::mpsc::channel();
         buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
@@ -312,32 +438,38 @@ impl Scene for GpuScene {
         self.size
     }
 
-    fn retains_picture(&self) -> bool {
-        false
-    }
-
     fn reset(&mut self) {
         self.scene.reset();
+        self.translation = (0.0, 0.0);
+        self.paint_transform = Affine::IDENTITY;
+        self.open_clips.clear();
         // The images of the forgotten frame are not needed any more.
         self.bindings = TextureBindings::new();
-        self.readback = None;
+        self.damage.clear();
+        self.shifts.clear();
         self.dirty = true;
     }
 
     fn set_damage(&mut self, region: (i32, i32, u32, u32)) {
-        // The GPU draws the whole scene; the hint only narrows what is copied back to the CPU.
-        let (x, y, w, h) = region;
-        let (sw, sh) = (u32::from(self.size.0), u32::from(self.size.1));
-        let x0 = x.max(0) as u32;
-        let y0 = y.max(0) as u32;
-        let x1 = (x.saturating_add_unsigned(w).max(0) as u32).min(sw);
-        let y1 = (y.saturating_add_unsigned(h).max(0) as u32).min(sh);
-        self.readback = Some((
-            x0.min(x1),
-            y0.min(y1),
-            x1.saturating_sub(x0),
-            y1.saturating_sub(y0),
-        ));
+        // A frame that said which parts it draws (`add_damage`) knows better than a platform's bounding box. The GPU
+        // draws what was drawn wherever it is; the parts only narrow what is copied back to the CPU.
+        if self.damage.is_empty() {
+            self.damage.push(region);
+        }
+    }
+
+    fn add_damage(&mut self, region: (i32, i32, u32, u32)) {
+        self.damage.push(region);
+    }
+
+    fn shift(&mut self, region: (i32, i32, u32, u32), dy: i32) -> bool {
+        // More than a few moves in one frame is not a scroll: let the caller redraw.
+        if self.shifts.len() >= MAX_SHIFTS {
+            return false;
+        }
+        self.shifts.push((region, dy));
+        self.dirty = true;
+        true
     }
 
     fn image_source(&mut self, pixmap: Arc<fusuma_render_vello_common::Pixmap>) -> ImageSource {
@@ -377,6 +509,7 @@ impl Scene for GpuScene {
     }
 
     fn set_translation(&mut self, dx: f64, dy: f64) {
+        self.translation = (dx, dy);
         self.scene.set_transform(Affine::translate((dx, dy)));
     }
 
@@ -385,6 +518,7 @@ impl Scene for GpuScene {
     }
 
     fn set_paint_transform(&mut self, transform: Affine) {
+        self.paint_transform = transform;
         self.scene.set_paint_transform(transform);
     }
 
@@ -407,10 +541,13 @@ impl Scene for GpuScene {
     }
 
     fn push_clip(&mut self, rect: &KRect) {
+        self.open_clips
+            .push((*rect, Affine::translate(self.translation)));
         self.scene.push_clip_rect(rect);
     }
 
     fn pop_clip(&mut self) {
+        self.open_clips.pop();
         self.scene.pop_clip();
     }
 
@@ -545,6 +682,110 @@ mod tests {
             .unwrap();
         assert_eq!(r.pixel(9, 9).unwrap(), Color::rgb(0, 255, 0));
         assert_eq!(r.pixel(1, 1).unwrap(), Color::rgb(255, 0, 0));
+    }
+
+    /// A picture drawn in pieces over frames equals the same picture drawn at once.
+    fn scene(r: &mut VelloGpu, parts: &[(Rect, Color)]) {
+        for (rect, color) in parts {
+            r.fill_rect(*rect, 0, *color).unwrap();
+        }
+    }
+
+    fn same(a: &mut VelloGpu, b: &mut VelloGpu, w: i32, h: i32) {
+        for y in 0..h {
+            for x in 0..w {
+                assert_eq!(a.pixel(x, y), b.pixel(x, y), "({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn a_frame_that_draws_one_part_leaves_the_rest_of_the_picture() {
+        let (Some(mut inc), Some(mut whole)) = (gpu(64, 64), gpu(64, 64)) else {
+            return;
+        };
+        let bg = Color::rgb(10, 20, 30);
+        let blue = Color::rgb(0, 0, 255);
+        let red = Color::rgb(255, 0, 0);
+        inc.clear(bg).unwrap();
+        scene(&mut inc, &[(Rect::new(4, 4, 20, 20), blue)]);
+        assert_eq!(inc.pixel(5, 5).unwrap(), blue);
+        // The next frame draws only a small rectangle: nothing else is touched or drawn again.
+        inc.with_scene(Scene::reset);
+        inc.will_draw(Rect::new(40, 40, 8, 8));
+        scene(&mut inc, &[(Rect::new(40, 40, 8, 8), red)]);
+        whole.clear(bg).unwrap();
+        scene(
+            &mut whole,
+            &[
+                (Rect::new(4, 4, 20, 20), blue),
+                (Rect::new(40, 40, 8, 8), red),
+            ],
+        );
+        same(&mut inc, &mut whole, 64, 64);
+    }
+
+    #[test]
+    fn a_translucent_fill_is_drawn_once_over_the_kept_picture() {
+        let Some(mut r) = gpu(16, 16) else { return };
+        r.clear(Color::WHITE).unwrap();
+        assert_eq!(r.pixel(1, 1).unwrap(), Color::WHITE);
+        r.with_scene(Scene::reset);
+        r.fill_rect(Rect::new(0, 0, 8, 8), 0, Color::rgba(0, 0, 0, 128))
+            .unwrap();
+        let once = r.pixel(1, 1).unwrap();
+        // Reading again, and drawing elsewhere, does not blend it a second time.
+        r.fill_rect(Rect::new(8, 8, 4, 4), 0, Color::rgb(255, 0, 0))
+            .unwrap();
+        assert_eq!(r.pixel(1, 1).unwrap(), once);
+        assert!(once.r > 100 && once.r < 160, "{once:?}");
+    }
+
+    #[test]
+    fn shifting_rows_moves_the_picture_and_leaves_the_exposed_strip() {
+        let (Some(mut r), Some(mut whole)) = (gpu(32, 32), gpu(32, 32)) else {
+            return;
+        };
+        let bg = Color::WHITE;
+        let stripes = |r: &mut VelloGpu, dy: i32| {
+            for k in 0..8 {
+                let c = Color::rgb(k as u8 * 30, 255 - k as u8 * 30, 40);
+                r.fill_rect(Rect::new(0, k * 4 + dy, 32, 4), 0, c).unwrap();
+            }
+        };
+        r.clear(bg).unwrap();
+        stripes(&mut r, 0);
+        assert!(r.pixel(1, 1).is_some());
+        // Move the window of rows 0..32 down by 8, then draw the strip that came in at the top.
+        r.with_scene(Scene::reset);
+        assert!(r.shift_area(Rect::new(0, 0, 32, 32), 8));
+        r.will_draw(Rect::new(0, 0, 32, 8));
+        r.fill_rect(Rect::new(0, 0, 32, 8), 0, Color::rgb(1, 2, 3))
+            .unwrap();
+        whole.clear(bg).unwrap();
+        stripes(&mut whole, 8);
+        whole
+            .fill_rect(Rect::new(0, 0, 32, 8), 0, Color::rgb(1, 2, 3))
+            .unwrap();
+        same(&mut r, &mut whole, 32, 32);
+        // And up.
+        r.with_scene(Scene::reset);
+        assert!(r.shift_area(Rect::new(0, 0, 32, 32), -4));
+        r.will_draw(Rect::new(0, 28, 32, 4));
+        r.fill_rect(Rect::new(0, 28, 32, 4), 0, Color::rgb(9, 9, 9))
+            .unwrap();
+        let mut c = [[Color::BLACK; 32]; 32];
+        for (y, row) in c.iter_mut().enumerate().take(28) {
+            for (x, px) in row.iter_mut().enumerate() {
+                *px = whole.pixel(x as i32, y as i32 + 4).unwrap();
+            }
+        }
+        for (y, row) in c.iter().enumerate() {
+            for (x, want) in row.iter().enumerate() {
+                let want = if y >= 28 { Color::rgb(9, 9, 9) } else { *want };
+                assert_eq!(r.pixel(x as i32, y as i32).unwrap(), want, "({x}, {y})");
+            }
+        }
     }
 
     #[test]

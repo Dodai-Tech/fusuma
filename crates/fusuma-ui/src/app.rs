@@ -104,6 +104,22 @@ pub trait App {
         None
     }
 
+    /// Says that the host fills the surfaces of the layer plan and calls [`paint_above`](Self::paint_above) after each
+    /// frame (see [`Tree::set_host_surfaces`](crate::Tree::set_host_surfaces)). The default does nothing.
+    fn host_surfaces(&mut self, on: bool) {
+        let _ = on;
+    }
+
+    /// Draws what is inside the surfaces over what the host put there, inside `region`; call it after the surfaces were
+    /// filled. The default draws nothing.
+    ///
+    /// # Errors
+    /// The renderer's error.
+    fn paint_above<R: Renderer>(&mut self, renderer: &mut R, region: Rect) -> Result<(), R::Error> {
+        let _ = (renderer, region);
+        Ok(())
+    }
+
     /// The layers of the picture (see [`LayerPlan`](crate::LayerPlan)): the interface and the places the host fills itself
     /// (a video, a camera, a native view). `None` (the default) means the interface alone.
     fn layers(&self) -> Option<crate::LayerPlan> {

@@ -13,9 +13,17 @@ use crate::tree::{Action, ActionKind, BuildError, Flags, Kind, NodeId, Style, Tr
 const SCRIM: Color = Color::rgba(0, 0, 0, 150);
 
 /// How many pixels lower than its place a dialog sits while it is coming in (or going out) at `shown` thousandths.
-fn slide_of(shown: u16) -> i32 {
+///
+/// Coming in it eases out (fast, then settling). Going out it moves evenly from the first frame: with the same easing the
+/// panel would sit still, fully opaque, for most of the time and then jump, which looks like content left behind.
+fn slide_of(shown: u16, open: bool) -> i32 {
+    let at = fusuma_anim::Fx::from_ratio(i32::from(shown), 1000);
     let left = fusuma_anim::Fx::ONE
-        - fusuma_anim::Easing::CubicOut.apply(fusuma_anim::Fx::from_ratio(i32::from(shown), 1000));
+        - if open {
+            fusuma_anim::Easing::CubicOut.apply(at)
+        } else {
+            at
+        };
     (left * fusuma_anim::Fx::from_int(SLIDE))
         .round()
         .clamp(0, SLIDE)
@@ -277,7 +285,11 @@ impl<const N: usize> Tree<N> {
                         o.w > 0 && o.h > 0
                     });
                     if seen {
-                        let slide = if popover.is_some() { 0 } else { slide_of(p) };
+                        let slide = if popover.is_some() {
+                            0
+                        } else {
+                            slide_of(p, open)
+                        };
                         r.save()?;
                         let moved = r
                             .translate(0, slide)
@@ -309,7 +321,6 @@ impl<const N: usize> Tree<N> {
 
     /// Moves the openness of the dialogs towards open or closed. True while one is on its way.
     pub(crate) fn advance_dialogs(&mut self, theme: &Theme, dt_ms: u32) -> bool {
-        let ms = theme.motion.normal_ms;
         let mut running = false;
         for i in 0..N {
             if !self.nodes[i].alive {
@@ -325,6 +336,12 @@ impl<const N: usize> Tree<N> {
                 continue;
             };
             let target: u16 = if open { 1000 } else { 0 };
+            // Going away is quicker than coming in: the panel cannot fade, so it should not linger.
+            let ms = if open {
+                theme.motion.normal_ms
+            } else {
+                theme.motion.fast_ms
+            };
             if shown == target {
                 self.nodes[i].own.remove(Flags::ANIM);
                 continue;

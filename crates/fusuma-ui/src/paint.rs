@@ -123,6 +123,12 @@ impl<const N: usize> Tree<N> {
                 open[depth] = i;
                 depth += 1;
             }
+            // What lies over a surface is drawn after the host has filled it (see `paint_above`).
+            if i != root && self.host_surfaces && matches!(self.nodes[i].kind, Kind::Surface { .. })
+            {
+                cur = self.after_subtree(i, root);
+                continue;
+            }
             cur = self.preorder_next(i, root);
         }
         while depth > 0 {

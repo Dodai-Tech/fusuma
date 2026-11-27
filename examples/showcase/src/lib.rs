@@ -538,6 +538,13 @@ impl Showcase {
         self.sidebar[Page::ALL.iter().position(|&p| p == page)?]
     }
 
+    /// Opens the confirmation dialog, as the Delete button does.
+    pub fn ask_delete(&mut self) {
+        if let Some(d) = self.dialog[0] {
+            self.tree.open_dialog(d);
+        }
+    }
+
     /// The dialog, its Cancel button and its Delete button.
     #[must_use]
     pub const fn dialog_nodes(&self) -> [Option<NodeId>; 3] {
@@ -1758,6 +1765,14 @@ impl App for Showcase {
 
     fn changed(&self) -> Option<Rect> {
         self.tree.changed()
+    }
+
+    fn host_surfaces(&mut self, on: bool) {
+        self.tree.set_host_surfaces(on);
+    }
+
+    fn paint_above<R: Renderer>(&mut self, renderer: &mut R, region: Rect) -> Result<(), R::Error> {
+        self.tree.paint_above(renderer, &self.theme, region)
     }
 
     fn layers(&self) -> Option<fusuma::LayerPlan> {

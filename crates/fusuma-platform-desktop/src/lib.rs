@@ -23,7 +23,8 @@ use winit::window::{Window, WindowId};
 pub use canvas::{Canvas, blit};
 
 /// What fills a surface of the layer plan: it gets the surface's id, its rectangle on the screen and a buffer of
-/// `w * h` pixels (`0x00RRGGBB`, row by row) to write.
+/// `w * h` pixels (`0x00RRGGBB`, row by row) to write. The pixels are opaque. What the app put inside the surface is drawn
+/// over them.
 pub type FillSurface = Box<dyn FnMut(u32, fusuma::render::Rect, &mut [u32])>;
 pub use clip::{Clipboard, SystemClipboard, run_shortcut};
 pub use plan::{LINKED, hardware, plan_for};
@@ -139,7 +140,6 @@ struct State<A> {
     history: present::History,
     /// What fills the surfaces of the layer plan, and the buffer it writes into.
     fill: Option<FillSurface>,
-    scratch: Vec<u32>,
     /// What tells the screen reader about the window.
     #[cfg(feature = "accessibility")]
     access: accesskit_winit::Adapter,
@@ -273,7 +273,6 @@ impl<A: App> Handler<A> {
             show: true,
             history: present::History::new(),
             fill: self.fill.take(),
-            scratch: Vec::new(),
             #[cfg(feature = "accessibility")]
             access,
             idle: false,
@@ -374,39 +373,15 @@ impl<A: App> State<A> {
         self.history = present::History::new();
     }
 
-    /// Asks the host to fill the surfaces the frame drew around or over; what they cover joins the redrawn region.
-    fn fill_surfaces(
-        &mut self,
-        region: Option<fusuma::render::Rect>,
-    ) -> Option<fusuma::render::Rect> {
-        let (Some(fill), Some(mut total)) = (self.fill.as_mut(), region) else {
-            return region;
-        };
-        let Some(plan) = self.shell.layers() else {
-            return region;
-        };
-        let stale: Vec<_> = plan.stale(total).map(|l| (l.kind, l.rect)).collect();
-        for (kind, rect) in stale {
-            let fusuma::LayerKind::Surface(id) = kind else {
-                continue;
-            };
-            self.scratch.clear();
-            self.scratch.resize(rect.w as usize * rect.h as usize, 0);
-            fill(id, rect, &mut self.scratch);
-            self.canvas.put(rect, &self.scratch);
-            total = total.union(&rect);
-        }
-        Some(total)
-    }
-
     /// One frame; shows it if anything was redrawn or `force` says the window needs the picture again.
     fn step(&mut self, force: bool) -> anyhow::Result<()> {
         let now = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
         if self.idle {
             self.shell.resume(now);
         }
-        let region = self.canvas.frame(&mut self.shell, now);
-        let region = self.fill_surfaces(region);
+        let region = self
+            .canvas
+            .frame_with(&mut self.shell, now, self.fill.as_mut());
         let redrawn = region.is_some();
         self.idle = !self.shell.wants_frame();
         #[cfg(feature = "accessibility")]

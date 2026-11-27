@@ -333,7 +333,7 @@ impl<M> ViewMarker for Button<'_, M> {}
 impl<M> ViewMarker for Checkbox<'_, M> {}
 impl ViewMarker for Progress {}
 impl ViewMarker for Spacer {}
-impl ViewMarker for HostSurface {}
+impl<C> ViewMarker for HostSurface<C> {}
 
 /// A message that shows for a while (see `Task::toast`), out of the flow. Give it a name with `named` so a task can find
 /// it.
@@ -360,12 +360,14 @@ impl<M: Clone> View<M> for Toast {
 
 impl ViewMarker for Toast {}
 
-/// A place the host fills: a video, a camera, a map, a native view. It takes the room it is given and draws nothing; the
-/// host finds where it is in `Shell::layers`.
+/// A place the host fills: a video, a camera, a map, a native view. It takes the room it is given and draws nothing itself; the
+/// host finds where it is in `Shell::layers`. What is put inside it with [`over`](HostSurface::over) is laid out as a
+/// column and drawn over what the host shows (the controls of a player, a caption).
 #[derive(Clone, Copy, Debug)]
-pub struct HostSurface {
+pub struct HostSurface<C = ()> {
     id: u32,
     style: Style,
+    children: C,
 }
 
 /// A surface the host knows as `id`, filling its parent until `size` says otherwise.
@@ -374,30 +376,45 @@ pub const fn host_surface(id: u32) -> HostSurface {
     HostSurface {
         id,
         style: Style::new().width(Length::Fill(1)).height(Length::Fill(1)),
+        children: (),
     }
 }
 
-impl HostSurface {
+impl<C> HostSurface<C> {
     /// `width` by `height`.
     #[must_use]
-    pub const fn size(self, width: Length, height: Length) -> Self {
+    pub fn size(self, width: Length, height: Length) -> Self {
         Self {
             style: Style::new().width(width).height(height),
             ..self
         }
     }
+
+    /// Puts `children` inside the surface, laid out as a column, over what the host shows. Use a `spacer` to push controls
+    /// to the bottom.
+    #[must_use]
+    pub fn over<D>(self, children: D) -> HostSurface<D> {
+        HostSurface {
+            id: self.id,
+            style: self.style,
+            children,
+        }
+    }
 }
 
-impl<M: Clone> View<M> for HostSurface {
+impl<M: Clone, C: super::Children<M>> View<M> for HostSurface<C> {
     fn build<const N: usize, const K: usize>(
         &self,
         cx: &mut Cx<'_, M, N, K>,
         parent: Option<NodeId>,
     ) -> Result<NodeId, BuildError> {
-        cx.tree.surface(parent, self.id, self.style)
+        let node = cx.tree.surface(parent, self.id, self.style)?;
+        self.children.build_all(cx, node)?;
+        Ok(node)
     }
 
     fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
         cx.tree.set_style(node, self.style);
+        self.children.rebuild_all(cx, node);
     }
 }

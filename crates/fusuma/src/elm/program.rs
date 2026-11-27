@@ -542,6 +542,14 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.tree.changed()
     }
 
+    fn host_surfaces(&mut self, on: bool) {
+        self.tree.set_host_surfaces(on);
+    }
+
+    fn paint_above<R: Renderer>(&mut self, renderer: &mut R, region: Rect) -> Result<(), R::Error> {
+        self.tree.paint_above(renderer, &self.theme, region)
+    }
+
     fn layers(&self) -> Option<fusuma_ui::LayerPlan> {
         Some(self.tree.layers())
     }

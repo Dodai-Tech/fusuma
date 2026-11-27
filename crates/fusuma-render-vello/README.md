@@ -16,9 +16,10 @@ r.clear(Color::rgb(16, 18, 24)).unwrap();
 r.fill_rect(Rect::new(8, 8, 120, 64), 12, Color::rgb(40, 46, 60)).unwrap();
 ```
 
-`GpuScene` renders into a texture of its own and reads it back, which is what screenshots, tests and
-toolkits that composite on the CPU need. `GpuScene::present` and `from_device` draw to a surface or into another `wgpu`
-pipeline with no read-back (the web build does); the desktop window still reads back. Text is vector (Inter and friends through `fusuma-text`) when built with `inter` or another font feature, else the built-in bitmap fonts.
+`GpuScene` keeps the picture in a texture of its own: a frame draws only what was drawn since the last one, over it, and a
+scroll moves the rows by a texture copy. It reads back the part that changed, which is what screenshots, tests and
+toolkits that composite on the CPU need. `GpuScene::present` and `from_device` copy the whole picture into a surface or
+into another `wgpu` pipeline with no read-back (the web build does), so a swap chain needs no history. Text is vector (Inter and friends through `fusuma-text`) when built with `inter` or another font feature, else the built-in bitmap fonts.
 
 It passes the shared `fusuma_render::conformance` suite on a real GPU; a machine without a GPU
 cannot run those tests, and they skip there.
