@@ -1091,8 +1091,10 @@ impl Palette {
         },
     };
 
-    /// Near-black with white text and one orange main action: see [`Theme::CYBERDECK`].
+    /// Near-black with white text and one vermilion main action: see [`Theme::CYBERDECK`].
     pub const CYBERDECK: Self = crate::cyberdeck::PALETTE;
+    /// Cyberdeck with the first accent it had, an orange.
+    pub const CYBERDECK_ORANGE: Self = crate::cyberdeck::ORANGE;
     /// Cyberdeck with a cyan accent.
     pub const CYBERDECK_CYAN: Self = crate::cyberdeck::CYAN;
     /// Cyberdeck with an acid-lime accent.
@@ -1104,8 +1106,19 @@ impl Palette {
     /// Cyberdeck with a violet accent.
     pub const CYBERDECK_VIOLET: Self = crate::cyberdeck::VIOLET;
 
-    /// Every palette, the default first: the order a switcher steps through.
-    pub const ALL: [Self; 21] = [
+    /// Sumi ink and washi paper with a vermilion main action: see [`Theme::FUSUMA`].
+    pub const WASHI: Self = crate::fusuma::PALETTE;
+    /// Washi with an indigo (ai-iro) accent.
+    pub const WASHI_INDIGO: Self = crate::fusuma::INDIGO;
+    /// Washi with a matcha green accent.
+    pub const WASHI_MATCHA: Self = crate::fusuma::MATCHA;
+    /// Washi with a gold (kincha) accent.
+    pub const WASHI_KINCHA: Self = crate::fusuma::KINCHA;
+    /// Washi with a cherry blossom (sakura) accent.
+    pub const WASHI_SAKURA: Self = crate::fusuma::SAKURA;
+
+    /// Every palette, the blue one first and the cyberdeck and washi families last: the order a switcher steps through.
+    pub const ALL: [Self; 27] = [
         Self::FUSUMA,
         Self::FOREST,
         Self::OCEAN,
@@ -1122,11 +1135,17 @@ impl Palette {
         Self::CRIMSON,
         Self::LIME,
         Self::CYBERDECK,
+        Self::CYBERDECK_ORANGE,
         Self::CYBERDECK_CYAN,
         Self::CYBERDECK_LIME,
         Self::CYBERDECK_MAGENTA,
         Self::CYBERDECK_AMBER,
         Self::CYBERDECK_VIOLET,
+        Self::WASHI,
+        Self::WASHI_INDIGO,
+        Self::WASHI_MATCHA,
+        Self::WASHI_KINCHA,
+        Self::WASHI_SAKURA,
     ];
     /// The palette called `name`.
     #[must_use]
@@ -1165,6 +1184,33 @@ impl Palette {
         }
         // "cyberdeck" itself or "cyberdeck-<accent>".
         a.len() == b.len() || a[b.len()] == b'-'
+    }
+
+    /// The design this palette belongs to: the cyberdeck palettes have the cyberdeck design, every other one the fusuma
+    /// design (its shapes with that palette's colours).
+    #[must_use]
+    pub const fn design(&self) -> Design {
+        if self.is_cyberdeck() {
+            Design::Cyberdeck
+        } else {
+            Design::Fusuma
+        }
+    }
+
+    /// The next palette of the same design in [`ALL`](Self::ALL), back to the first after the last: what a switcher inside
+    /// one design steps through.
+    #[must_use]
+    pub fn next_in_design(&self) -> &'static Self {
+        let design = self.design();
+        let n = Self::ALL.len();
+        let at = Self::ALL.iter().position(|p| p.name == self.name);
+        for step in 1..=n {
+            let p = &Self::ALL[(at.unwrap_or(n - 1) + step) % n];
+            if p.design() == design {
+                return p;
+            }
+        }
+        &Self::ALL[0]
     }
 
     /// This palette's own main action, as an accent.
@@ -1239,7 +1285,7 @@ impl Palette {
         accent: Option<&'a str>,
     ) -> Result<Self, ThemeError<'a>> {
         let p = match palette {
-            None => Self::FUSUMA,
+            None => Self::WASHI,
             Some(n) => *Self::named(n).ok_or(ThemeError::UnknownPalette(n))?,
         };
         Ok(match accent {
@@ -1249,15 +1295,85 @@ impl Palette {
     }
 }
 
+/// A complete look: shapes, sizes, fonts and decoration, with a family of palettes that go with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Design {
+    /// Sumi ink and washi paper, vermilion, small corners, a lattice line and a seal bar ([`Theme::FUSUMA`]).
+    Fusuma,
+    /// Near-black, mono text, outlines, ticks, hatch and dots ([`Theme::CYBERDECK`]).
+    Cyberdeck,
+}
+
+impl Design {
+    /// Both designs.
+    pub const ALL: [Self; 2] = [Self::Fusuma, Self::Cyberdeck];
+
+    /// The name settings use.
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Fusuma => "fusuma",
+            Self::Cyberdeck => "cyberdeck",
+        }
+    }
+
+    /// The name to show.
+    #[must_use]
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Fusuma => "Fusuma",
+            Self::Cyberdeck => "Cyberdeck",
+        }
+    }
+
+    /// The design called `id`.
+    #[must_use]
+    pub fn named(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.id() == id)
+    }
+
+    /// The other design.
+    #[must_use]
+    pub const fn other(self) -> Self {
+        match self {
+            Self::Fusuma => Self::Cyberdeck,
+            Self::Cyberdeck => Self::Fusuma,
+        }
+    }
+
+    /// The dark theme of this design, in the default palette's colours.
+    #[must_use]
+    pub const fn theme(self) -> Theme {
+        match self {
+            Self::Fusuma => Theme::FUSUMA,
+            Self::Cyberdeck => Theme::CYBERDECK,
+        }
+    }
+
+    /// The palette a design starts with.
+    #[must_use]
+    pub const fn palette(self) -> Palette {
+        match self {
+            Self::Fusuma => Palette::WASHI,
+            Self::Cyberdeck => Palette::CYBERDECK,
+        }
+    }
+
+    /// The palettes that go with this design, in [`Palette::ALL`]'s order.
+    pub fn palettes(self) -> impl Iterator<Item = &'static Palette> {
+        Palette::ALL.iter().filter(move |p| p.design() == self)
+    }
+}
+
 impl Default for Palette {
     fn default() -> Self {
-        Self::FUSUMA
+        Self::WASHI
     }
 }
 
 impl Accent {
     /// Every palette's main action, in the palettes' order.
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 27] = [
         Palette::FUSUMA.accent(),
         Palette::FOREST.accent(),
         Palette::OCEAN.accent(),
@@ -1274,11 +1390,17 @@ impl Accent {
         Palette::CRIMSON.accent(),
         Palette::LIME.accent(),
         Palette::CYBERDECK.accent(),
+        Palette::CYBERDECK_ORANGE.accent(),
         Palette::CYBERDECK_CYAN.accent(),
         Palette::CYBERDECK_LIME.accent(),
         Palette::CYBERDECK_MAGENTA.accent(),
         Palette::CYBERDECK_AMBER.accent(),
         Palette::CYBERDECK_VIOLET.accent(),
+        Palette::WASHI.accent(),
+        Palette::WASHI_INDIGO.accent(),
+        Palette::WASHI_MATCHA.accent(),
+        Palette::WASHI_KINCHA.accent(),
+        Palette::WASHI_SAKURA.accent(),
     ];
     /// The accent called `name`.
     #[must_use]
@@ -1399,6 +1521,11 @@ pub struct ButtonStyle {
 }
 
 impl Theme {
+    /// The fusuma design: sumi ink and washi paper, a vermilion main action, small corners, no shadow, a lattice line
+    /// inside cards and a bar on the chosen item. Colours are [`Palette::WASHI`]'s dark ones; use
+    /// [`with_colors`](Self::with_colors) for the light.
+    pub const FUSUMA: Self = crate::fusuma::THEME;
+
     /// The dark default: a neutral blue-grey with a blue main action.
     pub const DARK: Self = Self {
         colors: Colors {
@@ -1955,7 +2082,7 @@ mod tests {
 
     #[test]
     fn a_choice_from_the_settings_names_a_mistake() {
-        assert_eq!(Palette::choose(None, None), Ok(Palette::FUSUMA));
+        assert_eq!(Palette::choose(None, None), Ok(Palette::WASHI));
         assert_eq!(Palette::choose(Some("ocean"), None), Ok(Palette::OCEAN));
         let p = Palette::choose(Some("petrol"), Some("violet")).unwrap();
         assert_eq!(
@@ -1976,13 +2103,13 @@ mod tests {
         let e = std::format!("{}", ThemeError::UnknownPalette("green"));
         assert_eq!(
             e,
-            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime, cyberdeck, cyberdeck-cyan, cyberdeck-lime, cyberdeck-magenta, cyberdeck-amber, cyberdeck-violet"
+            "no palette 'green'; there are fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime, cyberdeck, cyberdeck-orange, cyberdeck-cyan, cyberdeck-lime, cyberdeck-magenta, cyberdeck-amber, cyberdeck-violet, washi, washi-indigo, washi-matcha, washi-kincha, washi-sakura"
         );
     }
 
     #[test]
     fn palettes_are_named_step_round_and_take_an_accent() {
-        assert_eq!(Palette::default(), Palette::FUSUMA);
+        assert_eq!(Palette::default(), Palette::WASHI);
         assert_eq!(Palette::FUSUMA.colors(true), Theme::DARK.colors);
         assert_eq!(Palette::FUSUMA.colors(false), Theme::LIGHT.colors);
         assert_eq!(Palette::named("forest"), Some(&Palette::FOREST));
@@ -2007,11 +2134,17 @@ mod tests {
                 "crimson",
                 "lime",
                 "cyberdeck",
+                "cyberdeck-orange",
                 "cyberdeck-cyan",
                 "cyberdeck-lime",
                 "cyberdeck-magenta",
                 "cyberdeck-amber",
-                "cyberdeck-violet"
+                "cyberdeck-violet",
+                "washi",
+                "washi-indigo",
+                "washi-matcha",
+                "washi-kincha",
+                "washi-sakura"
             ]
         );
         let mut p = &Palette::ALL[0];
@@ -2031,16 +2164,43 @@ mod tests {
             "crimson",
             "lime",
             "cyberdeck",
+            "cyberdeck-orange",
             "cyberdeck-cyan",
             "cyberdeck-lime",
             "cyberdeck-magenta",
             "cyberdeck-amber",
             "cyberdeck-violet",
+            "washi",
+            "washi-indigo",
+            "washi-matcha",
+            "washi-kincha",
+            "washi-sakura",
             "fusuma",
         ] {
             p = p.next();
             assert_eq!(p.name, want);
         }
+        // Inside a design the switcher stays in its family.
+        let mut d = &Palette::WASHI;
+        for want in [
+            "washi-indigo",
+            "washi-matcha",
+            "washi-kincha",
+            "washi-sakura",
+            "fusuma",
+            "forest",
+        ] {
+            d = d.next_in_design();
+            assert_eq!(d.name, want);
+        }
+        assert_eq!(Palette::CYBERDECK_VIOLET.next_in_design().name, "cyberdeck");
+        assert_eq!(Palette::WASHI.design(), Design::Fusuma);
+        assert_eq!(Palette::CYBERDECK_CYAN.design(), Design::Cyberdeck);
+        assert_eq!(Design::Cyberdeck.palettes().count(), 7);
+        assert_eq!(Design::Fusuma.palettes().count(), 20);
+        assert_eq!(Design::Fusuma.other().other(), Design::Fusuma);
+        assert_eq!(Design::named("cyberdeck"), Some(Design::Cyberdeck));
+        assert!(Design::ALL.iter().all(|d| d.palette().design() == *d));
         let own = Palette {
             name: "mine",
             ..Palette::OCEAN
@@ -2086,11 +2246,17 @@ mod tests {
                 "crimson",
                 "lime",
                 "cyberdeck",
+                "cyberdeck-orange",
                 "cyberdeck-cyan",
                 "cyberdeck-lime",
                 "cyberdeck-magenta",
                 "cyberdeck-amber",
-                "cyberdeck-violet"
+                "cyberdeck-violet",
+                "washi",
+                "washi-indigo",
+                "washi-matcha",
+                "washi-kincha",
+                "washi-sakura"
             ]
         );
     }

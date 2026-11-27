@@ -11,8 +11,8 @@ use core::fmt::{self, Write};
 
 use fusuma::render::{Rect, Renderer};
 use fusuma::{
-    ActionKind, App, ButtonVariant, CrossAlign, Key, Length, NodeId, Palette, Pointer, Round,
-    Style, Surface, TextRole, Theme, Tree,
+    ActionKind, App, ButtonVariant, CrossAlign, Design, Key, Length, NodeId, Palette, Pointer,
+    Round, Style, Surface, TextRole, Theme, Tree,
 };
 
 /// Nodes the tree can hold; the busiest page uses about 40.
@@ -25,10 +25,9 @@ const FILL_MS: u32 = 8000;
 /// controls and spacing than the phone-sized defaults).
 #[must_use]
 pub const fn theme(dark: bool, palette: &Palette) -> Theme {
-    let base = if dark { Theme::DARK } else { Theme::LIGHT }.with_colors(palette.colors(dark));
-    if palette.is_cyberdeck() {
-        // The design brings its own shapes, font and decoration: only the sizes are made for the big touch screen.
-        return Theme {
+    // Each design brings its own shapes, fonts and decoration: only the sizes are made for the big touch screen.
+    match palette.design() {
+        Design::Cyberdeck => Theme {
             spacing: fusuma::Spacing {
                 xs: 4,
                 sm: 8,
@@ -46,30 +45,31 @@ pub const fn theme(dark: bool, palette: &Palette) -> Theme {
             track_height: 6,
             colors: palette.colors(dark),
             ..Theme::CYBERDECK
-        };
-    }
-    Theme {
-        spacing: fusuma::Spacing {
-            xs: 4,
-            sm: 10,
-            md: 18,
-            lg: 28,
         },
-        radii: fusuma::Radii {
-            sm: 6,
-            md: 12,
-            lg: 20,
+        Design::Fusuma => Theme {
+            spacing: fusuma::Spacing {
+                xs: 4,
+                sm: 10,
+                md: 18,
+                lg: 28,
+            },
+            radii: fusuma::Radii {
+                sm: 3,
+                md: 5,
+                lg: 8,
+            },
+            text: fusuma::TextSizes {
+                caption: 15,
+                body: 20,
+                title: 30,
+                icon: 24,
+            },
+            control_height: 56,
+            indicator: 28,
+            track_height: 8,
+            colors: palette.colors(dark),
+            ..Theme::FUSUMA
         },
-        text: fusuma::TextSizes {
-            caption: 15,
-            body: 20,
-            title: 30,
-            icon: 24,
-        },
-        control_height: 56,
-        indicator: 28,
-        track_height: 14,
-        ..base
     }
 }
 
@@ -104,7 +104,7 @@ const ICONS: [&str; 8] = [
 /// The text of the palette button: the palette's name.
 fn palette_button_text(palette: &Palette) -> &'static str {
     match palette.name {
-        "fusuma" => "Fusuma",
+        "fusuma" => "Fusuma Blue",
         "forest" => "Forest",
         "ocean" => "Ocean",
         "petrol" => "Petrol",
@@ -120,11 +120,17 @@ fn palette_button_text(palette: &Palette) -> &'static str {
         "crimson" => "Crimson",
         "lime" => "Lime",
         "cyberdeck" => "Cyberdeck",
+        "cyberdeck-orange" => "Cyberdeck Orange",
         "cyberdeck-cyan" => "Cyberdeck Cyan",
         "cyberdeck-lime" => "Cyberdeck Lime",
         "cyberdeck-magenta" => "Cyberdeck Magenta",
         "cyberdeck-amber" => "Cyberdeck Amber",
         "cyberdeck-violet" => "Cyberdeck Violet",
+        "washi" => "Washi",
+        "washi-indigo" => "Washi Indigo",
+        "washi-matcha" => "Washi Matcha",
+        "washi-kincha" => "Washi Kincha",
+        "washi-sakura" => "Washi Sakura",
         _ => "Colours",
     }
 }
@@ -142,9 +148,10 @@ fn theme_button_text(palette: &Palette, dark: bool, watch: bool) -> Buf {
     b
 }
 
-/// The names of a palette's row in the palette dropdown.
-const PALETTE_NAMES: [&str; 21] = [
-    "Fusuma",
+/// The name of a palette's row in the palette dropdown, in [`Palette::ALL`]'s order: short, because the design is
+/// named by the group the row is in.
+const PALETTE_NAMES: [&str; 27] = [
+    "Blue",
     "Forest",
     "Ocean",
     "Petrol",
@@ -159,13 +166,36 @@ const PALETTE_NAMES: [&str; 21] = [
     "Slate",
     "Crimson",
     "Lime",
-    "Cyberdeck",
-    "Deck Cyan",
-    "Deck Lime",
-    "Deck Magenta",
-    "Deck Amber",
-    "Deck Violet",
+    "Vermilion",
+    "Orange",
+    "Cyan",
+    "Lime",
+    "Magenta",
+    "Amber",
+    "Violet",
+    "Washi",
+    "Indigo",
+    "Matcha",
+    "Kincha",
+    "Sakura",
 ];
+
+/// The rows of a design's palettes in the dropdown, as indexes into [`Palette::ALL`]: the fusuma design starts with its
+/// own washi family.
+fn palette_order(design: Design) -> impl Iterator<Item = usize> {
+    let washi = |p: &Palette| p.name.starts_with("washi");
+    let first = Palette::ALL
+        .iter()
+        .enumerate()
+        .filter(move |(_, p)| design == Design::Fusuma && washi(p))
+        .map(|(i, _)| i);
+    let rest = Palette::ALL
+        .iter()
+        .enumerate()
+        .filter(move |(_, p)| p.design() == design && !(design == Design::Fusuma && washi(p)))
+        .map(|(i, _)| i);
+    first.chain(rest)
+}
 
 /// The pages in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -330,7 +360,11 @@ pub struct Showcase {
     /// palette tile steps through them).
     theme_menu: Option<NodeId>,
     theme_rows: [Option<NodeId>; 2],
-    palette_rows: [Option<NodeId>; 21],
+    palette_rows: [Option<NodeId>; 27],
+    /// The dropdown's Fusuma and Cyberdeck rows, and the group of palette rows of each design (only the one of the
+    /// design that is on shows).
+    design_rows: [Option<NodeId>; 2],
+    palette_groups: [Option<NodeId>; 2],
     status: Option<NodeId>,
     live: Live,
     clicks: u32,
@@ -377,10 +411,10 @@ impl Showcase {
     pub fn new(width: u32, height: u32) -> Self {
         let mut s = Self {
             tree: Tree::new(),
-            theme: theme(true, &Palette::FUSUMA),
+            theme: theme(true, &Palette::WASHI),
             scale: 100,
             dark: true,
-            palette: Palette::FUSUMA,
+            palette: Palette::WASHI,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Overview,
             sidebar: [None; 13],
@@ -399,7 +433,9 @@ impl Showcase {
             palette_button: None,
             theme_menu: None,
             theme_rows: [None; 2],
-            palette_rows: [None; 21],
+            palette_rows: [None; 27],
+            design_rows: [None; 2],
+            palette_groups: [None; 2],
             status: None,
             live: Live::default(),
             clicks: 0,
@@ -709,7 +745,9 @@ impl Showcase {
             )?;
         }
         t.spacer(Some(header), Style::new().width(Length::Fill(1)))?;
-        self.palette_rows = [None; 21];
+        self.palette_rows = [None; 27];
+        self.design_rows = [None; 2];
+        self.palette_groups = [None; 2];
         // The chevron of a dropdown, when the icon font has one.
         #[cfg(feature = "fonts")]
         let chevron = fusuma::fonts::FontSet::default_set().icon("expand_more");
@@ -741,20 +779,31 @@ impl Showcase {
                 self.theme_rows[i] = Some(id);
             }
             if !watch {
-                // Three columns of seven: 21 rows in one column would be taller than the screen.
-                let cols = t.row(Some(menu), Style::new().gap(sp.xs))?;
-                for chunk in 0..PALETTE_NAMES.len().div_ceil(7) {
-                    let column =
-                        t.column(Some(cols), Style::new().gap(sp.xs).width(Length::Fill(1)))?;
-                    for i in chunk * 7..(chunk * 7 + 7).min(PALETTE_NAMES.len()) {
-                        let id = t.list_item(
-                            Some(column),
-                            PALETTE_NAMES[i],
-                            Palette::ALL[i].name == self.palette.name,
-                        )?;
-                        t.set_style(id, Style::new().width(Length::Fill(1)));
-                        self.palette_rows[i] = Some(id);
+                // The design, then the palettes that go with each: a group of columns of seven rows per design, and only
+                // the group of the design that is on shows.
+                let designs = t.row(Some(menu), Style::new().gap(sp.xs))?;
+                for (i, d) in Design::ALL.into_iter().enumerate() {
+                    let id = t.list_item(Some(designs), d.title(), d == self.palette.design())?;
+                    t.set_style(id, Style::new().width(Length::Fill(1)));
+                    self.design_rows[i] = Some(id);
+                }
+                for (g, d) in Design::ALL.into_iter().enumerate() {
+                    let group = t.row(Some(menu), Style::new().gap(sp.xs))?;
+                    for chunk in 0..palette_order(d).count().div_ceil(7) {
+                        let column =
+                            t.column(Some(group), Style::new().gap(sp.xs).width(Length::Fill(1)))?;
+                        for i in palette_order(d).skip(chunk * 7).take(7) {
+                            let id = t.list_item(
+                                Some(column),
+                                PALETTE_NAMES[i],
+                                Palette::ALL[i].name == self.palette.name,
+                            )?;
+                            t.set_style(id, Style::new().width(Length::Fill(1)));
+                            self.palette_rows[i] = Some(id);
+                        }
                     }
+                    t.set_hidden(group, d != self.palette.design());
+                    self.palette_groups[g] = Some(group);
                 }
             }
             self.theme_menu = Some(menu);
@@ -1450,6 +1499,19 @@ impl Showcase {
                 self.tree.set_checked(r, p.name == palette.name);
             }
         }
+        for ((row, group), d) in self
+            .design_rows
+            .iter()
+            .zip(self.palette_groups)
+            .zip(Design::ALL)
+        {
+            if let Some(r) = *row {
+                self.tree.set_checked(r, d == palette.design());
+            }
+            if let Some(g) = group {
+                self.tree.set_hidden(g, d != palette.design());
+            }
+        }
         self.tree.invalidate();
     }
 
@@ -1535,9 +1597,17 @@ impl Showcase {
                     {
                         self.set_palette(Palette::ALL[i]);
                         let _ = write!(b, "Colours: {}", self.palette.name);
+                    } else if let Some(i) = self
+                        .design_rows
+                        .iter()
+                        .position(|&r| r.is_some() && r == id)
+                    {
+                        // A design starts with its own palette.
+                        self.set_palette(Design::ALL[i].palette());
+                        let _ = write!(b, "Design: {}", Design::ALL[i].title());
                     } else if id.is_some() && id == self.palette_button {
-                        // The watch's tile steps through the palettes.
-                        self.set_palette(*self.palette.next());
+                        // The watch's tile steps through the palettes of the design that is on.
+                        self.set_palette(*self.palette.next_in_design());
                         let _ = write!(b, "Colours: {}", self.palette.name);
                     }
                 }
@@ -2004,7 +2074,7 @@ mod tests {
         assert_eq!(r.pixel(0, 0).unwrap(), light_bg);
         assert_eq!(
             s.tree().text(s.theme_button().unwrap()),
-            Some("Fusuma \u{b7} Light")
+            Some("Washi \u{b7} Light")
         );
         assert!(
             s.tree().is_checked(s.theme_rows[1].unwrap())
@@ -2017,31 +2087,31 @@ mod tests {
         let (mut s, mut r) = app();
         assert_eq!(
             s.tree().text(s.theme_button().unwrap()),
-            Some("Fusuma \u{b7} Dark")
+            Some("Washi \u{b7} Dark")
         );
-        for want in [
-            "forest",
-            "ocean",
-            "petrol",
-            "violet",
-            "ember",
-            "graphite",
-            "rose",
-            "amber",
-            "mint",
-            "sky",
-            "indigo",
-            "slate",
-            "crimson",
-            "lime",
-            "cyberdeck",
-            "cyberdeck-cyan",
-            "cyberdeck-lime",
-            "cyberdeck-magenta",
-            "cyberdeck-amber",
-            "cyberdeck-violet",
-            "fusuma",
-        ] {
+        // The button steps through the palettes of the design that is on; a design row switches the design.
+        let mut want_all: std::vec::Vec<&str> = Palette::ALL
+            .iter()
+            .filter(|p| p.design() == Design::Fusuma)
+            .map(|p| p.name)
+            .collect();
+        let at = want_all.iter().position(|n| *n == "washi").unwrap();
+        want_all.rotate_left(at + 1);
+        want_all.push("cyberdeck");
+        want_all.extend(
+            Palette::ALL
+                .iter()
+                .filter(|p| p.design() == Design::Cyberdeck)
+                .skip(1)
+                .map(|p| p.name),
+        );
+        want_all.push("cyberdeck");
+        for want in want_all {
+            if want == "cyberdeck" && s.palette().design() == Design::Fusuma {
+                choose_design(&mut s, Design::Cyberdeck);
+                assert_eq!(s.palette().name, want);
+                continue;
+            }
             next_palette(&mut s);
             assert_eq!(s.palette().name, want);
             assert!(s.is_dark(), "the palette does not switch dark and light");
@@ -2055,12 +2125,13 @@ mod tests {
             );
             assert_eq!(r.pixel(0, 0).unwrap(), p.dark.background, "{want}");
         }
+        choose_design(&mut s, Design::Fusuma);
         next_palette(&mut s);
         toggle_theme(&mut s);
-        assert_eq!(s.theme().colors, Palette::FOREST.light, "light forest");
+        assert_eq!(s.theme().colors, Palette::WASHI_INDIGO.light, "light washi");
         assert_eq!(
             s.tree().text(s.theme_button().unwrap()),
-            Some("Forest \u{b7} Light")
+            Some("Washi Indigo \u{b7} Light")
         );
     }
 
@@ -2079,13 +2150,16 @@ mod tests {
         assert_eq!(a.y, b.y, "{a:?} {b:?}");
         assert!(a.x > b.x);
         tap(&mut s, tile);
-        assert_eq!(s.palette().name, "forest");
-        assert_eq!(s.tree().text(s.palette_button().unwrap()), Some("Forest"));
+        assert_eq!(s.palette().name, "washi-indigo");
+        assert_eq!(
+            s.tree().text(s.palette_button().unwrap()),
+            Some("Washi Indigo")
+        );
         assert!(!s.is_open(), "it switches colours, it opens no page");
         open(&mut s, Page::Buttons);
         assert_eq!(s.palette_button(), None, "not on a page");
         close(&mut s);
-        assert_eq!(s.palette().name, "forest", "kept across pages");
+        assert_eq!(s.palette().name, "washi-indigo", "kept across pages");
     }
 
     #[test]
@@ -2411,13 +2485,13 @@ mod tests {
         s.frame(&mut small).unwrap();
         assert_eq!(
             s.tree().text(s.theme_button().unwrap()),
-            Some("Fusuma \u{b7} Light")
+            Some("Washi \u{b7} Light")
         );
         App::resized(&mut s, 1024, 600, 100);
         assert!(!s.is_compact() && s.sidebar_item(Page::Controls).is_some());
         assert_eq!(
             s.tree().text(s.theme_button().unwrap()),
-            Some("Fusuma \u{b7} Light")
+            Some("Washi \u{b7} Light")
         );
         // A 2x screen of 1280 physical pixels is 640 logical: not compact; 1200 is.
         App::resized(&mut s, 1200, 800, 200);
@@ -2427,6 +2501,45 @@ mod tests {
         let _ = &mut r;
     }
 
+    /// The fusuma design on every page in both modes and in each of its washi palettes: it draws, its own colours and
+    /// shapes are on show, and the lattice and the bar are painted (the PNG is written when asked).
+    #[test]
+    fn every_page_draws_in_the_fusuma_design_in_both_modes() {
+        for dark in [true, false] {
+            for p in Page::ALL {
+                let (mut s, mut r) = app();
+                if !dark {
+                    toggle_theme(&mut s);
+                }
+                go(&mut s, p);
+                s.frame(&mut r).unwrap();
+                let t = s.theme();
+                assert_eq!(
+                    (t.radii.sm, t.elevation, t.fonts.body),
+                    (3, 0, Theme::FUSUMA.fonts.body)
+                );
+                assert_eq!((t.decor.lattice, t.decor.bar), (4, 4));
+                assert_eq!(
+                    t.colors,
+                    if dark {
+                        Palette::WASHI.dark
+                    } else {
+                        Palette::WASHI.light
+                    }
+                );
+                assert_eq!(r.pixel(1023, 599).unwrap(), t.colors.background);
+                if let Ok(dir) = std::env::var("FUSUMA_SHOWCASE_PNG") {
+                    let name = std::format!(
+                        "{dir}/fusuma-{}-{}.png",
+                        if dark { "dark" } else { "light" },
+                        p.name()
+                    );
+                    std::fs::write(name, fusuma::renderers::vello_cpu::png(&r).unwrap()).unwrap();
+                }
+            }
+        }
+    }
+
     /// The cyberdeck design on every page in both modes: it draws, nothing overflows, and its own colours and shapes are
     /// the ones on show (the PNG is written when asked).
     #[test]
@@ -2434,9 +2547,7 @@ mod tests {
         for dark in [true, false] {
             for p in Page::ALL {
                 let (mut s, mut r) = app();
-                while Showcase::palette(&s).name != "cyberdeck" {
-                    next_palette(&mut s);
-                }
+                choose_design(&mut s, Design::Cyberdeck);
                 if !dark {
                     toggle_theme(&mut s);
                 }
@@ -2577,11 +2688,21 @@ mod tests {
         }
         let id = s.theme_button().unwrap();
         tap(s, id);
+        let next = Showcase::palette(s).next_in_design();
         let at = Palette::ALL
             .iter()
-            .position(|p| p.name == Showcase::palette(s).name)
+            .position(|p| p.name == next.name)
             .unwrap();
-        let row = s.palette_rows[(at + 1) % Palette::ALL.len()].unwrap();
+        let row = s.palette_rows[at].unwrap();
+        tap(s, row);
+    }
+
+    /// Picks a design from the theme dropdown (a watch has no such row: it steps with its tile).
+    fn choose_design(s: &mut Showcase, d: Design) {
+        let id = s.theme_button().unwrap();
+        tap(s, id);
+        let at = Design::ALL.iter().position(|x| *x == d).unwrap();
+        let row = s.design_rows[at].unwrap();
         tap(s, row);
     }
 

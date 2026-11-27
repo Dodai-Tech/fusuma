@@ -19,6 +19,8 @@ const v = (name) => {
 };
 const num = (name) => v(name).valuesByMode[coll.defaultModeId];
 const font = (name) => v(name).valuesByMode[coll.defaultModeId];
+// A design whose body font is a proportional sans draws its component labels in it; mono is for the ones that are mono.
+const bodyMono = () => font('font/body') !== 'Inter';
 
 await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
 let monoOk = true;
@@ -32,7 +34,7 @@ const bind = (node, field, name) => { try { node.setBoundVariable(field, v(name)
 
 function label(content, size, color, mono) {
   const t = figma.createText();
-  const fam = mono && monoOk ? 'JetBrains Mono' : 'Inter';
+  const fam = mono && monoOk && bodyMono() ? 'JetBrains Mono' : 'Inter';
   t.fontName = { family: fam, style: 'Regular' };
   t.characters = content;
   t.fontSize = size;
@@ -201,6 +203,7 @@ function controls(sys) {
   page.name = `${sys} / Controls`;
   figma.currentPage = page;
   const ticksArm = num('decor/ticks'), hatchStep = num('decor/hatch'), dots = num('decor/dots');
+  const lattice = num('decor/lattice'), seal = num('decor/bar');
   const rad = num('radius/sm');
   const ch = num('size/control-height');
   const sheet = col(32);
@@ -235,9 +238,18 @@ function controls(sys) {
     const b = box(220, ch, chosen ? 'color/surface' : null, null, rad);
     if (chosen) {
       if (hatchStep > 0) hatch(b, hatchStep, 'color/primary', 0.62);
-      else fill(b, 'color/primary');
+      else if (seal > 0) {
+        const m = Math.round(ch / 6);
+        const bar = figma.createFrame();
+        bar.resize(seal, ch - 2 * m);
+        bar.x = 0; bar.y = m;
+        bar.name = 'Seal bar';
+        fill(bar, 'color/primary');
+        b.appendChild(bar);
+        fill(b, 'color/surface-raised');
+      } else fill(b, 'color/primary');
     }
-    const t = label(text, num('text/body'), chosen && hatchStep === 0 ? 'color/on-primary' : 'color/text', true);
+    const t = label(text, num('text/body'), chosen && hatchStep === 0 && seal === 0 ? 'color/on-primary' : 'color/text', true);
     t.x = num('space/md'); t.y = Math.round((ch - t.height) / 2);
     b.appendChild(t);
     b.name = `List item / ${text}`;
@@ -256,12 +268,24 @@ function controls(sys) {
   const card = box(260, 110, 'color/surface', 'color/border', num('radius/md'));
   bind(card, 'cornerRadius', 'radius/md');
   if (ticksArm > 0) ticks(card, ticksArm, 'color/border-strong');
+  const frameLine = (host, strokeName) => {
+    if (lattice === 0) return;
+    const f = figma.createFrame();
+    f.resize(host.width - 2 * lattice, host.height - 2 * lattice);
+    f.x = lattice; f.y = lattice;
+    f.name = 'Lattice';
+    f.fills = [];
+    stroke(f, strokeName, 1);
+    host.appendChild(f);
+  };
+  frameLine(card, 'color/border');
   const t = label('Card', num('text/title'), 'color/text', true); t.x = num('space/md'); t.y = num('space/md'); card.appendChild(t);
   const t2 = label('Ticks in the corners', num('text/caption'), 'color/text-muted', true); t2.x = num('space/md'); t2.y = t.y + t.height + num('space/sm'); card.appendChild(t2);
   card.name = 'Card';
   const dlg = box(260, 110, 'color/surface', 'color/border-strong', num('radius/md'));
   bind(dlg, 'cornerRadius', 'radius/md');
   if (ticksArm > 0) ticks(dlg, ticksArm, 'color/primary');
+  frameLine(dlg, 'color/border');
   const d1 = label('Dialog', num('text/title'), 'color/text', true); d1.x = num('space/md'); d1.y = num('space/md'); dlg.appendChild(d1);
   dlg.name = 'Dialog';
   group('Card and dialog', [card, dlg]);

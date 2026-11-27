@@ -30,16 +30,16 @@ fn systems() -> [System; 2] {
         System {
             id: "cyberdeck",
             title: "Cyberdeck",
-            about: "Near-black, white mono text, one orange accent, 1 px outlines, square corners, no shadow; corner ticks, a hatch on the chosen row, a dotted track and a progress bar round the frame.",
+            about: "Near-black, white mono text, one vermilion accent, 1 px outlines, square corners, no shadow; corner ticks, a hatch on the chosen row, a dotted track and a progress bar round the frame.",
             theme: Theme::CYBERDECK,
             palette: Palette::CYBERDECK,
         },
         System {
             id: "fusuma",
             title: "Fusuma",
-            about: "The default: a neutral blue-grey with a blue main action, rounded corners, soft shadow under floating panels.",
-            theme: Theme::DARK,
-            palette: Palette::FUSUMA,
+            about: "Named for the sliding paper door: sumi ink (dark) and washi paper (light), one vermilion accent, small corners, no shadow, thin outlines; a second thin outline inside cards and dialogs like the lattice of a shoji screen, a bar on the chosen list row like a seal, an underline under the chosen tab.",
+            theme: Theme::FUSUMA,
+            palette: Palette::WASHI,
         },
     ]
 }
@@ -101,6 +101,8 @@ fn numbers(t: &Theme) -> Vec<(String, u32)> {
         ("decor/ticks", t.decor.ticks),
         ("decor/hatch", t.decor.hatch),
         ("decor/dots", t.decor.dots),
+        ("decor/lattice", t.decor.lattice),
+        ("decor/bar", t.decor.bar),
         ("motion/fast", t.motion.fast_ms),
         ("motion/normal", t.motion.normal_ms),
         ("motion/slow", t.motion.slow_ms),
@@ -275,7 +277,7 @@ fn spec(s: &System) -> String {
     .unwrap();
     writeln!(o, "## Decoration\n").unwrap();
     let d = t.decor;
-    if d.ticks == 0 && d.hatch == 0 && d.dots == 0 && !d.frame {
+    if d.ticks == 0 && d.hatch == 0 && d.dots == 0 && !d.frame && d.lattice == 0 && d.bar == 0 {
         writeln!(o, "None: every widget is as the tokens say.\n").unwrap();
     } else {
         writeln!(
@@ -283,10 +285,25 @@ fn spec(s: &System) -> String {
             "| piece | rule | on a glass without greys |\n| --- | --- | --- |"
         )
         .unwrap();
-        writeln!(o, "| corner ticks | `{}` px arms, {} px thick, in the four corners of a card and a dialog; the card has a quiet 1 px outline between them | kept (they are lines) |", d.ticks, t.border_width).unwrap();
-        writeln!(o, "| hatch | 45 degree lines `{}` px apart in `primary` thinned to 62 % over `surface`, on the chosen list row and tab | a solid `primary` fill with `on-primary` text |", d.hatch).unwrap();
-        writeln!(o, "| dotted track | a solid bar to the value, then a 1 px dot every `{}` px in `border-strong` | a solid track |", d.dots).unwrap();
-        writeln!(o, "| frame progress | a progress with room on all four sides (taller than twice `track-height`) runs round its edge, clockwise from the top left, `track-height` thick, over a `border` track | kept (it is lines) |\n").unwrap();
+        if d.lattice != 0 {
+            writeln!(o, "| lattice | a 1 px outline `{}` px inside the edge of a card and a dialog, in `border` mixed 80 % over the fill | kept (it is a line) |", d.lattice).unwrap();
+        }
+        if d.bar != 0 {
+            writeln!(o, "| seal bar | a `{}` px bar in `primary` on the left edge of the chosen list row, inset a sixth of the height top and bottom | kept |", d.bar).unwrap();
+        }
+        if d.ticks != 0 {
+            writeln!(o, "| corner ticks | `{}` px arms, {} px thick, in the four corners of a card and a dialog; the card has a quiet 1 px outline between them | kept (they are lines) |", d.ticks, t.border_width).unwrap();
+        }
+        if d.hatch != 0 {
+            writeln!(o, "| hatch | 45 degree lines `{}` px apart in `primary` thinned to 62 % over `surface`, on the chosen list row and tab | a solid `primary` fill with `on-primary` text |", d.hatch).unwrap();
+        }
+        if d.dots != 0 {
+            writeln!(o, "| dotted track | a solid bar to the value, then a 1 px dot every `{}` px in `border-strong` | a solid track |", d.dots).unwrap();
+        }
+        if d.frame {
+            writeln!(o, "| frame progress | a progress with room on all four sides (taller than twice `track-height`) runs round its edge, clockwise from the top left, `track-height` thick, over a `border` track | kept (it is lines) |").unwrap();
+        }
+        writeln!(o).unwrap();
     }
     writeln!(o, "## Widgets\n").unwrap();
     writeln!(o, "| widget | look |\n| --- | --- |").unwrap();
@@ -297,7 +314,7 @@ fn spec(s: &System) -> String {
         if s.id == "cyberdeck" {
             "cyberdeck.rs"
         } else {
-            "theme.rs"
+            "fusuma.rs"
         }
     )
     .unwrap();
@@ -519,6 +536,56 @@ fn the_tokens_are_valid_and_carry_every_role_and_number() {
         tokens(&c, &Palette::CYBERDECK.dark),
         tokens(&c, &Palette::CYBERDECK.light)
     );
+}
+
+/// The fusuma design on the real renderer: the lattice line is `lattice` px inside a card's edge and the seal bar is `bar`
+/// px wide on the chosen row, as the tokens say.
+#[test]
+fn the_fusuma_lattice_and_bar_are_where_the_tokens_say() {
+    use fusuma_render::{Probe, Rect, Renderer};
+    use fusuma_ui::{Style, Tree};
+    let t = Theme::FUSUMA;
+    let c = t.colors;
+    let d = t.decor;
+    let mut tree = Tree::<8>::new();
+    let card = tree
+        .column(
+            None,
+            Style::new()
+                .padding(12)
+                .background(fusuma_ui::Surface::Surface),
+        )
+        .unwrap();
+    tree.label(Some(card), "x", fusuma_ui::TextRole::Body)
+        .unwrap();
+    let mut s = fusuma_render_vello_cpu::new(120, 80).unwrap();
+    tree.update(&s, &t, Rect::new(0, 0, 120, 80));
+    s.clear(c.background).unwrap();
+    tree.paint(&mut s, &t).unwrap();
+    let r = tree.rect(card).unwrap();
+    let (mid, inset) = (r.y + (r.h / 2) as i32, d.lattice as i32);
+    // Scanning in from the left edge: the outline, then the fill, then the lattice line, then the fill again.
+    assert_eq!(s.pixel(r.x, mid), Some(c.border), "the outline");
+    let fill = s.pixel(r.x + 1, mid).unwrap();
+    assert_eq!(fill, c.surface);
+    let line = s.pixel(r.x + inset, mid).unwrap();
+    assert_ne!(line, fill, "the lattice line");
+    assert_eq!(s.pixel(r.x + inset - 1, mid), Some(fill));
+    assert_eq!(s.pixel(r.x + inset + 1, mid), Some(fill), "one pixel wide");
+
+    // The chosen row: a bar `bar` px wide in the main action's colour on its left edge.
+    let mut tree = Tree::<8>::new();
+    let row = tree.list_item(None, "", true).unwrap();
+    let mut s = fusuma_render_vello_cpu::new(160, 60).unwrap();
+    tree.update(&s, &t, Rect::new(0, 0, 160, 60));
+    s.clear(c.background).unwrap();
+    tree.paint(&mut s, &t).unwrap();
+    let r = tree.rect(row).unwrap();
+    let y = r.y + (r.h / 2) as i32;
+    let width = (r.x..r.right())
+        .take_while(|&x| s.pixel(x, y) == Some(c.primary))
+        .count();
+    assert_eq!(width as u32, d.bar);
 }
 
 /// The drawing against the numbers the spec and the tokens give: the corner ticks, the hatch and the dotted track are as

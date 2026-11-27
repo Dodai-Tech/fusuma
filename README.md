@@ -41,10 +41,12 @@ backend = "auto"      # auto, integer, vello-cpu or vello-gpu
 preset = "legible"    # fusuma, material, legible, plex or noto
 
 [theme]
-palette = "forest"    # fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime, cyberdeck or cyberdeck-cyan/-lime/-magenta/-amber/-violet
+palette = "washi"     # 27: washi (default, vermilion on sumi and washi) and washi-indigo/-matcha/-kincha/-sakura, cyberdeck and cyberdeck-orange/-cyan/-lime/-magenta/-amber/-violet, fusuma (blue), forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime
 ```
 
-Design tokens, a spec and an OpenPencil/Figma file for the design are generated from the theme: see [docs/DESIGN.md](docs/DESIGN.md).
+Two designs ship, each with its own palettes: **Fusuma** (named for the sliding paper door: sumi ink and washi paper, one
+vermilion accent, small corners, a lattice line inside cards, a seal bar on the chosen row) and **Cyberdeck** (near-black,
+mono text, outlines, ticks and hatch). The showcase switches both at run time. Design tokens, a spec and an OpenPencil/Figma file are generated from the theme: see [docs/DESIGN.md](docs/DESIGN.md).
 
 `examples/showcase` is a complete app: seven pages, a dialog, a text field, icons, a palette switcher.
 

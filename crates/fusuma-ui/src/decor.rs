@@ -17,6 +17,11 @@ pub struct Decor {
     /// A progress widget that has room on all four sides (taller than twice the track) is drawn round its edge,
     /// clockwise from the top left, instead of along its middle.
     pub frame: bool,
+    /// Distance in pixels from the edge of a card or dialog to a second, thin outline inside it, like the frame of a
+    /// shoji screen; 0 for none.
+    pub lattice: u32,
+    /// Width in pixels of the bar on the left edge of the chosen list item, in the main action's colour; 0 for none.
+    pub bar: u32,
 }
 
 impl Decor {
@@ -26,6 +31,8 @@ impl Decor {
         hatch: 0,
         dots: 0,
         frame: false,
+        lattice: 0,
+        bar: 0,
     };
 
     /// This decoration for a glass that shows no greys (e-paper, a memory LCD): what is made of lines (ticks, the frame)
@@ -68,6 +75,44 @@ pub(crate) fn ticks<R: Renderer>(
         r.fill_rect(Rect::new(vx, vy, w, arm), 0, color)?;
     }
     Ok(())
+}
+
+/// A thin outline `inset` pixels inside `rect`, one pixel wide; nothing when it would not fit.
+pub(crate) fn lattice<R: Renderer>(
+    r: &mut R,
+    rect: Rect,
+    inset: u32,
+    color: Color,
+) -> Result<(), R::Error> {
+    let twice = inset.saturating_mul(2);
+    if inset == 0 || rect.w <= twice + 2 || rect.h <= twice + 2 {
+        return Ok(());
+    }
+    let inner = Rect::new(
+        rect.x + inset as i32,
+        rect.y + inset as i32,
+        rect.w - twice,
+        rect.h - twice,
+    );
+    r.stroke_rect(inner, 0, 1, color)
+}
+
+/// The bar on the left edge of a chosen item: `w` wide, inset from the top and bottom by a sixth of the height.
+pub(crate) fn side_bar<R: Renderer>(
+    r: &mut R,
+    rect: Rect,
+    w: u32,
+    color: Color,
+) -> Result<(), R::Error> {
+    if w == 0 || rect.is_empty() {
+        return Ok(());
+    }
+    let pad = rect.h / 6;
+    r.fill_rect(
+        Rect::new(rect.x, rect.y + pad as i32, w.min(rect.w), rect.h - 2 * pad),
+        0,
+        color,
+    )
 }
 
 /// Lines at 45 degrees, `step` pixels apart, inside `rect`.

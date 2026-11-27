@@ -541,7 +541,7 @@ mod tests {
     fn the_theme_table_picks_a_palette_and_names_a_mistake() {
         assert_eq!(
             palette_for(&ThemeChoice::default()).unwrap(),
-            fusuma::Palette::FUSUMA
+            fusuma::Palette::WASHI
         );
         let forest = ThemeChoice {
             palette: Some("forest".into()),

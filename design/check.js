@@ -6,7 +6,7 @@ const walk = (n, f) => { f(n); (n.children || []).forEach((c) => walk(c, f)); };
 for (const page of figma.root.children) {
   const m = /^(.+) \/ Controls$/.exec(page.name);
   if (!m) continue;
-  const r = { arm: 0, hatch: 0, dots: 0 };
+  const r = { arm: 0, hatch: 0, dots: 0, lattice: 0, bar: 0 };
   walk(page, (n) => {
     if (n.name === 'Card' && n.children) {
       for (const c of n.children) {
@@ -14,6 +14,8 @@ for (const page of figma.root.children) {
       }
       // The text children are not rectangles; a card with no ticks has no rectangles at all, so the arm stays 0.
     }
+    if (n.name === 'Lattice' && n.parent && n.parent.name === 'Card') r.lattice = n.x;
+    if (n.name === 'Seal bar') r.bar = n.width;
     if (n.type === 'VECTOR' && n.vectorPaths && n.vectorPaths.length) {
       const ks = [...n.vectorPaths[0].data.matchAll(/M ?(-?\d+(?:\.\d+)?) 0/g)].map((x) => Number(x[1]));
       if (ks.length > 1) r.hatch = ks[1] - ks[0];

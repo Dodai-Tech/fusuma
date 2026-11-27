@@ -16,7 +16,7 @@
 
 # The colours the app starts with; its palette button switches them at run time.
 # [theme]
-# palette = "forest"      # fusuma (default), forest, ocean, petrol or violet
+# palette = "forest"      # washi (default), washi-indigo, fusuma (the blue), forest ... or cyberdeck, cyberdeck-cyan ...
 # accent = "violet"       # another palette's main-action colour on it
 
 # The showcase's theme draws text at 15 (captions), 20 (body), 24 (icons) and 30 (titles) pixels: atlases at those

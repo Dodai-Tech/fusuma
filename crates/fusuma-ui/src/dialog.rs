@@ -390,6 +390,12 @@ impl<const N: usize> Tree<N> {
             theme.border_width,
             theme.colors.primary,
         )?;
+        crate::decor::lattice(
+            r,
+            rect,
+            theme.decor.lattice,
+            crate::theme::mix(look.fill, theme.colors.border, 800),
+        )?;
         Ok(())
     }
 }

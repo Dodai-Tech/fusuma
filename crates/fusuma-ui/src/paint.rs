@@ -256,7 +256,7 @@ impl<const N: usize> Tree<N> {
                 if let Some(color) = theme.surface_in(n.class, n.style.background) {
                     r.fill_rect(rect, theme.radius(n.style.round), color)?;
                     // A card gets an outline and ticks in the corners.
-                    if theme.decor.ticks != 0
+                    if (theme.decor.ticks != 0 || theme.decor.lattice != 0)
                         && matches!(
                             n.style.background,
                             crate::theme::Surface::Surface | crate::theme::Surface::Raised
@@ -274,6 +274,12 @@ impl<const N: usize> Tree<N> {
                             theme.decor.ticks,
                             theme.border_width,
                             theme.colors.border_strong,
+                        )?;
+                        crate::decor::lattice(
+                            r,
+                            rect,
+                            theme.decor.lattice,
+                            crate::theme::mix(color, theme.colors.border, 800),
                         )?;
                     }
                 }

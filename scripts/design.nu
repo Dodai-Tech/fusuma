@@ -118,14 +118,14 @@ def "main verify" [--fig: string = "dist/design/fusuma.fig"] {
     let palettes = (ls design/palettes | where type == dir | length)
     let rows = (^bunx @open-pencil/cli find $fig --type FRAME --name "Palette row" --json | from json | length)
     if $rows < $palettes { $errors = ($errors | append $"($rows) palette rows for ($palettes) palettes") }
-    # What the pages draw follows the decoration tokens: tick arm, hatch step and dot step (design/check.js).
+    # What the pages draw follows the decoration tokens: tick arm, hatch step, dot step, lattice inset and seal bar width (design/check.js).
     let drawn = (open --raw design/check.js | ^bunx @open-pencil/cli eval $fig --stdin | from json | from json)
     for entry in (ls design/tokens | where type == dir | sort-by name) {
         let system = ($entry.name | path basename)
         let decor = (open $"($entry.name)/($system).tokens.json" | get decor)
         let got = ($drawn | get -o $system)
         if $got == null { $errors = ($errors | append $"($system): no Controls page"); continue }
-        for pair in [[ticks arm] [hatch hatch] [dots dots]] {
+        for pair in [[ticks arm] [hatch hatch] [dots dots] [lattice lattice] [bar bar]] {
             let want = ($decor | get -o ($pair | first) | default { '$value': 0 } | get '$value')
             let have = ($got | get ($pair | last))
             if $want != $have { $errors = ($errors | append $"($system): the page draws ($pair | last) ($have), decor/($pair | first) says ($want)") }

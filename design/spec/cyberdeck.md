@@ -1,6 +1,6 @@
 # Cyberdeck design spec
 
-Near-black, white mono text, one orange accent, 1 px outlines, square corners, no shadow; corner ticks, a hatch on the chosen row, a dotted track and a progress bar round the frame.
+Near-black, white mono text, one vermilion accent, 1 px outlines, square corners, no shadow; corner ticks, a hatch on the chosen row, a dotted track and a progress bar round the frame.
 
 Generated from `Theme` and `Palette` by `crates/fusuma-ui/tests/design.rs`; do not edit. The tokens are in `design/tokens/cyberdeck/`, the design file is built with `nu scripts/design.nu build`.
 
@@ -16,10 +16,10 @@ Generated from `Theme` and `Palette` by `crates/fusuma-ui/tests/design.rs`; do n
 | `text` | `#f6f6f6` | `#101012` | 17.5 | 19.0 |
 | `text-muted` | `#a6a6ac` | `#545250` | 7.8 | 7.8 |
 | `text-disabled` | `#68686e` | `#969490` | 3.4 | 3.0 |
-| `primary` | `#ff5a1f` | `#c43c06` | 6.0 | 5.3 |
-| `primary-hover` | `#ff7a48` | `#aa3204` | 7.7 | 6.0 |
-| `primary-active` | `#e24c14` | `#8e2802` | 5.0 | 7.7 |
-| `on-primary` | `#0a0a0b` | `#ffffff` | 6.3 | 5.3 |
+| `primary` | `#f04e3a` | `#c8372d` | 5.3 | 5.2 |
+| `primary-hover` | `#f86e5c` | `#b02c24` | 7.0 | 5.9 |
+| `primary-active` | `#e24632` | `#94221c` | 4.9 | 7.6 |
+| `on-primary` | `#0a0a0b` | `#ffffff` | 5.5 | 5.2 |
 | `danger` | `#ff5470` | `#ba163a` | 6.1 | 6.4 |
 | `success` | `#4cd67a` | `#007636` | 10.1 | 5.8 |
 | `warning` | `#ffc400` | `#865c00` | 11.8 | 5.9 |
@@ -41,8 +41,10 @@ Contrast is the WCAG ratio of the colour against the surface it is read on (`on-
 
 | token | px |
 | --- | --- |
+| `decor/bar` | 0 |
 | `decor/dots` | 3 |
 | `decor/hatch` | 5 |
+| `decor/lattice` | 0 |
 | `decor/ticks` | 8 |
 | `radius/lg` | 3 |
 | `radius/md` | 2 |

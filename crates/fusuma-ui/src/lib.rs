@@ -13,6 +13,7 @@ mod dialog;
 mod dnd;
 mod event;
 mod focus;
+mod fusuma;
 mod gauge;
 mod gesture;
 mod hidden;
@@ -64,8 +65,8 @@ pub use springs::MAX_SPRINGS;
 pub use textinput::{Edit, INPUT_CAP, InputText};
 pub use theme::{
     Accent, AccentColors, ButtonState, ButtonStyle, ButtonVariant, Class as StyleClass, Colors,
-    Fonts, Hooks, ItemStyle, MotionBudget, MotionTimes, Palette, PanelKind, PanelStyle, Radii,
-    Round, Spacing, Surface, TabStyle, TextRole, TextSizes, Theme, ThemeError, Tone, mix,
+    Design, Fonts, Hooks, ItemStyle, MotionBudget, MotionTimes, Palette, PanelKind, PanelStyle,
+    Radii, Round, Spacing, Surface, TabStyle, TextRole, TextSizes, Theme, ThemeError, Tone, mix,
 };
 pub use transition::Edge;
 pub use tree::{

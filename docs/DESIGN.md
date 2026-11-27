@@ -2,13 +2,13 @@
 
 The design is data, not a hand-drawn file: the tokens and the written spec are generated from the same `Theme` and `Palette`
 constants the toolkit paints with, so the design file cannot drift from the code. Two systems are described: **cyberdeck**
-(`Theme::CYBERDECK`) and **fusuma** (`Theme::DARK`, the classic blue theme).
+(`Theme::CYBERDECK`) and **fusuma** (`Theme::FUSUMA`, sumi and washi with a vermilion accent).
 
 | path | what | tracked |
 | --- | --- | --- |
 | `design/tokens/<system>/<system>.tokens.json` | tokens of the dark mode (the default mode), W3C design-token format | yes |
 | `design/tokens/<system>/<system>-light.tokens.json` | the same tokens with the light colours | yes |
-| `design/palettes/<palette>/<palette>[-light].tokens.json` | the 16 colour roles of each of the 21 palettes, dark and light; one collection `palette-<name>` each, drawn on the Palettes page | yes |
+| `design/palettes/<palette>/<palette>[-light].tokens.json` | the 16 colour roles of each of the 27 palettes, dark and light; one collection `palette-<name>` each, drawn on the Palettes page | yes |
 | `design/spec/<system>.md` | written spec: colour roles with contrast, typography, spacing and shape, motion, decoration and its fallbacks, widgets | yes |
 | `design/build.js` | the drawing of the `.fig` (Figma Plugin API, run by `openpencil eval`) | yes |
 | `dist/design/fusuma.fig` | design file for [OpenPencil](https://github.com/open-pencil/open-pencil), opens in Figma-compatible tools | no, build it |
@@ -24,12 +24,12 @@ system:
 
 | page | what it draws |
 | --- | --- |
-| Palettes | one page: a dark and a light row of 16 swatches for each of the 21 palettes, bound to that palette's variables |
+| Palettes | one page: a dark and a light row of 16 swatches for each of the 27 palettes, bound to that palette's variables |
 | Foundations | the 16 colour roles as swatches, the type scale, spacing bars, radii |
-| Controls | buttons (primary, hover, pressed, secondary, disabled), the chosen and the idle list row (hatched in cyberdeck), the dotted progress bar at three values, the progress round the frame, a card and a dialog with corner ticks |
+| Controls | buttons (primary, hover, pressed, secondary, disabled), the chosen and the idle list row (hatched in cyberdeck, a seal bar in fusuma), the dotted progress bar at three values, the progress round the frame, a card and a dialog with corner ticks (cyberdeck) or a lattice line (fusuma) |
 
 Fills, strokes, radii and sizes are bound to variables. The decoration is drawn from the `decor/*` numbers, so a system with
-none (fusuma) shows solid fills and plain bars.
+a design without it (none today) shows solid fills and plain bars.
 
 ## Regenerate
 

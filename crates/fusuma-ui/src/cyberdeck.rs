@@ -1,4 +1,4 @@
-//! The `cyberdeck` design: near-black, white mono text, one orange accent, 1 pixel outlines, square corners, no shadows,
+//! The `cyberdeck` design: near-black, white mono text, one vermilion accent, 1 pixel outlines, square corners, no shadows,
 //! and four decorations drawn from straight lines (corner ticks, a hatch on the chosen row, a dotted track, a progress bar
 //! round the frame).
 //!
@@ -26,10 +26,10 @@ pub(crate) const PALETTE: Palette = Palette {
         text: Color::rgb(246, 246, 246),
         text_muted: Color::rgb(166, 166, 172),
         text_disabled: Color::rgb(104, 104, 110),
-        // The one accent.
-        primary: Color::rgb(255, 90, 31),
-        primary_hover: Color::rgb(255, 122, 72),
-        primary_active: Color::rgb(226, 76, 20),
+        // The one accent: vermilion.
+        primary: Color::rgb(240, 78, 58),
+        primary_hover: Color::rgb(248, 110, 92),
+        primary_active: Color::rgb(226, 70, 50),
         on_primary: Color::rgb(10, 10, 11),
         danger: Color::rgb(255, 84, 112),
         success: Color::rgb(76, 214, 122),
@@ -46,10 +46,10 @@ pub(crate) const PALETTE: Palette = Palette {
         text: Color::rgb(16, 16, 18),
         text_muted: Color::rgb(84, 82, 80),
         text_disabled: Color::rgb(150, 148, 144),
-        // Darker than the dark theme's orange: white text has to read on it, and a hover goes darker, not lighter.
-        primary: Color::rgb(196, 60, 6),
-        primary_hover: Color::rgb(170, 50, 4),
-        primary_active: Color::rgb(142, 40, 2),
+        // Darker than the dark theme's red: white text has to read on it, and a hover goes darker, not lighter.
+        primary: Color::rgb(200, 55, 45),
+        primary_hover: Color::rgb(176, 44, 36),
+        primary_active: Color::rgb(148, 34, 28),
         on_primary: Color::rgb(255, 255, 255),
         danger: Color::rgb(186, 22, 58),
         success: Color::rgb(0, 118, 54),
@@ -81,6 +81,22 @@ const fn with_accent(name: &'static str, dark: [Color; 4], light: [Color; 4]) ->
 
 const WHITE: Color = Color::rgb(255, 255, 255);
 
+/// The orange the design started with.
+pub(crate) const ORANGE: Palette = with_accent(
+    "cyberdeck-orange",
+    [
+        Color::rgb(255, 90, 31),
+        Color::rgb(255, 122, 72),
+        Color::rgb(226, 76, 20),
+        Color::rgb(10, 10, 11),
+    ],
+    [
+        Color::rgb(196, 60, 6),
+        Color::rgb(170, 50, 4),
+        Color::rgb(142, 40, 2),
+        WHITE,
+    ],
+);
 pub(crate) const CYAN: Palette = with_accent(
     "cyberdeck-cyan",
     [
@@ -171,6 +187,8 @@ pub(crate) const DECOR: Decor = Decor {
     hatch: 5,
     dots: 3,
     frame: true,
+    lattice: 0,
+    bar: 0,
 };
 
 /// The hooks that put the palette on the widgets.
@@ -355,7 +373,7 @@ mod tests {
     fn the_palette_reads_in_both_modes_and_is_listed() {
         assert!(Palette::ALL.iter().any(|p| p.name == "cyberdeck"));
         assert_eq!(Palette::named("cyberdeck"), Some(&PALETTE));
-        for (mode, c) in [PALETTE, CYAN, LIME, MAGENTA, AMBER, VIOLET]
+        for (mode, c) in [PALETTE, ORANGE, CYAN, LIME, MAGENTA, AMBER, VIOLET]
             .into_iter()
             .flat_map(|p| [(p.name, p.dark), (p.name, p.light)])
         {
@@ -384,7 +402,7 @@ mod tests {
 
     #[test]
     fn the_accents_are_cyberdeck_palettes_and_listed() {
-        for p in [CYAN, LIME, MAGENTA, AMBER, VIOLET] {
+        for p in [ORANGE, CYAN, LIME, MAGENTA, AMBER, VIOLET] {
             assert!(
                 p.is_cyberdeck() && Palette::named(p.name) == Some(&p),
                 "{}",

@@ -200,17 +200,25 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
 
 - [x] `Theme` (colours, spacing, radii, text sizes, fonts, sizes, motion) with a dark and a light default; every
   widget reads only from it; `Theme::scaled(percent)` for the display scale
-- [x] **Palettes and accents**: fusuma, forest, ocean, petrol, violet, ember, graphite, rose, amber, mint, sky, indigo, slate, crimson, lime and cyberdeck with five accents (cyan, lime, magenta, amber, violet): 21 for dark and light, and any palette's main action
-  on any other; `[theme]` in `fusuma.toml`, switched at run time. Every combination keeps the contrast rules
-  (text 7:1, muted 4.5:1, text on the main action 4.5:1, the main action 3:1 on the page), checked by tests
-- [x] **Cyberdeck design** (`Theme::CYBERDECK`, `Palette::CYBERDECK`): near-black, mono text, one orange accent, 1 px outlines,
-  radii 0/2/3, no shadow; corner ticks on cards and panels, a hatch on the chosen row or tab, a dotted progress track and a
-  progress bar round the frame (`Decor`, all integer lines, no allocator). On a reflective glass the hatch and dots become
-  solid fills and the ticks stay. Colours, fonts, tokens, decoration and hooks sit in `crates/fusuma-ui/src/cyberdeck.rs`,
-  apart from the widgets, so a definition `id = "cyberdeck"` can generate it later. Open: whether it becomes the default
-  (or only on embedded, TUI and console, with the blue theme as "Classic"), and mono for all text or labels only
-- [x] **Design files** (`design/`, `docs/DESIGN.md`): W3C tokens and a written spec per system (cyberdeck, fusuma) generated from
-  `Theme` and `Palette`, and an OpenPencil/Figma `.fig` bound to them; the workspace tests fail when they are stale
+- [x] **Palettes and accents**: 27 for dark and light, in two families. Fusuma design: washi (the default) with indigo,
+  matcha, kincha and sakura accents, and fusuma (the old blue), forest, ocean, petrol, violet, ember, graphite, rose,
+  amber, mint, sky, indigo, slate, crimson, lime. Cyberdeck design: cyberdeck (vermilion), orange, cyan, lime, magenta,
+  amber, violet. Any palette's main action goes on any other; `[theme]` in `fusuma.toml`, switched at run time. Every
+  combination keeps the contrast rules (text 7:1, muted 4.5:1, text on the main action 4.5:1, the main action 3:1 on the page)
+- [x] **Two designs** (`Design`, `Palette::design()`, `Theme::FUSUMA`, `Theme::CYBERDECK`). Each is a module with its
+  palette, theme, `Decor` and hooks, apart from the widgets; the showcase's theme dropdown has a Fusuma / Cyberdeck row
+  and shows the palettes of the one that is on.
+  - **Fusuma** (`crates/fusuma-ui/src/fusuma.rs`): sumi ink (warm near-black) and washi paper (warm off-white), vermilion
+    `#C8372D` as the one accent (lifted in dark mode; the error red is pinker so it is not mistaken for it), radii 2/3/4,
+    no shadow, thin outlines, a 1 px lattice line 4 px inside cards and dialogs, a 4 px seal bar on the chosen row, an
+    accent underline under the chosen tab, proportional sans. `Decor::lattice` and `Decor::bar` are the new tokens.
+  - **Cyberdeck** (`cyberdeck.rs`): near-black, mono text, 1 px outlines, radii 0/2/3, no shadow; corner ticks, a hatch on
+    the chosen row or tab, a dotted track, a progress bar round the frame; the first accent is vermilion (the orange is
+    `cyberdeck-orange`). On a reflective glass hatch and dots become solid fills and the lines stay.
+  - Open: whether Cyberdeck becomes the default on embedded, TUI and console; a per-board `design` setting; a body-font
+    choice (mono or sans) for Cyberdeck; a sliding-door page transition for Fusuma.
+- [x] **Design files** (`design/`, `docs/DESIGN.md`): W3C tokens and a written spec per system (cyberdeck, fusuma) and per palette (27) generated
+  from `Theme` and `Palette`, and an OpenPencil/Figma `.fig` bound to them (a Foundations and a Controls page per design, a Palettes page); the workspace tests fail when they are stale
 - [x] Material-style scrollbar: hidden at rest, shown while content moves, faded after 300 ms over 250 ms
 - [x] Per-widget style hooks (`Hooks`)
 - [ ] `dodai-fusuma` in `dodai-ui`: a first adapter exists on an unpushed local branch there; waits for that repo's

@@ -666,6 +666,9 @@ impl<const N: usize> Tree<N> {
                 if let Some(fill) = look.fill {
                     r.fill_rect(rect, look.radius, fill)?;
                 }
+                if selected {
+                    crate::decor::side_bar(r, rect, theme.decor.bar, theme.colors.primary)?;
+                }
                 if selected && theme.decor.hatch != 0 {
                     crate::decor::hatch(
                         r,
