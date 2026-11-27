@@ -175,18 +175,26 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   into the swap chain image (on the GPU) and the toolkit draws only what changed. A surface that has no age (`wgpu`, a canvas)
   is therefore never partly stale; the desktop CPU window keeps the age history, because there the buffer is the picture
 - [x] **A layer plan** (`LayerPlan`, `Tree::layers`, `App::layers`, `Shell::layers`; the idea is Xilem's `VisualLayerPlan`,
-  back-to-front layers with external placeholders the host fills), now with order above the host: `Ui`, then for each surface
-  `Surface(id)` and, when the app put something inside it, `Over(id)`. `host_surface(id).size(..).over((children))` is a surface
-  whose children are laid out as a column over what the host shows (a player's controls, a caption). A host that fills surfaces
-  says so (`App::host_surfaces`, `Tree::set_host_surfaces`): the interface pass leaves the inside of a surface out, the host
-  fills the stale surfaces (`plan.stale(region)`) and draws them into the picture as opaque images, and `paint_above` draws what
-  is inside, clipped to a scrolling parent. A host that does not fill surfaces leaves the flag off and the children are drawn in
-  tree order. Desktop: `run_with_surfaces(make, options, fill)` and `Canvas::frame_with`, the same on the CPU and the GPU
-  renderer. A surface that changed by itself calls `Tree::surface_changed(id)`. Not supported: a surface inside another one's
-  children; a dialog above a surface is drawn in its own order (a dialog's scrim is under what is over a surface)
-- [ ] A **native GPU texture** for a surface (a video decoder's frame as a `wgpu` texture, no copy through the CPU): the
-  surface pixels go through a copy now; Vello can draw an external texture (`ImageSource::external_texture`), the plan has the
-  place for it
+  back-to-front layers with external placeholders the host fills): `Ui`, then for each surface `Surface(id)` and, when the app
+  put something inside it, `Over(id)`. `host_surface(id).size(..).over((children))` is a surface whose children are laid out as
+  a column over what the host shows (a player's controls, a caption), **and a surface may hold another**: the inner one comes
+  after the outer one and what is over it. A `Layer` has the node's whole `rect` (a half-hidden video is not squeezed) and
+  `visible`, cut to the screen and to the scrolling lists it is in; the host draws only inside `visible`. A host that fills
+  surfaces says so (`App::host_surfaces`): the interface pass leaves the inside of a surface out, the host goes through the plan
+  (`Canvas::frame_with`): it fills a surface the frame drew around or over (or that lies under one just filled), draws what is
+  over it (`paint_over(id)`), and last draws **dialogs, menus, toasts and a drag again over every place it filled**
+  (`paint_overlays`): the host's pixels covered them, and before this an open dialog over a video vanished under it. Each step
+  is limited to the places that were refilled, so a translucent control is not drawn twice over a surface that was not
+  (the first version used the union of all of them). Not supported: a surface above a dialog
+- [x] **A GPU texture for a surface, with no copy through the CPU** (`Surfaces::textures`, `TextureSurface`,
+  `GpuScene::external_texture`, `Backend::draw_source`): the host makes an `Rgba8Unorm` texture on the window's device
+  (`GpuScene::device`), the scene refers to it as an external image and stretches it over the surface rectangle in the same
+  render; nothing of its pixels goes through the CPU. The pixel `FillSurface` stays for the CPU backend and as the fallback. Not
+  tried with a real decoder, only a texture written by the test (a `wgpu` texture from another device is a validation error)
+- [ ] A surface **above** a dialog, and what is over a surface when the surface is a texture shared with the host's own wgpu
+  pipeline (`GpuScene::with_device` makes that possible; the window does not use it)
+- [ ] The GPU scene loses a frame whose render failed (the commands were taken by the failed render and the next frame resets
+  the scene): the picture stays as it was until something redraws that part. Needs a way to tell the app to redraw everything
 - [ ] A `Retained | Full` capability in place of the boolean, if a third kind of renderer needs it (not Iced's `Hinted`: neither
   source needs it)
 - [x] **Audit of the renderer layer** (all five crates): line coverage 96.8 % (`cargo llvm-cov`: integer 96 to 99 %, vello-cpu 99 %,

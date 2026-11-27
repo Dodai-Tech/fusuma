@@ -111,7 +111,12 @@ fn a_hidden_surface_is_not_listed_and_a_rebuilt_one_follows_its_view() {
 fn a_surface_that_does_not_fit_in_the_plan_is_counted() {
     let mut plan = fusuma::LayerPlan::ui(BOUNDS);
     for i in 0..(fusuma::MAX_SURFACES + 3) {
-        plan.push_surface(i as u32, Rect::new(0, 0, 1, 1), false);
+        plan.push_surface(
+            i as u32,
+            Rect::new(0, 0, 1, 1),
+            Rect::new(0, 0, 1, 1),
+            false,
+        );
     }
     assert_eq!(plan.surfaces().count(), fusuma::MAX_SURFACES);
     assert_eq!(plan.left_out(), 3);
@@ -191,7 +196,7 @@ fn with_a_host_it_is_drawn_after_the_host_fills_the_surface() {
     r.fill_rect(surface, 0, video).unwrap();
     assert_ne!(r.pixel(surface.x + 1, surface.y + 1).unwrap(), bg);
     // ... and then the button is drawn over it.
-    tree.paint_above(&mut r, &THEME, surface).unwrap();
+    tree.paint_over(&mut r, &THEME, 3, surface).unwrap();
     let on = r.pixel(at.x + 2, at.y + 2).unwrap();
     assert_ne!(on, video, "the button is over the picture");
     assert_ne!(on, bg);
@@ -220,4 +225,58 @@ fn a_change_inside_a_surface_makes_it_stale() {
         .unwrap()
         .expect("the label changed");
     assert!(tree.layers().stale(drawn).any(|l| l.rect == surface));
+}
+
+#[test]
+fn a_surface_can_hold_another_in_the_view() {
+    let view = host_surface(1)
+        .size(Length::Fixed(200), Length::Fixed(120))
+        .over((
+            host_surface(2).size(Length::Fixed(60), Length::Fixed(40)),
+            button("Close"),
+        ));
+    let mut tree = Tree::<64>::new();
+    let mut host = Host::<(), 16>::new();
+    tree.column(None, Style::new()).unwrap();
+    let root = tree.root_id();
+    host.sync(&mut tree, root, &view).unwrap();
+    tree.set_host_surfaces(true);
+    let mut r = screen();
+    tree.update(&r, &THEME, BOUNDS);
+    tree.paint_frame(&mut r, &THEME, BOUNDS).unwrap();
+    let kinds: Vec<_> = tree.layers().layers().iter().map(|l| l.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            LayerKind::Ui,
+            LayerKind::Surface(1),
+            LayerKind::Over(1),
+            LayerKind::Surface(2)
+        ]
+    );
+}
+
+#[test]
+fn a_surface_in_a_list_keeps_its_size_and_is_seen_only_inside_it() {
+    let mut tree = Tree::<64>::new();
+    tree.column(None, Style::new()).unwrap();
+    let root = tree.root_id();
+    let list = tree
+        .scroll(root, Style::new().height(Length::Fixed(50)))
+        .unwrap();
+    tree.surface(
+        Some(list),
+        4,
+        Style::new()
+            .width(Length::Fixed(80))
+            .height(Length::Fixed(200)),
+    )
+    .unwrap();
+    let r = screen();
+    tree.update(&r, &THEME, BOUNDS);
+    let plan = tree.layers();
+    let s = plan.surfaces().next().unwrap();
+    assert_eq!((s.rect.w, s.rect.h), (80, 200));
+    assert_eq!(s.visible.h, 50);
+    assert!(plan.stale(Rect::new(0, 60, 80, 20)).next().is_none());
 }

@@ -2,15 +2,17 @@
 //!
 //! The toolkit draws the interface as one layer (`LayerKind::Ui`). A host that has content the toolkit cannot draw (a
 //! video, a camera, a map, a native widget, a 3D view) puts a *surface* in the tree (`Tree::surface`): a node that takes
-//! room like any other and draws nothing itself. The plan lists, back to front: the interface, then each surface in
+//! room like any other and draws nothing itself. The plan lists, back to front, the interface and then each surface in
 //! tree order (`LayerKind::Surface`), each followed by what the app put *inside* it (`LayerKind::Over`: the controls of a
-//! player, a caption), drawn over what the host shows.
+//! player, a caption), drawn over what the host shows. A surface inside another one's children comes after the outer one
+//! and what is over it, so it is over them.
 //!
-//! A host that fills surfaces calls `Tree::set_host_surfaces(true)`. After the interface is drawn it fills the surfaces
-//! that the frame drew around or over (`LayerPlan::stale`) and puts the pixels in the picture, then asks for the layers
-//! over them (`Tree::paint_above`). A surface that changed by itself calls `Tree::surface_changed`, which makes its
-//! rectangle part of the next frame's damage. A host that does not fill surfaces leaves the flag off, and what is
-//! inside a surface is drawn in tree order with the rest. A surface inside another one's children is not supported.
+//! A host that fills surfaces calls `Tree::set_host_surfaces(true)`. After the interface is drawn it goes through the
+//! plan: it fills a surface when the frame drew around or over it (or something before it in the plan was filled), puts
+//! the picture in, and draws what is over it (`Tree::paint_over`); at the end what must be above everything (dialogs,
+//! toasts, a drag) is drawn again over the filled places (`Tree::paint_overlays`). A surface that changed by itself calls
+//! `Tree::surface_changed`, which makes its rectangle part of the next frame's damage. A host that does not fill surfaces
+//! leaves the flag off, and what is inside a surface is drawn in tree order with the rest.
 
 use fusuma_render::Rect;
 
@@ -38,8 +40,12 @@ pub enum LayerKind {
 pub struct Layer {
     /// What the layer is.
     pub kind: LayerKind,
-    /// The area it covers, in pixels of the screen.
+    /// Where the node is, in pixels of the screen. Not cut: a surface half out of the screen or scrolled partly out of its
+    /// list keeps its size, so a picture made for it is not squeezed. For an `Over` layer it is the same as `visible`.
     pub rect: Rect,
+    /// The part of `rect` that can be seen: cut to the screen and to the scrolling lists it is in. A host draws only
+    /// inside it.
+    pub visible: Rect,
 }
 
 /// The layers of the current picture, back to front: the interface first, then the surfaces in tree order.
@@ -57,6 +63,7 @@ impl LayerPlan {
         let empty = Layer {
             kind: LayerKind::Ui,
             rect: screen,
+            visible: screen,
         };
         let layers = [empty; MAX_LAYERS];
         Self {
@@ -68,7 +75,7 @@ impl LayerPlan {
 
     /// Adds a surface over the layers so far, and over it what the app put inside it when `over` is set. Beyond
     /// [`MAX_SURFACES`] it is counted and left out.
-    pub fn push_surface(&mut self, id: u32, rect: Rect, over: bool) {
+    pub fn push_surface(&mut self, id: u32, rect: Rect, visible: Rect, over: bool) {
         if self.surfaces().count() >= MAX_SURFACES {
             self.left_out += 1;
             return;
@@ -76,12 +83,14 @@ impl LayerPlan {
         self.layers[self.len] = Layer {
             kind: LayerKind::Surface(id),
             rect,
+            visible,
         };
         self.len += 1;
         if over {
             self.layers[self.len] = Layer {
                 kind: LayerKind::Over(id),
-                rect,
+                rect: visible,
+                visible,
             };
             self.len += 1;
         }
@@ -110,7 +119,7 @@ impl LayerPlan {
     /// The surfaces a frame that redrew `region` has to be filled again: the interface was drawn around or over them.
     pub fn stale(&self, region: Rect) -> impl Iterator<Item = &Layer> {
         self.surfaces().filter(move |l| {
-            let o = l.rect.intersect(&region);
+            let o = l.visible.intersect(&region);
             o.w > 0 && o.h > 0
         })
     }
@@ -123,8 +132,7 @@ impl LayerPlan {
 }
 
 impl<const N: usize> Tree<N> {
-    /// The layers of the picture: the interface over the screen, then every visible surface in tree order, cut to the
-    /// screen. A surface inside a hidden node is not listed.
+    /// The layers of the picture: the interface over the screen, then every visible surface in tree order (see [`Layer`] for what is cut). A surface inside a hidden node is not listed.
     #[must_use]
     pub fn layers(&self) -> LayerPlan {
         let screen = self
@@ -152,7 +160,7 @@ impl<const N: usize> Tree<N> {
         self.add(parent, Kind::Surface { id }, style)
     }
 
-    /// Says whether a host fills the surfaces and calls [`paint_above`](Self::paint_above) after each frame. When it does,
+    /// Says whether a host fills the surfaces and calls [`paint_over`](Self::paint_over) and [`paint_overlays`](Self::paint_overlays) after each frame. When it does,
     /// what is inside a surface is left out of the normal pass (the host's pixels would cover it); when it does not (the
     /// default), it is drawn in tree order with the rest.
     pub fn set_host_surfaces(&mut self, on: bool) {
@@ -166,57 +174,74 @@ impl<const N: usize> Tree<N> {
         }
     }
 
-    /// Draws what is inside each surface that overlaps `region`, over what the host put there: call it after the surfaces
-    /// were filled, with the rectangle the frame (and the filled surfaces) covered. A surface in a scrolling list is drawn
-    /// inside the list's edges.
+    /// Draws what is inside surface `id` (not what is inside a surface nested in it) over what the host put there, inside
+    /// `region` and inside the edges of the lists it scrolls in. Call it after the surface was filled.
     ///
     /// # Errors
     /// The renderer's error.
-    pub fn paint_above<R: fusuma_render::Renderer>(
+    pub fn paint_over<R: fusuma_render::Renderer>(
         &self,
         r: &mut R,
         theme: &crate::theme::Theme,
+        id: u32,
         region: Rect,
     ) -> Result<(), R::Error> {
         if !self.host_surfaces {
             return Ok(());
         }
-        let Some(root) = self.root.map(usize::from) else {
-            return Ok(());
-        };
-        let mut at = Some(root);
-        while let Some(i) = at {
-            if self.nodes[i].hidden {
-                at = self.next_after(i, root);
+        for i in 0..N {
+            let n = &self.nodes[i];
+            if !n.alive
+                || n.first.is_none()
+                || !matches!(n.kind, Kind::Surface { id: s } if s == id)
+                || self.in_hidden(i)
+            {
                 continue;
             }
-            if matches!(self.nodes[i].kind, Kind::Surface { .. }) && self.nodes[i].first.is_some() {
-                let mut visible = self.nodes[i].rect;
-                let mut up = self.nodes[i].parent.map(usize::from);
-                while let Some(p) = up {
-                    if matches!(self.nodes[p].kind, Kind::Scroll { .. }) {
-                        visible = visible.intersect(&self.nodes[p].rect);
-                    }
-                    up = self.nodes[p].parent.map(usize::from);
-                }
-                let seen = visible.intersect(&region);
-                if !seen.is_empty() {
-                    r.save()?;
-                    let done = r
-                        .clip(seen)
-                        .and_then(|()| self.paint_walk(i, r, theme, Some(seen)));
-                    let back = r.restore();
-                    done?;
-                    back?;
-                }
+            let seen = self.visible_rect(i).intersect(&region);
+            if seen.is_empty() {
+                continue;
             }
-            at = self.nodes[i]
-                .first
-                .map(usize::from)
-                .filter(|_| !matches!(self.nodes[i].kind, Kind::Surface { .. }))
-                .or_else(|| self.next_after(i, root));
+            r.save()?;
+            let done = r
+                .clip(seen)
+                .and_then(|()| self.paint_walk(i, r, theme, Some(seen)));
+            let back = r.restore();
+            done?;
+            back?;
         }
         Ok(())
+    }
+
+    /// Draws again what is above everything else (open dialogs and menus, toasts, a dragged item) inside `region`. The host
+    /// calls it for each place it put its own pixels in: they were drawn after the interface and cover those layers.
+    /// `region` must not have had them drawn over it since the host filled it, or a dimming layer would be drawn twice.
+    ///
+    /// # Errors
+    /// The renderer's error.
+    pub fn paint_overlays<R: fusuma_render::Renderer>(
+        &self,
+        r: &mut R,
+        theme: &crate::theme::Theme,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        if !self.host_surfaces || region.is_empty() {
+            return Ok(());
+        }
+        r.save()?;
+        let mut done = r.clip(region);
+        if done.is_ok() {
+            done = self.paint_dialogs(r, theme, Some(region));
+        }
+        if done.is_ok() {
+            done = self.paint_toasts(r, theme, Some(region));
+        }
+        if done.is_ok() {
+            done = self.paint_drag(r, theme, Some(region));
+        }
+        let back = r.restore();
+        done?;
+        back
     }
 
     /// Says that what the host shows in surface `id` changed: its rectangle is part of the next frame, so a host that
@@ -248,9 +273,9 @@ impl<const N: usize> Tree<N> {
                 continue;
             }
             if let Kind::Surface { id } = n.kind {
-                let r = n.rect.intersect(&screen);
-                if !r.is_empty() {
-                    plan.push_surface(id, r, n.first.is_some());
+                let visible = self.visible_rect(i).intersect(&screen);
+                if !visible.is_empty() {
+                    plan.push_surface(id, n.rect, visible, n.first.is_some());
                 }
             }
             at = n

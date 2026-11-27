@@ -26,6 +26,47 @@ pub use canvas::{Canvas, blit};
 /// `w * h` pixels (`0x00RRGGBB`, row by row) to write. The pixels are opaque. What the app put inside the surface is drawn
 /// over them.
 pub type FillSurface = Box<dyn FnMut(u32, fusuma::render::Rect, &mut [u32])>;
+
+/// What gives a surface of the layer plan a GPU texture instead of pixels, so a video frame or a camera image reaches the
+/// window with no copy through the CPU: it gets the surface's id, its rectangle, and the device and queue the window draws
+/// with (make the texture on them). It returns the texture to show, stretched over the rectangle, or `None` to fall back
+/// to the pixel [`FillSurface`]. The texture is `Rgba8Unorm` with `TEXTURE_BINDING`, opaque or premultiplied, and it is
+/// only referred to: the host may keep writing to it between frames. Used on the GPU backend only; the CPU one asks for
+/// pixels.
+pub type TextureSurface = Box<
+    dyn FnMut(
+        u32,
+        fusuma::render::Rect,
+        &fusuma::renderers::vello_gpu::wgpu::Device,
+        &fusuma::renderers::vello_gpu::wgpu::Queue,
+    ) -> Option<fusuma::renderers::vello_gpu::wgpu::Texture>,
+>;
+
+/// What the host puts in the surfaces of the layer plan.
+#[derive(Default)]
+pub struct Surfaces {
+    /// Pixels, for any backend.
+    pub pixels: Option<FillSurface>,
+    /// A GPU texture, tried first on the GPU backend.
+    pub textures: Option<TextureSurface>,
+}
+
+impl Surfaces {
+    /// Whether the host fills any surface.
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.pixels.is_some() || self.textures.is_some()
+    }
+}
+
+impl core::fmt::Debug for Surfaces {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Surfaces")
+            .field("pixels", &self.pixels.is_some())
+            .field("textures", &self.textures.is_some())
+            .finish()
+    }
+}
 pub use clip::{Clipboard, SystemClipboard, run_shortcut};
 pub use plan::{LINKED, hardware, plan_for};
 pub use present::{Change, History};
@@ -78,7 +119,7 @@ pub fn run<A: App + 'static>(
     make: impl FnOnce(u32, u32) -> A + 'static,
     options: Options,
 ) -> anyhow::Result<()> {
-    run_with_surfaces(make, options, None)
+    run_with_hosts(make, options, Surfaces::default())
 }
 
 /// Like [`run`], with `fill` for the surfaces the app puts in its layer plan (a video, a camera, a native view): after each
@@ -90,6 +131,25 @@ pub fn run_with_surfaces<A: App + 'static>(
     make: impl FnOnce(u32, u32) -> A + 'static,
     options: Options,
     fill: Option<FillSurface>,
+) -> anyhow::Result<()> {
+    run_with_hosts(
+        make,
+        options,
+        Surfaces {
+            pixels: fill,
+            textures: None,
+        },
+    )
+}
+
+/// Like [`run_with_surfaces`], and a surface may be a GPU texture (see [`TextureSurface`]).
+///
+/// # Errors
+/// As [`run`].
+pub fn run_with_hosts<A: App + 'static>(
+    make: impl FnOnce(u32, u32) -> A + 'static,
+    options: Options,
+    surfaces: Surfaces,
 ) -> anyhow::Result<()> {
     let settings = match options.settings {
         Some(text) => Settings::from_toml(text)
@@ -107,7 +167,7 @@ pub fn run_with_surfaces<A: App + 'static>(
         layers,
         fonts,
         palette,
-        fill,
+        fill: surfaces,
         state: None,
         error: None,
     };
@@ -138,8 +198,8 @@ struct State<A> {
     show: bool,
     /// What the last presents changed, so a window buffer is given only what it lacks (see `present`).
     history: present::History,
-    /// What fills the surfaces of the layer plan, and the buffer it writes into.
-    fill: Option<FillSurface>,
+    /// What fills the surfaces of the layer plan.
+    fill: Surfaces,
     /// What tells the screen reader about the window.
     #[cfg(feature = "accessibility")]
     access: accesskit_winit::Adapter,
@@ -162,7 +222,7 @@ struct Handler<A> {
     fonts: FontSet,
     /// The colours `[theme]` asks for, sent to the app before its first frame.
     palette: fusuma::Palette,
-    fill: Option<FillSurface>,
+    fill: Surfaces,
     state: Option<State<A>>,
     error: Option<anyhow::Error>,
 }
@@ -272,7 +332,7 @@ impl<A: App> Handler<A> {
             ime_area: None,
             show: true,
             history: present::History::new(),
-            fill: self.fill.take(),
+            fill: std::mem::take(&mut self.fill),
             #[cfg(feature = "accessibility")]
             access,
             idle: false,
@@ -379,9 +439,7 @@ impl<A: App> State<A> {
         if self.idle {
             self.shell.resume(now);
         }
-        let region = self
-            .canvas
-            .frame_with(&mut self.shell, now, self.fill.as_mut());
+        let region = self.canvas.frame_with(&mut self.shell, now, &mut self.fill);
         let redrawn = region.is_some();
         self.idle = !self.shell.wants_frame();
         #[cfg(feature = "accessibility")]

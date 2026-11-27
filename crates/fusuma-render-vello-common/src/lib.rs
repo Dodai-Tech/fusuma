@@ -289,6 +289,53 @@ impl<S: Scene> Backend<S> {
         f(&mut self.inner.borrow_mut().scene)
     }
 
+    /// Draws an image the scene already holds (`source`, `size` pixels: a GPU texture made by the host, see
+    /// `GpuScene::external_texture`) stretched over `rect`, with no copy of its pixels through the CPU. `smooth` blends
+    /// neighbouring pixels when the size differs; otherwise the nearest one is taken. The clip and the translation
+    /// apply, like for [`Renderer::draw_image`].
+    ///
+    /// # Errors
+    /// Never fails today; the result matches the other drawing calls.
+    pub fn draw_source(
+        &mut self,
+        source: ImageSource,
+        size: (u32, u32),
+        rect: Rect,
+        smooth: bool,
+    ) -> Result<(), Error<Infallible>> {
+        let i = self.inner.get_mut();
+        if i.hidden() || rect.is_empty() || size.0 == 0 || size.1 == 0 || !i.rect_ok(rect) {
+            return Ok(());
+        }
+        let paint = PaintImage {
+            image: source,
+            sampler: ImageSampler {
+                quality: if smooth {
+                    ImageQuality::Medium
+                } else {
+                    ImageQuality::Low
+                },
+                ..ImageSampler::default()
+            },
+        };
+        let (x, y) = (f64::from(rect.x), f64::from(rect.y));
+        let to = Affine::translate((x, y))
+            * Affine::scale_non_uniform(
+                f64::from(rect.w) / f64::from(size.0),
+                f64::from(rect.h) / f64::from(size.1),
+            );
+        i.scene.set_paint(PaintType::Image(paint));
+        i.scene.set_paint_transform(to);
+        i.scene.fill_rect(&kurbo::Rect::new(
+            x,
+            y,
+            x + f64::from(rect.w),
+            y + f64::from(rect.h),
+        ));
+        i.scene.set_paint_transform(Affine::IDENTITY);
+        Ok(())
+    }
+
     /// Gives the scene back.
     pub fn into_scene(self) -> S {
         self.inner.into_inner().scene

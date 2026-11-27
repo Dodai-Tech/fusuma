@@ -279,16 +279,29 @@ impl<A: App> Shell<A> {
         self.app.changed()
     }
 
-    /// Draws what is inside the surfaces over what the host put there (see [`App::paint_above`]).
+    /// Draws what is inside surface `id` over what the host put there (see [`App::paint_over`]).
     ///
     /// # Errors
     /// The renderer's error.
-    pub fn paint_above<R: Renderer>(
+    pub fn paint_over<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        id: u32,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        self.app.paint_over(renderer, id, region)
+    }
+
+    /// Draws dialogs, menus and toasts again over a place the host filled (see [`App::paint_overlays`]).
+    ///
+    /// # Errors
+    /// The renderer's error.
+    pub fn paint_overlays<R: Renderer>(
         &mut self,
         renderer: &mut R,
         region: Rect,
     ) -> Result<(), R::Error> {
-        self.app.paint_above(renderer, region)
+        self.app.paint_overlays(renderer, region)
     }
 
     /// The layers of the picture (see [`App::layers`]): after a frame, the host fills the surfaces that

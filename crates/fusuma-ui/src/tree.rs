@@ -701,7 +701,7 @@ pub struct Tree<const N: usize> {
     pub(crate) pieces: crate::pieces::Pieces,
     /// The rectangles the last frame drew, cut to the screen.
     pub(crate) drawn: crate::pieces::Pieces,
-    /// Whether a host fills the surfaces and then calls `paint_above`: the children of a surface are then left out of the
+    /// Whether a host fills the surfaces and then calls `paint_over` and `paint_overlays`: the children of a surface are then left out of the
     /// normal pass and drawn over what the host put there. Off (the default) they are drawn in tree order like any others.
     pub(crate) host_surfaces: bool,
     /// What really changed in the last frame, cut to the screen: the rectangle a renderer that draws everything each

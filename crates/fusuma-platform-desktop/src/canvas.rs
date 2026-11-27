@@ -11,6 +11,8 @@ use fusuma::renderers::vello_cpu::{self, Scene as _, VelloCpu};
 use fusuma::renderers::vello_gpu::{self, VelloGpu};
 use fusuma::{App, Shell};
 
+use crate::Surfaces;
+
 /// A surface on one of the two Vello backends.
 #[derive(Debug)]
 enum Surface {
@@ -81,20 +83,23 @@ impl Canvas {
     /// One frame of the shell: time passes, the app draws what changed, and that part of the picture is
     /// updated. Returns the redrawn rectangle, or `None` when nothing changed.
     pub fn frame<A: App>(&mut self, shell: &mut Shell<A>, now_ms: u64) -> Option<Rect> {
-        self.frame_with(shell, now_ms, None)
+        self.frame_with(shell, now_ms, &mut Surfaces::default())
     }
 
-    /// Like [`frame`](Self::frame), with `fill` for the surfaces of the app's layer plan (see `fusuma::LayerPlan`): after the
-    /// interface is drawn, every surface it was drawn around or over is filled by `fill` and put in the picture, and then what
-    /// the app put inside the surfaces is drawn over it. The app is told the host fills its surfaces (`App::host_surfaces`),
-    /// so what is inside a surface is not drawn under the host's pixels. The pixels the host writes are opaque.
+    /// Like [`frame`](Self::frame), with `hosts` for the surfaces of the app's layer plan (see `fusuma::LayerPlan`). After the
+    /// interface is drawn, the plan is gone through back to front: a surface the frame drew around or over (or that lies
+    /// under one that was just filled) is filled and put in the picture inside the part of it that can be seen, and what
+    /// the app put inside it is drawn over it. Last, dialogs, menus and toasts are drawn again over the places the host
+    /// filled, since its pixels covered them. The app is told the host fills its surfaces (`App::host_surfaces`), so what is
+    /// inside a surface is not drawn under the host's pixels. Pixels the host writes are opaque; a texture is stretched over
+    /// the surface (GPU backend only).
     pub fn frame_with<A: App>(
         &mut self,
         shell: &mut Shell<A>,
         now_ms: u64,
-        mut fill: Option<&mut crate::FillSurface>,
+        hosts: &mut Surfaces,
     ) -> Option<Rect> {
-        shell.app.host_surfaces(fill.is_some());
+        shell.app.host_surfaces(hosts.any());
         let (width, frame) = (self.width, &mut self.frame);
         let bufs = &mut self.bufs;
         match &mut self.surface {
@@ -105,9 +110,15 @@ impl Canvas {
                 // Only what changed is rasterised: the toolkit announced each separate rectangle itself, and a
                 // single one is announced here.
                 let single = shell.frame_rects().len() < 2;
-                let region = match fill.as_mut() {
-                    Some(f) => compose(shell, r, drawn, f, bufs, single),
-                    None => drawn,
+                let region = if hosts.any() {
+                    compose(shell, r, drawn, single, |r, id, rect| {
+                        hosts
+                            .pixels
+                            .as_mut()
+                            .is_some_and(|f| put_pixels(r, bufs, f, id, rect))
+                    })
+                } else {
+                    drawn
                 };
                 r.with_scene(|s| {
                     if single {
@@ -123,9 +134,23 @@ impl Canvas {
                 let drawn = log_err(shell.frame(now_ms, r))?;
                 // The scene keeps its picture, draws only what changed over it and reads back only that.
                 let single = shell.frame_rects().len() < 2;
-                let region = match fill.as_mut() {
-                    Some(f) => compose(shell, r, drawn, f, bufs, single),
-                    None => drawn,
+                let region = if hosts.any() {
+                    let Surfaces { pixels, textures } = hosts;
+                    compose(shell, r, drawn, single, |r, id, rect| {
+                        if let Some(t) = textures.as_mut() {
+                            let (device, queue) = r.with_scene(|s| s.device());
+                            if let Some(texture) = t(id, rect, &device, &queue) {
+                                let source = r.with_scene(|s| s.external_texture(&texture));
+                                let size = (texture.width(), texture.height());
+                                return r.draw_source(source, size, rect, true).is_ok();
+                            }
+                        }
+                        pixels
+                            .as_mut()
+                            .is_some_and(|f| put_pixels(r, bufs, f, id, rect))
+                    })
+                } else {
+                    drawn
                 };
                 r.with_scene(|s| {
                     if single {
@@ -146,49 +171,101 @@ struct Bufs {
     rgba: Vec<u8>,
 }
 
-/// Fills every surface that the frame drew around or over, puts it in the picture, and draws what is inside the surfaces over
-/// it. Returns the rectangle that changed: the frame's, and the surfaces.
+/// The most pixels a surface the host fills may have: a bigger one (scrolled far out of a long list, say) is left empty.
+const MAX_SURFACE_PIXELS: usize = 1 << 26;
+
+/// Asks `fill` for the pixels of surface `id` (`rect` is the whole of it) and draws them. Whether anything was drawn.
+fn put_pixels<R: fusuma::render::Renderer>(
+    r: &mut R,
+    bufs: &mut Bufs,
+    fill: &mut crate::FillSurface,
+    id: u32,
+    rect: Rect,
+) -> bool {
+    let (w, h) = (rect.w as usize, rect.h as usize);
+    if w.saturating_mul(h) > MAX_SURFACE_PIXELS {
+        return false;
+    }
+    bufs.pixels.clear();
+    bufs.pixels.resize(w * h, 0);
+    fill(id, rect, &mut bufs.pixels);
+    bufs.rgba.clear();
+    bufs.rgba.reserve(w * h * 4);
+    bufs.rgba.extend(
+        bufs.pixels
+            .iter()
+            .flat_map(|p| [(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]),
+    );
+    let Some(image) = fusuma::render::Image::new(rect.w, rect.h, &bufs.rgba) else {
+        return false;
+    };
+    match r.draw_image(&image, fusuma::render::Point::new(rect.x, rect.y)) {
+        Ok(()) => true,
+        Err(e) => {
+            log::error!("a surface could not be drawn: {e:?}");
+            false
+        }
+    }
+}
+
+/// Goes through the layer plan back to front. `put` draws surface `id` (all of `rect`) with the host's picture and says
+/// whether it did; it is called with the clip set to the part that can be seen. Returns the rectangle that changed: the
+/// frame's and the surfaces'.
 fn compose<A: App, R: fusuma::render::Renderer>(
     shell: &mut Shell<A>,
     r: &mut R,
     drawn: Rect,
-    fill: &mut crate::FillSurface,
-    bufs: &mut Bufs,
     single: bool,
+    mut put: impl FnMut(&mut R, u32, Rect) -> bool,
 ) -> Rect {
     let Some(plan) = shell.layers() else {
         return drawn;
     };
     let mut total = drawn;
-    let mut any = false;
-    let stale: Vec<_> = plan.stale(drawn).map(|l| (l.kind, l.rect)).collect();
-    for (kind, rect) in stale {
-        let fusuma::LayerKind::Surface(id) = kind else {
-            continue;
-        };
-        let (w, h) = (rect.w as usize, rect.h as usize);
-        bufs.pixels.clear();
-        bufs.pixels.resize(w * h, 0);
-        fill(id, rect, &mut bufs.pixels);
-        bufs.rgba.clear();
-        for p in &bufs.pixels {
-            bufs.rgba
-                .extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, *p as u8, 255]);
+    // What is new in the picture so far: the frame, and each surface put in. A surface under any of it is drawn again.
+    let mut fresh = vec![drawn];
+    let mut filled: Vec<Rect> = Vec::new();
+    let mut last = None;
+    for layer in plan.layers() {
+        match layer.kind {
+            fusuma::LayerKind::Ui => {}
+            fusuma::LayerKind::Surface(id) => {
+                last = None;
+                let seen = layer.visible;
+                if !fresh.iter().any(|f| !f.intersect(&seen).is_empty()) {
+                    continue;
+                }
+                if !single {
+                    r.will_draw(seen);
+                }
+                let _ = r.save();
+                let put_it = r.clip(seen).is_ok() && put(r, id, layer.rect);
+                let _ = r.restore();
+                if put_it {
+                    total = total.union(&seen);
+                    fresh.push(seen);
+                    filled.push(seen);
+                    last = Some(id);
+                }
+            }
+            fusuma::LayerKind::Over(id) => {
+                if last == Some(id)
+                    && let Err(e) = shell.paint_over(r, id, layer.visible)
+                {
+                    log::error!("what is over a surface could not be drawn: {e:?}");
+                }
+            }
         }
-        let Some(image) = fusuma::render::Image::new(rect.w, rect.h, &bufs.rgba) else {
-            continue;
-        };
-        if !single {
-            r.will_draw(rect);
-        }
-        if let Err(e) = r.draw_image(&image, fusuma::render::Point::new(rect.x, rect.y)) {
-            log::error!("a surface could not be drawn: {e:?}");
-        }
-        total = total.union(&rect);
-        any = true;
     }
-    if any && let Err(e) = shell.paint_above(r, total) {
-        log::error!("what is over a surface could not be drawn: {e:?}");
+    // The host's pixels covered the dialogs and toasts: they are drawn again, once over every place (a surface inside
+    // another is inside a place already done).
+    for (n, place) in filled.iter().enumerate() {
+        if filled[..n].iter().any(|p| p.intersect(place) == *place) {
+            continue;
+        }
+        if let Err(e) = shell.paint_overlays(r, *place) {
+            log::error!("what is above a surface could not be drawn: {e:?}");
+        }
     }
     total
 }

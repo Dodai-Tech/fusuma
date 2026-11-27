@@ -104,18 +104,37 @@ pub trait App {
         None
     }
 
-    /// Says that the host fills the surfaces of the layer plan and calls [`paint_above`](Self::paint_above) after each
-    /// frame (see [`Tree::set_host_surfaces`](crate::Tree::set_host_surfaces)). The default does nothing.
+    /// Says that the host fills the surfaces of the layer plan and calls [`paint_over`](Self::paint_over) and
+    /// [`paint_overlays`](Self::paint_overlays) after each frame (see [`Tree::set_host_surfaces`](crate::Tree::set_host_surfaces)). The default does nothing.
     fn host_surfaces(&mut self, on: bool) {
         let _ = on;
     }
 
-    /// Draws what is inside the surfaces over what the host put there, inside `region`; call it after the surfaces were
+    /// Draws what is inside surface `id` over what the host put there, inside `region`; call it after the surface was
     /// filled. The default draws nothing.
     ///
     /// # Errors
     /// The renderer's error.
-    fn paint_above<R: Renderer>(&mut self, renderer: &mut R, region: Rect) -> Result<(), R::Error> {
+    fn paint_over<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        id: u32,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        let _ = (renderer, id, region);
+        Ok(())
+    }
+
+    /// Draws again what is above everything (dialogs, menus, toasts) inside `region`, a place the host filled; call it
+    /// last, once for each such place. The default draws nothing.
+    ///
+    /// # Errors
+    /// The renderer's error.
+    fn paint_overlays<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        region: Rect,
+    ) -> Result<(), R::Error> {
         let _ = (renderer, region);
         Ok(())
     }

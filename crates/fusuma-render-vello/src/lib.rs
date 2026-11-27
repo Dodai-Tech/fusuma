@@ -14,6 +14,8 @@ use vello_gpu::{
     Resources, TargetInit, TextureBindings,
 };
 use vello_gpu::{TextureId, TextureRegion};
+/// The GPU library the scene draws with, so a host makes its textures with the same version.
+pub use wgpu;
 
 /// A place in a texture, for a copy.
 fn at(texture: &wgpu::Texture, x: u32, y: u32) -> wgpu::TexelCopyTextureInfo<'_> {
@@ -72,6 +74,9 @@ pub struct GpuScene {
     shifts: Vec<((i32, i32, u32, u32), i32)>,
     /// A copy of rows being moved: a texture cannot be copied onto itself.
     scratch: Option<wgpu::Texture>,
+    /// The buffer the changed part is copied into, kept between frames and made larger when a frame needs more.
+    #[cfg(not(target_arch = "wasm32"))]
+    staging: Option<wgpu::Buffer>,
     /// What the next shapes are drawn with, kept to put back after the scene is emptied.
     translation: (f64, f64),
     paint_transform: Affine,
@@ -166,6 +171,8 @@ impl GpuScene {
             open_clips: Vec::new(),
             dirty: true,
             bindings: TextureBindings::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            staging: None,
             next_texture: 0,
         }
     }
@@ -185,6 +192,26 @@ impl GpuScene {
     pub fn scene_mut(&mut self) -> &mut vello_gpu::Scene {
         self.dirty = true;
         &mut self.scene
+    }
+
+    /// Lets the scene draw `texture` (a texture the host made on this scene's device: `Rgba8Unorm`, with
+    /// `TEXTURE_BINDING`, opaque or premultiplied) as an image in the next frame, with no copy through the CPU: a video
+    /// frame, a camera, a map. Draw it with `Backend::draw_source`. The texture is only referred to, so the host may keep
+    /// writing to it between frames; it must not change while a frame is being drawn.
+    pub fn external_texture(&mut self, texture: &wgpu::Texture) -> ImageSource {
+        let id = TextureId(self.next_texture);
+        self.next_texture += 1;
+        self.bindings.insert(
+            id,
+            texture.create_view(&wgpu::TextureViewDescriptor::default()),
+        );
+        ImageSource::external_texture(id, TextureRegion::Full, true)
+    }
+
+    /// The device and queue the scene draws with: the host makes the textures it hands over on these.
+    #[must_use]
+    pub fn device(&self) -> (wgpu::Device, wgpu::Queue) {
+        (self.device.clone(), self.queue.clone())
     }
 
     /// The texture that is rendered into, in `Rgba8Unorm`. It holds the last frame after
@@ -377,12 +404,16 @@ impl GpuScene {
             return;
         }
         let row = (rw * 4).next_multiple_of(256);
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("fusuma read back"),
-            size: u64::from(row) * u64::from(rh),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let need = u64::from(row) * u64::from(rh);
+        let buffer = match self.staging.take() {
+            Some(b) if b.size() >= need => b,
+            _ => self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("fusuma read back"),
+                size: need.next_power_of_two().max(4096),
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }),
+        };
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
@@ -430,6 +461,7 @@ impl GpuScene {
             }
         }
         buffer.unmap();
+        self.staging = Some(buffer);
     }
 }
 
