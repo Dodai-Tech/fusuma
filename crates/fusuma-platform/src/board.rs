@@ -265,7 +265,11 @@ pub const CONTROLLERS: [Controller; 19] = [
             pin("busy", 1, true),
             pin("en", 1, false),
         ],
-        options: &[opt("data_rate_mhz", 10, 1, 40), opt("mirror_x", 0, 0, 1)],
+        options: &[
+            opt("data_rate_mhz", 10, 1, 40),
+            opt("mirror_x", 0, 0, 1),
+            opt("y_decrement", 0, 0, 1),
+        ],
         chips: &[],
         sizes: &[],
         offset: false,
@@ -1870,6 +1874,10 @@ flash_mb = 32
             (
                 "s3-amoled-164",
                 include_str!("../../fusuma-platform-esp/boards/s3-amoled-164/board.toml"),
+            ),
+            (
+                "s3-amoled-164-v1",
+                include_str!("../../fusuma-platform-esp/boards/s3-amoled-164-v1/board.toml"),
             ),
             (
                 "c6-amoled-132",

@@ -29,6 +29,8 @@ struct Sim {
     rows: usize,
     /// Wired mirrored in x: RAM column c shows at c' = cols - 1 - c.
     wired_mirror: bool,
+    /// Wired flipped in y: RAM row r shows at r' = rows - 1 - r.
+    wired_flip: bool,
     new: Vec<u8>,
     old: Vec<u8>,
     /// What the glass shows: one bool per pixel, true is white.
@@ -55,6 +57,7 @@ impl Sim {
             cols,
             rows,
             wired_mirror,
+            wired_flip: false,
             new: vec![0xFF; n],
             old: vec![0xFF; n],
             shown: vec![true; cols * rows],
@@ -70,6 +73,11 @@ impl Sim {
             problems: vec![],
             awake: false,
         }
+    }
+
+    fn flipped(mut self) -> Self {
+        self.wired_flip = true;
+        self
     }
 
     fn xb(&self, lo: u8, hi: u8) -> usize {
@@ -115,14 +123,23 @@ impl Sim {
 
     fn store(&mut self, which: u8, b: u8) {
         let (x0, x1) = self.x_range;
-        let (y0, y1) = self.y_range;
+        let down = self.entry & 2 == 0;
+        // Counting down the window is given high row first.
+        let (y0, y1) = if down {
+            (self.y_range.1, self.y_range.0)
+        } else {
+            self.y_range
+        };
         if self.x < x0 || self.x > x1 || self.y < y0 || self.y > y1 || self.y >= self.rows {
             self.problems
                 .push(format!("a byte past the window: x {} y {}", self.x, self.y));
             return;
         }
-        // Entry mode 0x03: X and Y count up, X moves first.
-        assert_eq!(self.entry & 7, 3, "only entry mode 3 is modelled");
+        // Entry mode 0x03 (X and Y up) or 0x01 (X up, Y down), X moving first.
+        assert!(
+            matches!(self.entry & 7, 3 | 1),
+            "only entry modes 1 and 3 are modelled"
+        );
         let i = self.y * (self.cols / 8) + self.x;
         if which == 0x24 {
             self.new[i] = b
@@ -132,7 +149,12 @@ impl Sim {
         self.x += 1;
         if self.x > x1 {
             self.x = x0;
-            self.y += 1;
+            if down {
+                // Past the low row of the window the counter wraps to the high one.
+                self.y = if self.y == y0 { y1 } else { self.y - 1 };
+            } else {
+                self.y += 1;
+            }
         }
     }
 
@@ -149,7 +171,12 @@ impl Sim {
                 } else {
                     c
                 };
-                self.shown[y * self.cols + px] = white;
+                let py = if self.wired_flip {
+                    self.rows - 1 - y
+                } else {
+                    y
+                };
+                self.shown[py * self.cols + px] = white;
             }
         }
         self.shown_ram = Some(self.new.clone());
@@ -313,6 +340,37 @@ fn the_ssd1677_shows_what_it_is_given_on_a_straight_and_a_mirrored_panel() {
     }
 }
 
+#[test]
+fn the_ssd1677_counting_y_down_shows_the_picture_on_a_panel_wired_that_way() {
+    // The Waveshare 3.97 counts Y down: the same picture must come out right when the glass is wired flipped.
+    let cfg = Cfg1677 {
+        y_decrement: true,
+        ..Cfg1677::new(800, 480)
+    };
+    let p = Ssd1677::new(Sim::new(XUnit::Pixels, 800, 480, false).flipped(), cfg);
+    check(
+        p,
+        |p| p.bus_mut(),
+        800,
+        "800x480 counting Y down, wired flipped",
+    );
+}
+
+#[test]
+#[should_panic(expected = "a full refresh shows the picture")]
+fn the_model_sees_an_upside_down_picture() {
+    let p = Ssd1677::new(
+        Sim::new(XUnit::Pixels, 800, 480, false).flipped(),
+        Cfg1677::new(800, 480),
+    );
+    check(
+        p,
+        |p| p.bus_mut(),
+        800,
+        "counting up on a panel wired flipped",
+    );
+}
+
 // The model must be able to fail, or a pass means nothing: a Sticky driver on a panel that is not mirrored shows a mirrored
 // picture, and the 1.54" driver on a panel counted in pixels writes to the wrong columns.
 #[test]
@@ -385,17 +443,18 @@ fn the_ssd1677_against_the_waveshare_3_97_firmware() {
         (0x20, &[]),
     ];
     let ours = sent(|bus| {
-        let mut p = Ssd1677::new(std::mem::take(bus), Cfg1677::new(800, 480));
+        let cfg = Cfg1677 {
+            y_decrement: true,
+            ..Cfg1677::new(800, 480)
+        };
+        let mut p = Ssd1677::new(std::mem::take(bus), cfg);
         p.full(&vec![0xFF; 100 * 480]).unwrap();
         *bus = std::mem::take(p.bus_mut());
     });
-    // Both set the same panel up; the vendor counts the Y address down (entry mode 1, window 479 -> 0), the driver up
-    // (mode 3, window 0 -> 479). With the same gate scan one of them is upside down: on a Waveshare 3.97 look at the vertical
-    // direction first.
-    assert_eq!(
-        differences(vendor, &ours),
-        [(0x11, &[0x01][..]), (0x45, &[0xDF, 0x01, 0x00, 0x00][..])]
-    );
+    // With `y_decrement` (the board's option) the panel is set up as the vendor's, entry mode and window included. The one
+    // difference left is the Y counter: the init table has it at row 0, ours at the first row of the picture (479), which is
+    // where a count down has to start for the first row to land on the first line.
+    assert_eq!(differences(vendor, &ours), [(0x4F, &[0x00, 0x00][..])]);
 }
 
 #[test]

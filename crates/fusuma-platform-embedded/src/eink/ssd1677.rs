@@ -47,6 +47,10 @@ pub struct Config {
     /// Whether the panel is wired mirrored in x, so the picture is mirrored on its way out. Needs `width` to be a
     /// multiple of 8.
     pub mirror_x: bool,
+    /// Whether the Y address counts down (data entry mode 1), as Waveshare's firmware for its 3.97 inch board does: the
+    /// first row goes to the last RAM row, so the picture is flipped against counting up. Turn it on when a panel shows the
+    /// picture upside down.
+    pub y_decrement: bool,
     /// The border waveform (`0x3C`): 0x01 follows the black and white look-up table.
     pub border: u8,
     /// Update control 2 for a full refresh.
@@ -63,6 +67,7 @@ impl Config {
             width,
             height,
             mirror_x: false,
+            y_decrement: false,
             border: 0x01,
             full_sequence: 0xF7,
             partial_sequence: 0xFF,
@@ -149,8 +154,9 @@ impl<B: Bus> Ssd1677<B> {
             &[(gates & 0xFF) as u8, (gates >> 8) as u8, 0x02],
         )?;
         self.send(cmd::BORDER, &[self.config.border])?;
-        // X and Y both count up, X first.
-        self.send(cmd::DATA_ENTRY, &[0x03])?;
+        // X counts up; Y up (mode 3) or down (mode 1), X first.
+        let entry = if self.config.y_decrement { 0x01 } else { 0x03 };
+        self.send(cmd::DATA_ENTRY, &[entry])?;
         self.awake = true;
         Ok(())
     }
@@ -158,7 +164,12 @@ impl<B: Bus> Ssd1677<B> {
     /// Points the memory at `region` of the panel (x in whole bytes, so a multiple of 8).
     fn window(&mut self, region: Rect) -> Result<(), B::Error> {
         let (x0, x1) = (region.x as u32, region.x as u32 + region.w - 1);
-        let (y0, y1) = (region.y as u32, region.y as u32 + region.h - 1);
+        let (mut y0, mut y1) = (region.y as u32, region.y as u32 + region.h - 1);
+        if self.config.y_decrement {
+            // Row y of the picture is RAM row height - 1 - y, and the window runs from the high row to the low one.
+            let last = self.config.height - 1;
+            (y0, y1) = (last - y0, last - y1);
+        }
         self.send(
             cmd::RAM_X_RANGE,
             &[x0 as u8, (x0 >> 8) as u8, x1 as u8, (x1 >> 8) as u8],
@@ -289,6 +300,28 @@ mod tests {
         assert_eq!(out, [0xC0, 0x40, 0x80, 0x0F, 0x00, 0x01]);
         mirror_rows(&[1, 2, 3], 0, &mut out);
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn counting_y_down_starts_at_the_last_row_and_asks_for_entry_mode_1() {
+        let cfg = Config {
+            y_decrement: true,
+            ..Config::new(800, 480)
+        };
+        let mut p = Ssd1677::new(Recorder::default(), cfg);
+        p.full(&vec![0xFF; 100 * 480]).unwrap();
+        let log = &p.bus_mut().log;
+        assert_eq!(data_after(log, 0x11), [vec![0x01]]);
+        // The window 479 -> 0, and the counter at 479: the vendor's 0x45.
+        assert_eq!(data_after(log, 0x45)[0], [0xDF, 0x01, 0x00, 0x00]);
+        assert_eq!(data_after(log, 0x4F)[0], [0xDF, 0x01]);
+        // A partial band at rows 10..=19 lands at RAM rows 469 -> 460.
+        p.partial(Rect::new(0, 10, 8, 10), &[0xFF; 10]).unwrap();
+        let log = &p.bus_mut().log;
+        assert_eq!(
+            *data_after(log, 0x45).last().unwrap(),
+            [0xD5, 0x01, 0xCC, 0x01]
+        );
     }
 
     #[test]

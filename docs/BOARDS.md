@@ -17,9 +17,10 @@ Waveshare's example repositories (`github.com/waveshareteam/*`) by pin and init 
 | `p4-7in` | Waveshare ESP32-P4 7-inch Touch Display | 1024x600 | ek79007, gt911 | run |
 | `s3-amoled-206` | Waveshare ESP32-S3-Touch-AMOLED-2.06 | 410x502 | co5300, ft3168 | run |
 | `s3-sticky` | Seeed reTerminal Sticky | 800x480 e-paper | ssd1677 | run |
+| `s3-amoled-164-v1` | Waveshare ESP32-S3-Touch-AMOLED-1.64 (V1) | 280x456 | co5300 init, ft3168 | the V2 file with the chip select on GPIO9; **not run** |
 | `s3-amoled-164` | Waveshare ESP32-S3-Touch-AMOLED-1.64 (V2) | 280x456 | co5300 init, ft3168 | pins run (weathertrack-esp), not yet through Fusuma's driver |
 | `c6-epaper-154` | Waveshare ESP32-C6-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file**; panel power and battery latch through `[power.i2c]` on the TCA9554; built and linked for the C6, not run; 4 MB flash assumed |
-| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 800x480 e-paper | ssd1677 | **file**; AXP2101 voltages and the ALDO3 enable (masked write) through `[power.i2c]`; built, not run; 16 MB flash; Y direction differs from the vendor (see EINK.md) |
+| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 800x480 e-paper | ssd1677 | **file**; AXP2101 voltages and the ALDO3 enable (masked write) through `[power.i2c]`; built, not run; 16 MB flash; `y_decrement` as the vendor (see EINK.md) |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 200x200 e-paper | ssd1680 | **file** from vendor firmware (GPIO6 low powers the panel); built, not run; 4 MB flash assumed |
 | `s3-epaper-154g` | Waveshare ESP32-S3-ePaper-1.54G | 200x200 four-colour e-paper | epd4g | **file** from vendor firmware; built, not run; 8 MB flash; whole refreshes only, seconds each |
 | `s3-epaper-133e6` | Waveshare ESP32-S3-ePaper-13.3E6 | 1200x1600 six-colour e-paper | epd13e6 | **file** from vendor firmware; built, not run; two panel controllers; 16 MB flash from the example's partition table, PSRAM assumed |

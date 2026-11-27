@@ -381,6 +381,7 @@ pub(crate) fn run_here<A: App>(
     let link = EspLink::open()?;
     #[cfg_attr(fusuma_display = "epd13e6", allow(unused_variables))]
     let mirror = board::option(OPTIONS, "mirror_x") == 1;
+    let y_down = board::option(OPTIONS, "y_decrement") == 1;
     // Which controller the board file names decides the panel; an 800x480 SSD1677 board may be either of the Sticky's two.
     #[cfg(fusuma_display = "uc8179")]
     let (panel, policy) = {
@@ -507,12 +508,21 @@ pub(crate) fn run_here<A: App>(
     )))]
     let (panel, policy) = {
         let s = if (WIDTH, HEIGHT) == (800, 480) {
-            Sticky::detect(bus, mirror).map_err(|e| anyhow::anyhow!("probing the panel: {e:?}"))?
+            Sticky::detect_with(
+                bus,
+                Ssd1677Config {
+                    mirror_x: mirror,
+                    y_decrement: y_down,
+                    ..Ssd1677Config::new(WIDTH, HEIGHT)
+                },
+            )
+            .map_err(|e| anyhow::anyhow!("probing the panel: {e:?}"))?
         } else {
             Sticky::Ssd1677(Ssd1677::new(
                 bus,
                 Ssd1677Config {
                     mirror_x: mirror,
+                    y_decrement: y_down,
                     ..Ssd1677Config::new(WIDTH, HEIGHT)
                 },
             ))

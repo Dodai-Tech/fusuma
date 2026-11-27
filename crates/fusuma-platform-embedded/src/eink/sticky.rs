@@ -33,17 +33,25 @@ impl<B: Bus> Sticky<B> {
     ///
     /// # Errors
     /// The bus error.
-    pub fn detect(mut bus: B, mirror_x: bool) -> Result<Self, B::Error> {
+    pub fn detect(bus: B, mirror_x: bool) -> Result<Self, B::Error> {
+        Self::detect_with(
+            bus,
+            ssd1677::Config {
+                mirror_x,
+                ..ssd1677::Config::STICKY
+            },
+        )
+    }
+
+    /// Like [`Sticky::detect`], with the SSD1677 panel set up as `config` says (its wiring and Y direction).
+    ///
+    /// # Errors
+    /// The bus error.
+    pub fn detect_with(mut bus: B, config: ssd1677::Config) -> Result<Self, B::Error> {
         Ok(if ssd2677::probe(&mut bus)? == Some(true) {
             Self::Ssd2677(Ssd2677::new(bus, ssd2677::Config::STICKY))
         } else {
-            Self::Ssd1677(Ssd1677::new(
-                bus,
-                ssd1677::Config {
-                    mirror_x,
-                    ..ssd1677::Config::STICKY
-                },
-            ))
+            Self::Ssd1677(Ssd1677::new(bus, config))
         })
     }
 

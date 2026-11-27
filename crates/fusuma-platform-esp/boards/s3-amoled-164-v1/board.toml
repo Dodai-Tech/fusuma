@@ -1,0 +1,47 @@
+# The first PCB revision of the Waveshare ESP32-S3-Touch-AMOLED-1.64 (280x456). It differs from the V2 (`s3-amoled-164`, the
+# one the pins were measured on) in the panel's chip select: GPIO9 here, GPIO46 there. NOT RUN ON A BOARD: everything else is
+# taken to be the V2's.
+name = "s3-amoled-164-v1"
+title = "Waveshare ESP32-S3-Touch-AMOLED-1.64 (V1)"
+about = "Waveshare ESP32-S3-Touch-AMOLED-1.64 V1 (280x456)"
+capabilities = ["display", "touch", "button", "wifi", "ble", "battery", "imu", "storage"]
+
+[display]
+width = 280
+height = 456
+shape = "rect"
+# The panel's memory is 20 columns wider on the left than what is visible.
+offset = [20, 0]
+# The CO5300 takes rectangles that start and end on even columns and rows.
+grid = 2
+controller = "co5300"
+bus = "qspi"
+# V1: chip select is GPIO9 (GPIO46 on the V2). If the panel stays dark, try 46: some V2 boards are sold as V1.
+pins = { sck = 10, d = [11, 12, 13, 14], cs = 9, rst = 21 }
+# 10 MHz is what was proven on the glass; the 2.06 runs 80. The first try here ran at 40 and showed nothing, so raise it
+# in steps and measure.
+options = { pclk_mhz = 10 }
+
+[screen]
+form = "watch"
+width_mm = 22
+height_mm = 36
+kind = "emissive"
+inputs = ["touch"]
+
+[touch]
+controller = "ft3168"
+bus = "i2c"
+# The FT3168 needs its reset (GPIO8, active low) pulsed before it reports a finger: without it every read is empty.
+pins = { sda = 47, scl = 48, rst = 8 }
+
+[firmware]
+chip = "esp32s3"
+flash_mb = 16
+
+# What the chip has: an ESP32-S3R8 (8 MB octal PSRAM).
+[hardware]
+ram_kb = 512
+psram_kb = 8192
+fpu = true
+simd = false

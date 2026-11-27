@@ -417,7 +417,7 @@ the same pixels as the hand-built page, a message log that replays to the same s
   controller (1.54", 2.13", 2.9"), board `s3-epaper-154`; e-paper hardware notes in `docs/EINK.md`
 - [x] `[power.i2c]` in the board file (register writes to a rail chip at boot, bus freed after), board `c6-epaper-154` on the TCA9554;
   `[address, register, value, mask]` for registers that hold several rails; board `s3-epaper-397` uses it for the AXP2101 (ALDO3 is the panel's rail).
-- [x] A model of the SSD168x memory as a test bus plus the vendor's init sequences (`tests/eink_sim.rs`); open: a `y_decrement` option for the 3.97 if the picture is upside down, the vendor's waveform table for the 1.54"
+- [x] A model of the SSD168x memory as a test bus plus the vendor's init sequences (`tests/eink_sim.rs`); done: `y_decrement` for the 3.97"; open: the vendor's waveform table for the 1.54"
 - [x] Plain-SPI LCD driver (ST7789, GC9A01), SH8601 and RM690B0 on the QSPI transport, FT5x06 / CST816 / CST92xx touch, the
   expander writes (`[power.i2c]`, with a mask and a delay) and an ID probe for the 1.43's two chips; boards for the AMOLED 1.8,
   2.41, 1.75C, 2.16 and 1.32, the C6 LCD 1.47, the C6 Touch LCD 1.28 and 1.83 and the S3 Touch LCD 1.28. All built, none run.

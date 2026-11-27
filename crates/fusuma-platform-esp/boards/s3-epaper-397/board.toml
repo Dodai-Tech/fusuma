@@ -15,7 +15,8 @@ controller = "ssd1677"
 bus = "spi"
 # The busy line is high while the panel works. The rail is the PMIC's (below), so there is no `en`.
 pins = { sck = 11, mosi = 12, cs = 10, dc = 9, rst = 46, busy = 3 }
-options = { data_rate_mhz = 10 }
+# The vendor counts Y down (data entry mode 1), with the gate scan below: the same here.
+options = { data_rate_mhz = 10, y_decrement = 1 }
 
 [screen]
 preset = "epaper-3in97"

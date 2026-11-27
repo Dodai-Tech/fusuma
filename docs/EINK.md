@@ -32,7 +32,7 @@ A board file names them (`display.pins`, `[power]` for rails that must be high o
 | Controller | Panels | In a board file | Notes |
 |---|---|---|---|
 | `ssd1680` | 1.54" 200x200 (SSD1681), 2.13" 122x250, 2.9" 128x296 | yes, `s3-epaper-154` | Waveshare V2/V4 sequences, partial refresh |
-| `ssd1677` | 3.97" and other 800x480 | yes, `s3-sticky` | `mirror_x` for the Sticky's wiring |
+| `ssd1677` | 3.97" and other 800x480 | yes, `s3-sticky` | `mirror_x` for the Sticky's wiring, `y_decrement` for the 3.97" board |
 | `ssd2677` | the Sticky's newer 3.97" panel | through `Sticky::detect` (reads register 0x70) | full refresh only, waveform from the temperature |
 | `uc8179` | Waveshare 7.5" 800x480 | yes (controller name) | busy low while working, partial refresh |
 | `epd7in3e` | Waveshare 7.3" six-colour (800x480, the PhotoPainter) | yes, `s3-photopainter` | one chip select, four bits a pixel, busy high when idle, whole refreshes of tens of seconds; shares the six inks (`SPECTRA6`) with the 13.3" |
@@ -49,7 +49,7 @@ preset and no driver.
 |---|---|---|---|
 | `s3-sticky` | Seeed reTerminal Sticky | 3.97" 800x480, SSD1677 or SSD2677, GT911 touch, three keys | file, built |
 | `s3-epaper-154` | Waveshare ESP32-S3-ePaper-1.54 | 1.54" 200x200, SSD1681 | file from vendor firmware, built, not run |
-| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: voltages as the vendor sets them, ALDO3 switched on with a masked write) | file from vendor firmware, built, not run; the vendor counts Y down, the driver up: the picture may be upside down |
+| `s3-epaper-397` | Waveshare ESP32-S3-ePaper-3.97 | 3.97" 800x480, SSD1677; rails from an AXP2101 (`[power.i2c]`: voltages as the vendor sets them, ALDO3 switched on with a masked write) | file from vendor firmware, built, not run; `y_decrement = 1` as the vendor counts Y down; the model checks the byte order, the orientation on the glass is not seen |
 | `s3-photopainter` | Waveshare ESP32-S3-PhotoPainter | 7.3" 800x480 six-colour, `epd7in3e` | file from vendor firmware, built, not run; AXP2101 enables assumed |
 | `s3-rlcd-42` | Waveshare ESP32-S3-RLCD-4.2 | 4.2" 400x300 reflective LCD, `st7305` | file from vendor firmware, built, not run |
 | `s3-epaper-133e6` | Waveshare ESP32-S3-ePaper-13.3E6 | 13.3" 1200x1600 six-colour, `epd13e6` | file from vendor firmware, built, not run; flash 16 MB from the example's partition table, PSRAM 8 MB assumed; needs the colour surface (3.8 MB) |
