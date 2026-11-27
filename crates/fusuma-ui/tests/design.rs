@@ -281,19 +281,7 @@ fn spec(s: &System) -> String {
     }
     writeln!(o, "## Widgets\n").unwrap();
     writeln!(o, "| widget | look |\n| --- | --- |").unwrap();
-    if s.id == "cyberdeck" {
-        writeln!(o, "| primary button | `primary` fill, `on-primary` text, no outline; hover `primary-hover`, pressed `primary-active` |").unwrap();
-        writeln!(o, "| secondary button | `surface` fill, `border-strong` outline, `text`; hover `surface-raised`, pressed `border` |").unwrap();
-        writeln!(o, "| list item, tab | chosen: `surface` fill with the hatch (tab also a `primary` bar under it); idle: no fill |").unwrap();
-        writeln!(
-            o,
-            "| dialog, menu | `surface`, `border-strong` outline, `radius/md`, ticks, no shadow |"
-        )
-        .unwrap();
-        writeln!(o, "| toast | `surface-raised`, `primary` outline |").unwrap();
-    } else {
-        writeln!(o, "| every widget | the tokens above, no hooks |").unwrap();
-    }
+    widgets(&mut o, &s.theme, &s.palette.dark);
     writeln!(
         o,
         "\nSource of the look: `crates/fusuma-ui/src/{}`.",
@@ -305,6 +293,134 @@ fn spec(s: &System) -> String {
     )
     .unwrap();
     o
+}
+
+/// The token a colour is, by its value in this mode (the first role with that colour).
+fn role_of(c: Color, colors: &Colors, text: bool) -> String {
+    // A text colour is one of the text roles first (`on-primary` may equal `background`).
+    let mut all = roles(colors).to_vec();
+    if text {
+        all.sort_by_key(|(n, _)| !(n.starts_with("text") || n.starts_with("on-")));
+    }
+    all.iter()
+        .find(|(_, v)| *v == c)
+        .map_or_else(|| hex(c), |(n, _)| format!("`{n}`"))
+}
+
+/// The widget table, made by calling the theme's own hooks, so the spec says what the toolkit paints.
+fn widgets(o: &mut String, t: &Theme, colors: &Colors) {
+    use fusuma_ui::{ButtonState as St, ButtonVariant as Var, PanelKind};
+    let r = |c| role_of(c, colors, false);
+    let tx = |c| role_of(c, colors, true);
+    let outline = |b: Option<Color>| {
+        b.map_or_else(|| "no outline".to_owned(), |c| format!("{} outline", r(c)))
+    };
+    if t.hooks.button.is_none()
+        && t.hooks.item.is_none()
+        && t.hooks.tab.is_none()
+        && t.hooks.panel.is_none()
+    {
+        writeln!(o, "| every widget | the tokens above, no hooks |").unwrap();
+        return;
+    }
+    if let Some(h) = t.hooks.button {
+        for (name, v) in [("primary", Var::Primary), ("secondary", Var::Secondary)] {
+            for (state, st) in [
+                ("idle", St::Idle),
+                ("hover", St::Hovered),
+                ("pressed", St::Pressed),
+                ("disabled", St::Disabled),
+            ] {
+                let b = h(t, 0, v, st);
+                writeln!(
+                    o,
+                    "| {name} button, {state} | {} fill, {}, {} text, radius {} |",
+                    r(b.background),
+                    outline(b.border),
+                    tx(b.text),
+                    b.radius
+                )
+                .unwrap();
+            }
+        }
+    }
+    if let Some(h) = t.hooks.item {
+        for (sel, st, label) in [
+            (true, St::Idle, "chosen"),
+            (false, St::Idle, "idle"),
+            (false, St::Hovered, "hover"),
+            (false, St::Pressed, "pressed"),
+        ] {
+            let i = h(t, 0, st, sel);
+            let fill = i
+                .fill
+                .map_or_else(|| "no fill".to_owned(), |c| format!("{} fill", r(c)));
+            let hatch = if sel && t.decor.hatch != 0 {
+                ", hatched"
+            } else {
+                ""
+            };
+            writeln!(
+                o,
+                "| list item, {label} | {fill}{hatch}, {} text |",
+                tx(i.text)
+            )
+            .unwrap();
+        }
+    }
+    if let Some(h) = t.hooks.tab {
+        for (sel, st, label) in [
+            (true, St::Idle, "chosen"),
+            (false, St::Idle, "idle"),
+            (false, St::Hovered, "hover"),
+        ] {
+            let i = h(t, 0, st, sel);
+            let fill = i
+                .fill
+                .map_or_else(|| "no fill".to_owned(), |c| format!("{} fill", r(c)));
+            let hatch = if sel && t.decor.hatch != 0 {
+                ", hatched"
+            } else {
+                ""
+            };
+            let bar = i
+                .indicator
+                .map_or_else(String::new, |c| format!(", {} bar under it", r(c)));
+            writeln!(
+                o,
+                "| tab, {label} | {fill}{hatch}, {} text{bar} |",
+                tx(i.text)
+            )
+            .unwrap();
+        }
+    }
+    if let Some(h) = t.hooks.panel {
+        for (name, k) in [
+            ("dialog", PanelKind::Dialog),
+            ("menu", PanelKind::Menu),
+            ("toast", PanelKind::Toast),
+        ] {
+            let p = h(t, 0, k);
+            let shadow = if p.shadow.is_some() {
+                "soft shadow"
+            } else {
+                "no shadow"
+            };
+            let ticks = if t.decor.ticks != 0 && k != PanelKind::Toast {
+                ", corner ticks"
+            } else {
+                ""
+            };
+            writeln!(
+                o,
+                "| {name} | {} fill, {}, radius {}, {shadow}{ticks} |",
+                r(p.fill),
+                outline(p.border),
+                p.radius
+            )
+            .unwrap();
+        }
+    }
 }
 
 /// Every generated file, as (path under the repository root, text).
@@ -369,5 +485,97 @@ fn the_tokens_are_valid_and_carry_every_role_and_number() {
     assert_ne!(
         tokens(&c, &Palette::CYBERDECK.dark),
         tokens(&c, &Palette::CYBERDECK.light)
+    );
+}
+
+/// The drawing against the numbers the spec and the tokens give: the corner ticks, the hatch and the dotted track are as
+/// long and as far apart as `decor` says, on the real renderer.
+#[test]
+fn the_pixels_are_what_the_spec_says() {
+    use fusuma_render::{Probe, Rect, Renderer};
+    use fusuma_ui::{Style, Tree};
+    let t = Theme::CYBERDECK;
+    let c = t.colors;
+    let d = t.decor;
+    let mut tree = Tree::<8>::new();
+    let card = tree
+        .column(
+            None,
+            Style::new()
+                .padding(10)
+                .background(fusuma_ui::Surface::Surface),
+        )
+        .unwrap();
+    tree.label(Some(card), "x", fusuma_ui::TextRole::Body)
+        .unwrap();
+    let mut s = fusuma_render_vello_cpu::new(120, 80).unwrap();
+    tree.update(&s, &t, Rect::new(0, 0, 120, 80));
+    s.clear(c.background).unwrap();
+    tree.paint(&mut s, &t).unwrap();
+    let r = tree.rect(card).unwrap();
+    let arm = d.ticks as i32;
+    // The tick is `ticks` px long from each corner, then the quiet outline.
+    assert_eq!(s.pixel(r.x + arm - 1, r.y), Some(c.border_strong));
+    assert_eq!(s.pixel(r.x + arm, r.y), Some(c.border));
+    assert_eq!(s.pixel(r.x, r.y + arm - 1), Some(c.border_strong));
+    assert_eq!(s.pixel(r.x, r.y + arm), Some(c.border));
+
+    // The chosen row: the hatch lines `hatch` px apart along a horizontal scan.
+    let mut tree = Tree::<8>::new();
+    let row = tree.list_item(None, "", true).unwrap();
+    let mut s = fusuma_render_vello_cpu::new(160, 60).unwrap();
+    tree.update(&s, &t, Rect::new(0, 0, 160, 60));
+    s.clear(c.background).unwrap();
+    tree.paint(&mut s, &t).unwrap();
+    let r = tree.rect(row).unwrap();
+    let y = r.y + (r.h / 2) as i32;
+    let hatch = d.hatch as i32;
+    let hits = |x| s.pixel(x, y).is_some_and(|p| p != c.surface);
+    assert!((r.x..r.right()).any(hits), "the chosen row is hatched");
+    for x in r.x..r.right() - hatch {
+        assert_eq!(s.pixel(x, y), s.pixel(x + hatch, y), "hatch period at {x}");
+    }
+    let finer =
+        (1..hatch).any(|k| (r.x..r.right() - k).all(|x| s.pixel(x, y) == s.pixel(x + k, y)));
+    assert!(!finer, "no period shorter than the hatch step");
+
+    // The track after the value is a dot every `dots` px.
+    let mut tree = Tree::<8>::new();
+    let root = tree
+        .column(
+            None,
+            Style::new()
+                .padding(4)
+                .align(fusuma_ui::CrossAlign::Stretch),
+        )
+        .unwrap();
+    let bar = tree.progress_bar(Some(root), 250).unwrap();
+    let mut s = fusuma_render_vello_cpu::new(160, 30).unwrap();
+    tree.update(&s, &t, Rect::new(0, 0, 160, 30));
+    s.clear(c.background).unwrap();
+    tree.paint(&mut s, &t).unwrap();
+    let r = tree.rect(bar).unwrap();
+    let dots = d.dots as i32;
+    let from = r.x + (r.w / 4) as i32 + 8;
+    let y = (r.y..r.bottom())
+        .find(|&y| (from..r.right()).any(|x| s.pixel(x, y) == Some(c.border_strong)))
+        .expect("a row with dots");
+    let on: Vec<i32> = (from..r.right())
+        .filter(|&x| s.pixel(x, y) == Some(c.border_strong))
+        .collect();
+    assert!(on.len() > 10, "{on:?}");
+    assert!(
+        on.windows(2).all(|w| w[1] - w[0] == dots),
+        "dots {dots} px apart: {on:?}"
+    );
+    // The solid part is the primary colour.
+    assert_eq!(
+        s.pixel(
+            r.x + 4,
+            (r.y..r.bottom())
+                .find(|&y| s.pixel(r.x + 4, y) == Some(c.primary))
+                .unwrap()
+        ),
+        Some(c.primary)
     );
 }

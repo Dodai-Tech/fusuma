@@ -39,8 +39,19 @@ nu scripts/design.nu verify  # the .fig carries exactly the token variables
 nu scripts/design.nu check   # tracked tokens and spec are up to date (no bun)
 ```
 
-Run `nu scripts/design.nu tokens` and commit the result after changing a colour, a size or the decoration. `cargo test
---workspace` (so `just check-all` and CI) fails on stale files.
+Run `nu scripts/design.nu tokens` and commit the result after changing a colour, a size, a hook or the decoration.
+
+## What CI checks
+
+| check | where | catches |
+| --- | --- | --- |
+| tokens and spec equal what `Theme` and `Palette` generate | `cargo test --workspace` (so `just check-all`), `design check` | a changed constant with stale files |
+| the widget table is made by calling the theme's own hooks | same test | a hook change the spec does not say |
+| the pixels: tick arm, hatch step and dot step on the real renderer | `the_pixels_are_what_the_spec_says` | a painter that stops following `decor` |
+| the `.fig` carries every token by name and default-mode value, and a Foundations and a Controls frame per system | the `design files` job (GitHub and Gitea): `design build` then `design verify` | a stale or broken `build.js`, a token the file lacks |
+
+The job uploads the `.fig` as an artifact on GitHub. The drawing in `build.js` itself is not compared pixel by pixel with the
+toolkit's render; the variables it is bound to are.
 
 ## Keeping it aligned
 

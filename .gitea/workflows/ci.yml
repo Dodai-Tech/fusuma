@@ -70,6 +70,36 @@ jobs:
       - name: Build the web showcase
         run: nu scripts/web.nu build
 
+  design:
+    name: design files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          for i in 1 2 3 4 5; do
+            curl --proto '=https' --tlsv1.2 -sSf --retry 5 --retry-all-errors --retry-delay 5 https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal && break
+            [ $i = 5 ] && exit 1
+            echo "rustup install failed, retrying..."; sleep 15
+          done
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Nushell and bun
+        run: |
+          V=0.116.1
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/nu.tgz https://github.com/nushell/nushell/releases/download/$V/nu-$V-x86_64-unknown-linux-gnu.tar.gz && tar -xzf /tmp/nu.tgz -C /tmp
+          sudo install -m 0755 /tmp/nu-$V-x86_64-unknown-linux-gnu/nu /usr/local/bin/nu || { mkdir -p $HOME/.cargo/bin; install -m 0755 /tmp/nu-$V-x86_64-unknown-linux-gnu/nu $HOME/.cargo/bin/nu; }
+          curl -fsSL --retry 5 https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+      - name: Install system packages
+        run: nu scripts/ci/apt.nu
+      - name: Tokens and spec are up to date
+        run: nu scripts/design.nu check
+      - name: Build the .fig
+        run: nu scripts/design.nu build
+      - name: The .fig carries the tokens
+        run: nu scripts/design.nu verify
+
   msrv:
     name: MSRV (1.90)
     runs-on: ubuntu-latest

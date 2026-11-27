@@ -76,10 +76,23 @@ fast 80 ms, normal 160 ms, slow 300 ms.
 
 | widget | look |
 | --- | --- |
-| primary button | `primary` fill, `on-primary` text, no outline; hover `primary-hover`, pressed `primary-active` |
-| secondary button | `surface` fill, `border-strong` outline, `text`; hover `surface-raised`, pressed `border` |
-| list item, tab | chosen: `surface` fill with the hatch (tab also a `primary` bar under it); idle: no fill |
-| dialog, menu | `surface`, `border-strong` outline, `radius/md`, ticks, no shadow |
-| toast | `surface-raised`, `primary` outline |
+| primary button, idle | `primary` fill, no outline, `on-primary` text, radius 0 |
+| primary button, hover | `primary-hover` fill, no outline, `on-primary` text, radius 0 |
+| primary button, pressed | `primary-active` fill, no outline, `on-primary` text, radius 0 |
+| primary button, disabled | `surface` fill, `border` outline, `text-disabled` text, radius 0 |
+| secondary button, idle | `surface` fill, `border-strong` outline, `text` text, radius 0 |
+| secondary button, hover | `surface-raised` fill, `border-strong` outline, `text` text, radius 0 |
+| secondary button, pressed | `border` fill, `border-strong` outline, `text` text, radius 0 |
+| secondary button, disabled | `surface` fill, `border` outline, `text-disabled` text, radius 0 |
+| list item, chosen | `surface` fill, hatched, `text` text |
+| list item, idle | no fill, `text` text |
+| list item, hover | `surface-raised` fill, `text` text |
+| list item, pressed | `border` fill, `text` text |
+| tab, chosen | `surface` fill, hatched, `text` text, `primary` bar under it |
+| tab, idle | no fill, `text-muted` text |
+| tab, hover | `surface-raised` fill, `text` text |
+| dialog | `surface` fill, `border-strong` outline, radius 2, no shadow, corner ticks |
+| menu | `surface` fill, `border-strong` outline, radius 2, no shadow, corner ticks |
+| toast | `surface-raised` fill, `primary` outline, radius 2, no shadow |
 
 Source of the look: `crates/fusuma-ui/src/cyberdeck.rs`.

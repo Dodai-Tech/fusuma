@@ -59,6 +59,31 @@ jobs:
         run: cargo test --workspace --all-features
 
 
+  # The design files (OpenPencil / Figma): the .fig is built from the tracked tokens and must carry them, by name and value.
+  design:
+    name: design files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - uses: oven-sh/setup-bun@v2
+      - name: Install system packages
+        run: nu scripts/ci/apt.nu
+      - name: Tokens and spec are up to date
+        run: nu scripts/design.nu check
+      - name: Build the .fig
+        run: nu scripts/design.nu build
+      - name: The .fig carries the tokens
+        run: nu scripts/design.nu verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusuma-design
+          path: dist/design/fusuma.fig
+
   # The showcase compiles to WebAssembly and gets its JavaScript glue: one canvas, Vello on the CPU.
   web:
     name: web build (wasm)

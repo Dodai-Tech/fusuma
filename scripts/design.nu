@@ -4,7 +4,8 @@
 #   nu scripts/design.nu tokens   write design/tokens/<system>/*.tokens.json and design/spec/<system>.md (W3C design tokens
 #                                 and the written spec), from `Theme` and `Palette` (crates/fusuma-ui/tests/design.rs)
 #   nu scripts/design.nu build    write dist/design/fusuma.fig: the tokens as variables, drawn by design/build.js
-#   nu scripts/design.nu verify   fail when the built .fig does not carry exactly the token variables
+#   nu scripts/design.nu verify   fail when the built .fig does not carry exactly the token variables (names and values)
+#                                 and the Foundations and Controls frames
 #   nu scripts/design.nu check    fail when the checked-in tokens or spec are stale (what CI runs, no bun needed)
 #
 # A folder under design/tokens is a variable collection, a file a mode; the system's own file (`<system>.tokens.json`)
@@ -59,15 +60,48 @@ def "main build" [--out: string = "dist/design/fusuma.fig"] {
     print $"wrote ($out)"
 }
 
+# The token leaves of a parsed tree as `{ name: "group/name", value: <the value> }` rows.
+export def flat [node: record, prefix: string = ""]: nothing -> list<record> {
+    $node | transpose key val | each { |row|
+        let name = (if $prefix == "" { $row.key } else { $"($prefix)/($row.key)" })
+        if ($row.val | describe | str starts-with "record") {
+            if ("$value" in ($row.val | columns)) { [{ name: $name, value: ($row.val | get '$value') }] } else { flat $row.val $name }
+        } else { [] }
+    } | flatten
+}
+
 def "main verify" [--fig: string = "dist/design/fusuma.fig"] {
-    let want = (ls design/tokens | where type == dir | each { |d|
-        leaves (open $"($d.name)/(($d.name | path basename)).tokens.json")
-    } | math sum)
-    let got = (^openpencil variables $fig | lines | where { $in =~ '^\[[0-9]+\]' } | length)
-    if $want != $got {
-        error make { msg: $"($fig) has ($got) variables, the token files define ($want): run `just design`" }
+    let doc = (^bunx @open-pencil/cli variables $fig --json | from json)
+    mut errors = []
+    mut count = 0
+    for entry in (ls design/tokens | where type == dir | sort-by name) {
+        let system = ($entry.name | path basename)
+        let want = (flat (open $"($entry.name)/($system).tokens.json"))
+        let col = ($doc.collections | where name == $system)
+        if ($col | is-empty) { $errors = ($errors | append $"collection ($system) is missing"); continue }
+        let have = ($col | first | get variables)
+        $count += ($have | length)
+        if ($want | length) != ($have | length) {
+            $errors = ($errors | append $"($system): ($have | length) variables, the tokens define ($want | length)")
+        }
+        # Every token is a variable of the same name and the same (default mode) value.
+        for w in $want {
+            let h = ($have | where name == $w.name)
+            if ($h | is-empty) { $errors = ($errors | append $"($system): ($w.name) is missing") } else if (($h | first | get value | into string) != ($w.value | into string)) {
+                $errors = ($errors | append $"($system): ($w.name) is ($h | first | get value), the tokens say ($w.value)")
+            }
+        }
     }
-    print $"design file: ($got) variables match the token files"
+    # Every system draws both pages.
+    let systems = (ls design/tokens | where type == dir | length)
+    for frame in ["Foundations" "Controls"] {
+        let n = (^bunx @open-pencil/cli find $fig --type FRAME --name $frame --json | from json | length)
+        if $n < $systems { $errors = ($errors | append $"($n) ($frame) frames for ($systems) systems") }
+    }
+    if ($errors | is-not-empty) {
+        error make { msg: $"($fig) is out of step with design/tokens, run `just design`:\n(($errors | str join (char nl)))" }
+    }
+    print $"design file: ($count) variables match the token files by name and value"
 }
 
 def main [] {

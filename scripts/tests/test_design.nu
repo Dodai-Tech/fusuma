@@ -4,7 +4,7 @@
 
 use std/assert
 use runner.nu *
-use ../design.nu [leaves system_files]
+use ../design.nu [leaves system_files flat]
 
 def "test design: a token leaf is a node with a value, groups are counted through" [] {
     assert equal (leaves { color: { a: { "$type": "color", "$value": "#000000" }, b: { "$type": "color", "$value": "#ffffff" } }, size: { x: { "$type": "number", "$value": 1 } } }) 3
@@ -23,6 +23,11 @@ def "test design: the checked-in tokens carry the same number of leaves in every
         let counts = (glob $"($d.name | path expand)/*.tokens.json" | each { |f| leaves (open $f) } | uniq)
         assert equal ($counts | length) 1
     }
+}
+
+def "test design: flat names a token group/name with its value" [] {
+    let got = (flat { color: { a: { "$type": "color", "$value": "#000000" } }, size: { x: { "$type": "number", "$value": 1 } } })
+    assert equal $got [{ name: "color/a", value: "#000000" } { name: "size/x", value: 1 }]
 }
 
 def main [] { run-tests }
