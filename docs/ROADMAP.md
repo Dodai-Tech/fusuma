@@ -205,6 +205,16 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   amber, mint, sky, indigo, slate, crimson, lime. Cyberdeck design: cyberdeck (vermilion), orange, cyan, lime, magenta,
   amber, violet. Any palette's main action goes on any other; `[theme]` in `fusuma.toml`, switched at run time. Every
   combination keeps the contrast rules (text 7:1, muted 4.5:1, text on the main action 4.5:1, the main action 3:1 on the page)
+- [x] **More components, from the Dodai gpui set and Material 3** (`crates/fusuma/src/elm/more.rs`, the **Bars** page of
+  the showcase): `top_bar`, `toolbar`, `form_field` (a hint that becomes an error in the same line), `key_value`,
+  `icon_badge` (a count, `99+` above 99), `fab`, `split_button`, `search_bar`, `avatar_group` (initials and `+n`),
+  `navigation_bar` and `navigation_rail` (one place), `toggle_group` and `chip_group` (any number on, buttons, so a press
+  never clears the others as list rows would), `button_group` (actions). Built from the views that exist: no new node kind.
+  `Tree::is_primary` reads a button's variant. Tests: `crates/fusuma/tests/elm_more.rs` (messages, one-of or any-of,
+  the count, the avatars, no allocation on an unchanged pass).
+  - Open, from the same lists: a tooltip, popover and hover card (they need an overlay layer that is not a dialog), a
+    context menu, a command palette, an OTP input, a colour picker, a date range picker, an indeterminate bar, a side
+    sheet and drawer, a markdown and a code block, a stopwatch and a timer.
 - [x] **Two designs** (`Design`, `Palette::design()`, `Theme::FUSUMA`, `Theme::CYBERDECK`). Each is a module with its
   palette, theme, `Decor` and hooks, apart from the widgets; the showcase's theme dropdown has a Fusuma / Cyberdeck row
   and shows the palettes of the one that is on.

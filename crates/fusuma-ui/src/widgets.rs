@@ -134,6 +134,20 @@ impl<const N: usize> Tree<N> {
         })
     }
 
+    /// Whether a button is a main action (filled with the primary colour), as a chip or a toggle that is on is.
+    #[must_use]
+    pub fn is_primary(&self, id: NodeId) -> bool {
+        self.slot(id).is_some_and(|i| {
+            matches!(
+                self.nodes[i].kind,
+                Kind::Button {
+                    variant: crate::ButtonVariant::Primary,
+                    ..
+                }
+            )
+        })
+    }
+
     /// Checks or unchecks a checkbox, or chooses a radio button or list item (which clears the
     /// others of its group; unchecking one leaves the group without a choice). It sends no action:
     /// actions report what the user did.

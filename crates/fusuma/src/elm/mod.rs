@@ -8,6 +8,7 @@ mod container;
 mod host;
 mod keyed;
 mod leaf;
+mod more;
 mod msgs;
 mod program;
 mod task;
@@ -37,6 +38,11 @@ pub use keyed::{Custom, Each, Imperative, Memo, each, imperative, memo};
 pub use leaf::{
     Button, Checkbox, Progress, Spacer, Text, Toast, button, checkbox, progress, spacer, text,
     text_fmt, toast,
+};
+pub use more::{
+    AvatarGroup, Choices, IconBadge, avatar_group, button_group, chip_group, fab, form_field,
+    icon_badge, key_value, marks, navigation_bar, navigation_rail, search_bar, split_button,
+    toggle_group, toolbar, top_bar,
 };
 pub use msgs::{Handler, Msgs};
 pub use program::{Preset, Program, QUEUE, Runner, TIMERS};

@@ -10,6 +10,10 @@ use fusuma::{
 };
 use fusuma::{CrossAlign, Id, Length, Swipe, SwipeDir};
 use fusuma::{
+    avatar_group, button_group, chip_group, fab, form_field, icon_badge, key_value, marks,
+    navigation_bar, search_bar, split_button, toggle_group, toolbar, top_bar,
+};
+use fusuma::{
     bar_chart, calendar, carousel, kbd, line_chart, rating, select, show, spinner, split_view,
     table, time_picker, timeline, tree_item,
 };
@@ -122,6 +126,24 @@ pub enum PageMsg {
     SelectClose,
     /// A star of the rating.
     Rate(u8),
+    /// A place of the navigation bar or rail.
+    BarNav(u8),
+    /// A part of the toggle group.
+    BarToggle(u8),
+    /// A chip of the chip group.
+    BarChip(u8),
+    /// A part of the button group.
+    BarAct(u8),
+    /// The split button's main part, and its arrow.
+    BarMain,
+    /// The split button's arrow.
+    BarMore,
+    /// The floating action button: one more person in the group.
+    BarAdd,
+    /// The search bar's text changed, or Enter was pressed in it.
+    BarSearch,
+    /// Enter in the search bar.
+    BarSubmit,
     /// A page of the carousel.
     Slide(usize),
     /// The accordion's heading.
@@ -149,6 +171,10 @@ pub struct Extra {
     pub fold: bool,
     pub tree_open: bool,
     pub tree_row: u8,
+    pub bar_nav: u8,
+    pub toggles: [bool; 3],
+    pub filters: [bool; 4],
+    pub people: usize,
 }
 
 impl Extra {
@@ -166,9 +192,19 @@ impl Extra {
         fold: false,
         tree_open: true,
         tree_row: 1,
+        bar_nav: 0,
+        toggles: [false, true, false],
+        filters: [true, false, false, true],
+        people: 5,
     };
 }
 
+/// The names on the Bars page.
+pub const BAR_NAV: [&str; 3] = ["Home", "Cars", "Me"];
+pub const BAR_TOGGLES: [&str; 3] = ["Bold", "Italic", "Underline"];
+pub const BAR_CHIPS: [&str; 4] = ["Wi-Fi", "Bluetooth", "NFC", "GPS"];
+pub const BAR_ACTIONS: [&str; 3] = ["Cut", "Copy", "Paste"];
+pub const PEOPLE: [&str; 5] = ["Ana Maria", "Bob Stone", "Cleo Fox", "Dan Hill", "Eve Moon"];
 /// The sizes the select offers.
 pub const SIZES: [&str; 3] = ["Small", "Medium", "Large"];
 /// A week of readings for the charts.
@@ -499,6 +535,40 @@ pub fn pickers<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
             (text("Left").caption(),),
             (text("Right").caption(),),
         ),
+    )
+}
+
+/// The Bars page: the bars, groups and fields that frame a screen.
+pub fn bars<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
+    let x = s.x;
+    let nav = 1u32 << x.bar_nav.min(2);
+    // A heading and the parts of the page, in groups: a tuple holds 12 at most.
+    (
+        (!look.lite).then(|| text("Bars").title()),
+        top_bar("Garage", (button("Edit"),)),
+        toolbar((
+            toggle_group(&BAR_TOGGLES, marks(&x.toggles), |i| {
+                PageMsg::BarToggle(i as u8)
+            }),
+            button_group(&BAR_ACTIONS, |i| PageMsg::BarAct(i as u8)),
+        )),
+        search_bar(
+            s.icons.search.unwrap_or(' '),
+            s.typed,
+            |_| PageMsg::BarSearch,
+            PageMsg::BarSubmit,
+        ),
+        form_field("Name", text_field("Ana Maria"), "As on the card", ""),
+        key_value("Range", "412 km"),
+        chip_group(&BAR_CHIPS, marks(&x.filters), |i| PageMsg::BarChip(i as u8)),
+        row((
+            split_button("Charge", PageMsg::BarMain, PageMsg::BarMore),
+            fab(s.icons.edit.unwrap_or('+'), "Add").on_press(PageMsg::BarAdd),
+            icon_badge(s.icons.home.unwrap_or('i'), 3),
+        ))
+        .gap(look.md),
+        avatar_group(&PEOPLE[..x.people], look.avatar.max(24), 3),
+        navigation_bar(&BAR_NAV, nav, |i| PageMsg::BarNav(i as u8)),
     )
 }
 

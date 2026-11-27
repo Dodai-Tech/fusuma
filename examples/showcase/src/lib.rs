@@ -226,11 +226,14 @@ pub enum Page {
     Data,
     /// A calendar, a time picker, a select, a tree, a fold and a split view.
     Pickers,
+    /// Top bar, toolbar, navigation bar and rail, form field, toggle, chip and button groups, split button, floating action
+    /// button, search bar and avatar group.
+    Bars,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Overview,
         Self::Buttons,
         Self::Selection,
@@ -244,6 +247,7 @@ impl Page {
         Self::Components,
         Self::Data,
         Self::Pickers,
+        Self::Bars,
     ];
 
     /// The name in the sidebar.
@@ -263,6 +267,7 @@ impl Page {
             Self::Components => "Components",
             Self::Data => "Data",
             Self::Pickers => "Pickers",
+            Self::Bars => "Bars",
         }
     }
 }
@@ -334,7 +339,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 13],
+    sidebar: [Option<NodeId>; 14],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
@@ -350,7 +355,7 @@ pub struct Showcase {
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
-    tiles: [Option<NodeId>; 13],
+    tiles: [Option<NodeId>; 14],
     back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
@@ -417,7 +422,7 @@ impl Showcase {
             palette: Palette::WASHI,
             bounds: Rect::new(0, 0, width, height),
             page: Page::Overview,
-            sidebar: [None; 13],
+            sidebar: [None; 14],
             nav: [None; 3],
             class: Class::of(width),
             dialog: [None; 3],
@@ -425,7 +430,7 @@ impl Showcase {
             shape: fusuma::Shape::Rect,
             device: fusuma::Screen::new(0, 0),
             open: false,
-            tiles: [None; 13],
+            tiles: [None; 14],
             back: None,
             body: None,
             content: None,
@@ -479,9 +484,9 @@ impl Showcase {
         s.class = Class::of(cols.saturating_mul(CELL_PX));
         s.theme = s.make_theme();
         s.tree.clear();
-        s.sidebar = [None; 13];
+        s.sidebar = [None; 14];
         s.nav = [None; 3];
-        s.tiles = [None; 13];
+        s.tiles = [None; 14];
         s.back = None;
         s.content = None;
         let _ = s.build();
@@ -961,7 +966,11 @@ impl Showcase {
             .background(Surface::Surface)
             .round(Round::Medium);
         // A small screen shows a window onto the page, which scrolls: the pages are taller than a watch.
-        let c = if compact || matches!(page, Page::Components | Page::Data | Page::Pickers) {
+        let c = if compact
+            || matches!(
+                page,
+                Page::Components | Page::Data | Page::Pickers | Page::Bars
+            ) {
             t.scroll(body, style)?
         } else {
             t.column(body, style)?
@@ -1084,6 +1093,7 @@ impl Showcase {
             Page::Components => host.sync_children(tree, c, &pages::components(look, state)),
             Page::Data => host.sync_children(tree, c, &pages::data(look, state)),
             Page::Pickers => host.sync_children(tree, c, &pages::pickers(look, state)),
+            Page::Bars => host.sync_children(tree, c, &pages::bars(look, state)),
         };
         self.refresh_live();
     }
@@ -1253,6 +1263,32 @@ impl Showcase {
                 self.x.size_open = false;
                 let _ = write!(say, "Size {}", pages::SIZES[i.min(2)]);
             }
+            P::BarNav(i) => {
+                self.x.bar_nav = i;
+                let _ = write!(say, "{}", pages::BAR_NAV[usize::from(i).min(2)]);
+            }
+            P::BarToggle(i) => {
+                self.x.toggles[usize::from(i).min(2)] ^= true;
+                let _ = write!(say, "{}", pages::BAR_TOGGLES[usize::from(i).min(2)]);
+            }
+            P::BarChip(i) => {
+                self.x.filters[usize::from(i).min(3)] ^= true;
+                let _ = write!(say, "{}", pages::BAR_CHIPS[usize::from(i).min(3)]);
+            }
+            P::BarAct(i) => {
+                let _ = write!(say, "{}", pages::BAR_ACTIONS[usize::from(i).min(2)]);
+            }
+            P::BarMain => {
+                let _ = write!(say, "Charge");
+            }
+            P::BarMore => {
+                let _ = write!(say, "More ways to charge");
+            }
+            P::BarAdd => {
+                self.x.people = (self.x.people % 5) + 1;
+                let _ = write!(say, "{} people", self.x.people);
+            }
+            P::BarSearch | P::BarSubmit => {}
             P::Rate(n) => {
                 self.x.rating = if self.x.rating == n { 0 } else { n };
                 let _ = write!(say, "{} of 5", self.x.rating);
@@ -1311,9 +1347,9 @@ impl Showcase {
     fn rebuild(&mut self) {
         self.tree.clear();
         self.pages.forget();
-        self.sidebar = [None; 13];
+        self.sidebar = [None; 14];
         self.nav = [None; 3];
-        self.tiles = [None; 13];
+        self.tiles = [None; 14];
         self.back = None;
         self.content = None;
         let _ = self.build();
@@ -1835,9 +1871,9 @@ impl App for Showcase {
             self.bounds = bounds;
             self.tree.clear();
             self.pages.forget();
-            self.sidebar = [None; 13];
+            self.sidebar = [None; 14];
             self.nav = [None; 3];
-            self.tiles = [None; 13];
+            self.tiles = [None; 14];
             self.back = None;
             self.content = None;
             let _ = self.build();
@@ -2146,9 +2182,14 @@ mod tests {
         let last = s.tile(*Page::ALL.last().unwrap()).unwrap();
         let (a, b) = (s.rect_of(tile).unwrap(), s.rect_of(last).unwrap());
         assert_eq!((a.h, a.w), (b.h, b.w), "as big as a page tile");
-        // An odd number of pages leaves the last row half empty: the palette tile fills it, beside the last page.
-        assert_eq!(a.y, b.y, "{a:?} {b:?}");
-        assert!(a.x > b.x);
+        // An odd number of pages leaves the last row half empty: the palette tile fills it, beside the last page. An even
+        // number fills the rows, so the tile starts a row of its own below them.
+        if Page::ALL.len() % 2 == 1 {
+            assert_eq!(a.y, b.y, "{a:?} {b:?}");
+            assert!(a.x > b.x);
+        } else {
+            assert!(a.y > b.y, "{a:?} {b:?}");
+        }
         tap(&mut s, tile);
         assert_eq!(s.palette().name, "washi-indigo");
         assert_eq!(
