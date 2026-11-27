@@ -62,6 +62,12 @@ pub trait Scene {
     /// Forgets everything drawn so far and resets the transform, the paint and the stroke.
     fn reset(&mut self);
 
+    /// Whether the pixels survive a [`reset`](Self::reset), so the next frame can draw only what changed over them
+    /// (the CPU scene). False when every frame is rendered from nothing (the GPU scene).
+    fn retains_picture(&self) -> bool {
+        true
+    }
+
     /// Moves the origin: everything drawn afterwards, and clips pushed afterwards, are shifted.
     fn set_translation(&mut self, dx: f64, dy: f64);
 
@@ -397,6 +403,7 @@ impl<S: Scene> Renderer for Backend<S> {
             alpha: true,
             antialiasing: true,
             effects: true,
+            retains_picture: self.inner.borrow().scene.retains_picture(),
         }
     }
 

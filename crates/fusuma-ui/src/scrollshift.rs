@@ -175,16 +175,21 @@ impl<const N: usize> Tree<N> {
         theme: &Theme,
         screen: Rect,
     ) -> Result<Option<Rect>, R::Error> {
-        let shift = self.shift.take();
+        // A renderer that starts each frame from nothing cannot keep the parts that did not change: it draws it all.
+        let retains = renderer.capabilities().retains_picture;
+        let shift = self.shift.take().filter(|_| retains);
         self.shift_laid = false;
         let rest = self.rest.take();
-        let pieces = self.pieces;
+        let mut pieces = self.pieces;
+        if !retains {
+            pieces.clear();
+        }
         self.pieces.clear();
         self.drawn.clear();
         let Some(present) = self
             .damage
             .take()
-            .map(|d| d.intersect(&screen))
+            .map(|d| if retains { d } else { screen }.intersect(&screen))
             .filter(|d| d.w > 0 && d.h > 0)
         else {
             // A change nobody can see (a focus ring on a tile below the edge, a node with no area) asked for a paint and
@@ -306,6 +311,8 @@ mod tests {
     struct Spy<B: Back> {
         inner: B,
         allow: bool,
+        /// What the renderer says about keeping the picture between frames.
+        retains: bool,
         shifts: Vec<(Rect, i32)>,
         draws: Vec<Rect>,
     }
@@ -315,6 +322,7 @@ mod tests {
             Self {
                 inner: B::make(W, H),
                 allow,
+                retains: true,
                 shifts: Vec::new(),
                 draws: Vec::new(),
             }
@@ -334,7 +342,9 @@ mod tests {
             self.inner.size()
         }
         fn capabilities(&self) -> fusuma_render::Capabilities {
-            self.inner.capabilities()
+            let mut c = self.inner.capabilities();
+            c.retains_picture &= self.retains;
+            c
         }
         fn save(&mut self) -> Result<(), Self::Error> {
             self.inner.save()
@@ -761,6 +771,26 @@ mod tests {
         }
     }
 
+    /// A renderer that forgets the picture between frames is given the whole screen each time, however little changed.
+    fn a_renderer_that_keeps_no_picture_is_drawn_whole<B: Back>() {
+        let mut u = ui::<B>(10, plain());
+        let mut r = Spy::<B>::new(true);
+        r.retains = false;
+        frame(&mut u, &mut r);
+        let root = u.t.root().unwrap();
+        let first = u.t.children(root).next().unwrap();
+        let last = u.t.children(root).last().unwrap();
+        u.t.set_text(first, "Head!");
+        u.t.set_text(last, "Foot!");
+        r.draws.clear();
+        let shown = frame(&mut u, &mut r).unwrap();
+        let screen = Rect::new(0, 0, W, H);
+        assert_eq!(shown, screen);
+        assert_eq!(r.draws, [screen], "one draw of everything, not two pieces");
+        assert!(r.shifts.is_empty());
+        same(&r, &full(&mut u), "whole");
+    }
+
     fn a_tree_with_nothing_to_do_draws_nothing<B: Back>() {
         let mut u = ui::<B>(10, plain());
         let mut r = Spy::<B>::new(true);
@@ -771,6 +801,7 @@ mod tests {
 
     on_both!(
         two_distant_changes_are_drawn_apart_and_the_picture_stays_exact,
+        a_renderer_that_keeps_no_picture_is_drawn_whole,
         a_scroll_moves_the_pixels_and_redraws_only_the_strip_and_the_scrollbar,
         the_picture_is_exactly_a_full_redraw_for_every_distance_and_direction,
         scrolling_back_up_and_across_many_frames_stays_exact,

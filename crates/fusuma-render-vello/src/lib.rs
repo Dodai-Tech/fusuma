@@ -298,6 +298,10 @@ impl Scene for GpuScene {
         self.size
     }
 
+    fn retains_picture(&self) -> bool {
+        false
+    }
+
     fn reset(&mut self) {
         self.scene.reset();
         // The images of the forgotten frame are not needed any more.

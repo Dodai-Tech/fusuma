@@ -872,6 +872,7 @@ mod tests {
                 alpha: false,
                 antialiasing: true,
                 effects: false,
+                retains_picture: true,
             }
         }
         fn save(&mut self) -> Result<(), Self::Error> {

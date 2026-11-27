@@ -19,6 +19,10 @@ pub struct Capabilities {
     pub antialiasing: bool,
     /// Gradients and shadows are drawn natively and smoothly (every backend can draw them, from rectangles, with bands and steps).
     pub effects: bool,
+    /// What was drawn stays until it is drawn over: a frame that draws only the changed parts leaves the rest of the
+    /// picture as it was. A backend that starts every frame from nothing (a GPU scene) says false, and the toolkit
+    /// then draws the whole screen each frame.
+    pub retains_picture: bool,
 }
 
 /// Why a drawing call failed.

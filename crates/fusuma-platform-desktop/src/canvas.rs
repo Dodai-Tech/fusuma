@@ -220,7 +220,10 @@ mod tests {
         shell.input(fusuma::Input::Pointer(Pointer::Up(at)));
         // The dropdown opens: only its menu is drawn, over the page.
         let opened = canvas.frame(&mut shell, 32).unwrap();
-        assert!(opened.w * opened.h < 1024 * 600 / 2, "{opened:?}");
+        // (A backend that keeps no picture between frames, the GPU, is given the whole screen instead.)
+        if backend == Backend::VelloCpu {
+            assert!(opened.w * opened.h < 1024 * 600 / 2, "{opened:?}");
+        }
         let light = shell.app.theme_row(1).unwrap();
         let r = shell.app.rect_of(light).unwrap();
         let at = Point::new(r.x + 4, r.y + 4);
@@ -297,6 +300,41 @@ mod tests {
             (c.size(), c.backend(), c.pixels().len()),
             ((8, 6), Backend::VelloCpu, 48)
         );
+    }
+
+    /// After clicks that change several separate parts (the old and the new sidebar row, the page), the GPU canvas
+    /// still shows the whole picture, like the CPU one: no black gaps between the redrawn parts.
+    #[test]
+    fn the_gpu_picture_matches_the_cpu_picture_after_clicks() {
+        let Some((mut gpu, mut gs)) = showcase_canvas(Backend::VelloGpu) else {
+            eprintln!("no GPU here, skipped");
+            return;
+        };
+        let (mut cpu, mut cs) = showcase_canvas(Backend::VelloCpu).unwrap();
+        gpu.frame(&mut gs, 0).unwrap();
+        cpu.frame(&mut cs, 0).unwrap();
+        let mut now = 0;
+        for k in [1usize, 3, 2, 5] {
+            let page = fusuma_showcase::Page::ALL[k];
+            for (canvas, shell) in [(&mut gpu, &mut gs), (&mut cpu, &mut cs)] {
+                let row = shell.app.sidebar_item(page).unwrap();
+                let r = shell.app.rect_of(row).unwrap();
+                let at = Point::new(r.x + 4, r.y + 4);
+                shell.input(fusuma::Input::Pointer(Pointer::Down(at)));
+                shell.input(fusuma::Input::Pointer(Pointer::Up(at)));
+                for step in 1..=4 {
+                    canvas.frame(shell, now + step * 100);
+                }
+            }
+            now += 400;
+            let black = gpu
+                .pixels()
+                .iter()
+                .zip(cpu.pixels())
+                .filter(|(g, c)| **g == 0 && **c != 0)
+                .count();
+            assert_eq!(black, 0, "black pixels on the GPU canvas after row {k}");
+        }
     }
 
     /// The two Vello backends draw the same picture: where they differ it is by anti-aliasing at the edges,
