@@ -5,7 +5,7 @@
 #                                 and the written spec), from `Theme` and `Palette` (crates/fusuma-ui/tests/design.rs)
 #   nu scripts/design.nu build    write dist/design/fusuma.fig: the tokens as variables, drawn by design/build.js
 #   nu scripts/design.nu verify   fail when the built .fig does not carry exactly the token variables (names and values)
-#                                 and the Foundations and Controls frames
+#                                 the Foundations and Controls frames, and what the Controls page draws (tick arm, hatch step, dot step)
 #   nu scripts/design.nu check    fail when the checked-in tokens or spec are stale (what CI runs, no bun needed)
 #
 # A folder under design/tokens is a variable collection, a file a mode; the system's own file (`<system>.tokens.json`)
@@ -90,6 +90,19 @@ def "main verify" [--fig: string = "dist/design/fusuma.fig"] {
             if ($h | is-empty) { $errors = ($errors | append $"($system): ($w.name) is missing") } else if (($h | first | get value | into string) != ($w.value | into string)) {
                 $errors = ($errors | append $"($system): ($w.name) is ($h | first | get value), the tokens say ($w.value)")
             }
+        }
+    }
+    # What the pages draw follows the decoration tokens: tick arm, hatch step and dot step (design/check.js).
+    let drawn = (open --raw design/check.js | ^bunx @open-pencil/cli eval $fig --stdin | from json | from json)
+    for entry in (ls design/tokens | where type == dir | sort-by name) {
+        let system = ($entry.name | path basename)
+        let decor = (open $"($entry.name)/($system).tokens.json" | get decor)
+        let got = ($drawn | get -o $system)
+        if $got == null { $errors = ($errors | append $"($system): no Controls page"); continue }
+        for pair in [[ticks arm] [hatch hatch] [dots dots]] {
+            let want = ($decor | get -o ($pair | first) | default { '$value': 0 } | get '$value')
+            let have = ($got | get ($pair | last))
+            if $want != $have { $errors = ($errors | append $"($system): the page draws ($pair | last) ($have), decor/($pair | first) says ($want)") }
         }
     }
     # Every system draws both pages.
