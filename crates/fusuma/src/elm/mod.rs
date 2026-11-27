@@ -36,8 +36,8 @@ pub use container::{
 pub use host::Host;
 pub use keyed::{Custom, Each, Imperative, Memo, each, imperative, memo};
 pub use leaf::{
-    Button, Checkbox, Progress, Spacer, Text, Toast, button, checkbox, progress, spacer, text,
-    text_fmt, toast,
+    Button, Checkbox, HostSurface, Progress, Spacer, Text, Toast, button, checkbox, host_surface,
+    progress, spacer, text, text_fmt, toast,
 };
 pub use more::{
     AvatarGroup, Choices, IconBadge, avatar_group, button_group, chip_group, fab, form_field,

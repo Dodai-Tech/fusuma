@@ -538,6 +538,14 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.tree.frame_rects()
     }
 
+    fn changed(&self) -> Option<Rect> {
+        self.tree.changed()
+    }
+
+    fn layers(&self) -> Option<fusuma_ui::LayerPlan> {
+        Some(self.tree.layers())
+    }
+
     fn semantics(&self, visit: &mut dyn FnMut(&fusuma_ui::Semantic<'_>)) {
         for s in self.tree.semantics() {
             visit(&s);

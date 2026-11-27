@@ -61,7 +61,13 @@ Where the watch stands, the same showcase on the S3 with ESP-IDF at 240 MHz:
   as children, `memoize`, effects tied to a view, stashed (hidden) nodes. Left out: Iced's rebuild, relayout and
   redraw of everything per message and its `Box<dyn Widget>`; Xilem's state-mutating closures, id-path routing,
   `Environment` and `alloc`. One engine everywhere: only the capacities (`Tree<N>`), the renderer and the effect
-  adapters differ per target.
+  adapters differ per target. Read against both sources (Xilem `xilem_core` `View`: `build`, `rebuild(prev, view_state)`,
+  `teardown`, `message` along an id path, with the app state passed in; Iced `Widget`: `diff(tree)`, `layout`, `draw`,
+  `update(event, shell)`, `overlay`, the `Shell` holding the redraw request): Fusuma's `View` has no `prev` (the tree is the
+  previous state, so a rebuild compares against the node, not against an old view), no view state and no teardown (a node's
+  removal is the tree's), and no message routing (a widget's action is turned into a `Copy` message by a table). What it
+  adds is that every setter compares first and records exactly what it touched, so damage comes out of the diff instead of
+  out of a second comparison of the drawn primitives (Iced) or being absent (Xilem, see below).
 * **Native only, MIT.** The web is a canvas drawn by Vello from WebAssembly, not a webview or DOM widgets. Fusuma is not published yet:
   no versions, no deprecations; breaking changes are fine.
 
@@ -148,6 +154,34 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   pixels of their bounding box)
 - [x] The GPU backend drawing to a surface with no read-back (`GpuScene::present`, `from_device`): used by the web
   build; the desktop window still reads back
+- [x] **A renderer that keeps no picture is drawn whole** (`Capabilities::retains_picture`, `a4cd8ce`): the GPU scene is
+  reset every frame, so the gaps between damage pieces came out black. `paint_frame` draws everything for such a renderer.
+  Xilem (`render_root.rs`: `TODO - Handle invalidation regions`, `paint.rs`: `TODO - Handle damage regions`, issue 789)
+  and Iced's wgpu path (`present` renders everything) do the same; only the CPU paths use damage
+- [x] **Desktop CPU path: buffer age and `present_with_damage`** (`fusuma-platform-desktop/src/present.rs`, as in Iced's
+  `vello_cpu` compositor): the window system hands out reused buffers each with an age; `History` keeps the damage of the
+  last eight presents, a buffer of age `n` is given the union of the last `n` (age 0 or older than the history: all), and the
+  window system is told this present's rectangle alone. Before, the whole picture was copied and presented every frame. A
+  three-buffer swap-chain test checks every buffer equals the picture after every step
+- [x] **The GPU draws everything but hands on only what changed** (`Tree::changed`, `App::changed`, `Shell::changed`;
+  `GpuScene::set_damage` reads back only that rectangle): the read-back was the whole picture every frame (1024x600 here);
+  a hover on one row now reads back that row. A test compares the GPU picture with the CPU one after four page changes
+- [x] **A layer plan** (`LayerPlan`, `Tree::layers`, `App::layers`, `Shell::layers`; the idea is Xilem's `VisualLayerPlan`,
+  back-to-front layers with external placeholders the host fills): the interface is one layer, a `Kind::Surface` node
+  (`Tree::surface`, the `host_surface(id)` view) is a place the host fills (video, camera, map, a native view). It takes room,
+  draws nothing, is listed in tree order, is left out while hidden. After a frame the host fills `plan.stale(region)`; a surface
+  that changed by itself calls `Tree::surface_changed(id)` and joins the next frame's damage. Desktop: `run_with_surfaces(make,
+  options, fill)` and `Canvas::put`. The first node kind added by a component-level feature: a host-owned region cannot be a
+  spacer, because nothing could tell the host where it is
+- [ ] A **persistent GPU target that is drawn into only where it changed** (load the last frame, scissor to the damage): needs
+  a load operation in `vello_gpu`, which its `RenderOptions` does not have; until then the GPU draws the whole scene and only
+  the read-back and the present are narrowed. Needs a real GPU window and a profile to know it matters
+- [ ] **Buffer age and damage on the web and on a GPU swap chain** (`wgpu` `Surface` has no age; a canvas has none): the GPU
+  host would keep its own history as the desktop CPU one does
+- [ ] A surface **above** the interface (a video with controls over it needs the interface drawn with a hole): the plan has one
+  order, interface then surfaces
+- [ ] A `Retained | Full` capability in place of the boolean, if a third kind of renderer needs it (not Iced's `Hinted`: neither
+  source needs it)
 - [x] **Audit of the renderer layer** (all five crates): line coverage 96.8 % (`cargo llvm-cov`: integer 96 to 99 %, vello-cpu 99 %,
   vello-common 90 %, the rest is the GPU-only paths), 0 missing docs, no TODOs, the READMEs brought up to date, **the draw fuzz
   target now also runs the one-bit frame** and found two real bugs, both fixed with a regression test that was seen to fail

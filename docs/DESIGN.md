@@ -15,6 +15,9 @@ constants the toolkit paints with, so the design file cannot drift from the code
 | `crates/fusuma-ui/tests/design.rs` | the generator, and the test that fails when the tracked files are stale | yes |
 | `scripts/design.nu` | `tokens`, `build`, `verify`, `check` | yes |
 
+A host surface (`Kind::Surface`, the `host_surface` view) has no design: it draws nothing, and the host fills it. The design
+files describe only what the toolkit draws.
+
 ## The design file
 
 One variable collection per system (a folder), one mode per theme (a file): colours (`color/*`), spacing, radii, text sizes,

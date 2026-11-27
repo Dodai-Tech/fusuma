@@ -322,7 +322,7 @@ impl<const N: usize> Tree<N> {
                     n.style.width == Length::Content && wrap_w == 0,
                 )
             }
-            Kind::Spacer => Size::new(0, 0),
+            Kind::Spacer | Kind::Surface { .. } => Size::new(0, 0),
             Kind::Checkbox { .. }
             | Kind::Radio { .. }
             | Kind::ListItem { .. }

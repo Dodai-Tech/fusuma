@@ -1756,6 +1756,14 @@ impl App for Showcase {
         self.tree.frame_rects()
     }
 
+    fn changed(&self) -> Option<Rect> {
+        self.tree.changed()
+    }
+
+    fn layers(&self) -> Option<fusuma::LayerPlan> {
+        Some(self.tree.layers())
+    }
+
     fn semantics(&self, visit: &mut dyn FnMut(&fusuma::Semantic<'_>)) {
         for s in self.tree.semantics() {
             visit(&s);

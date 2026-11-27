@@ -218,7 +218,7 @@ impl<const N: usize> Tree<N> {
         }
         let (role, name, hint, icon, checked, selected, value) = match &n.kind {
             Kind::Stack(_) | Kind::Flow { .. } => (Role::Group, "", "", None, None, None, None),
-            Kind::Spacer => (Role::Spacer, "", "", None, None, None, None),
+            Kind::Spacer | Kind::Surface { .. } => (Role::Spacer, "", "", None, None, None, None),
             Kind::Label { text, role } => {
                 let r = match role {
                     TextRole::Title => Role::Heading,

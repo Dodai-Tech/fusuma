@@ -4,6 +4,7 @@ mod canvas;
 mod clip;
 mod input;
 mod plan;
+mod present;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -20,8 +21,13 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 pub use canvas::{Canvas, blit};
+
+/// What fills a surface of the layer plan: it gets the surface's id, its rectangle on the screen and a buffer of
+/// `w * h` pixels (`0x00RRGGBB`, row by row) to write.
+pub type FillSurface = Box<dyn FnMut(u32, fusuma::render::Rect, &mut [u32])>;
 pub use clip::{Clipboard, SystemClipboard, run_shortcut};
 pub use plan::{LINKED, hardware, plan_for};
+pub use present::{Change, History};
 
 /// What the application chooses about the window and the renderer. The default is the best choice.
 #[derive(Clone, Copy, Debug)]
@@ -71,6 +77,19 @@ pub fn run<A: App + 'static>(
     make: impl FnOnce(u32, u32) -> A + 'static,
     options: Options,
 ) -> anyhow::Result<()> {
+    run_with_surfaces(make, options, None)
+}
+
+/// Like [`run`], with `fill` for the surfaces the app puts in its layer plan (a video, a camera, a native view): after each
+/// frame it is asked to draw every surface that the frame drew around or over, and the window shows them.
+///
+/// # Errors
+/// As [`run`].
+pub fn run_with_surfaces<A: App + 'static>(
+    make: impl FnOnce(u32, u32) -> A + 'static,
+    options: Options,
+    fill: Option<FillSurface>,
+) -> anyhow::Result<()> {
     let settings = match options.settings {
         Some(text) => Settings::from_toml(text)
             .map_err(|e| anyhow::anyhow!("fusuma.toml is not valid: {e}"))?,
@@ -87,6 +106,7 @@ pub fn run<A: App + 'static>(
         layers,
         fonts,
         palette,
+        fill,
         state: None,
         error: None,
     };
@@ -115,6 +135,11 @@ struct State<A> {
     ime_area: Option<fusuma::render::Rect>,
     /// The window must be shown again even if nothing was redrawn (it was exposed, or resized).
     show: bool,
+    /// What the last presents changed, so a window buffer is given only what it lacks (see `present`).
+    history: present::History,
+    /// What fills the surfaces of the layer plan, and the buffer it writes into.
+    fill: Option<FillSurface>,
+    scratch: Vec<u32>,
     /// What tells the screen reader about the window.
     #[cfg(feature = "accessibility")]
     access: accesskit_winit::Adapter,
@@ -137,6 +162,7 @@ struct Handler<A> {
     fonts: FontSet,
     /// The colours `[theme]` asks for, sent to the app before its first frame.
     palette: fusuma::Palette,
+    fill: Option<FillSurface>,
     state: Option<State<A>>,
     error: Option<anyhow::Error>,
 }
@@ -245,6 +271,9 @@ impl<A: App> Handler<A> {
             ime_on: false,
             ime_area: None,
             show: true,
+            history: present::History::new(),
+            fill: self.fill.take(),
+            scratch: Vec::new(),
             #[cfg(feature = "accessibility")]
             access,
             idle: false,
@@ -342,6 +371,32 @@ impl<A: App> State<A> {
             scale_percent: input::scale_percent(self.window.scale_factor()),
         });
         self.show = true;
+        self.history = present::History::new();
+    }
+
+    /// Asks the host to fill the surfaces the frame drew around or over; what they cover joins the redrawn region.
+    fn fill_surfaces(
+        &mut self,
+        region: Option<fusuma::render::Rect>,
+    ) -> Option<fusuma::render::Rect> {
+        let (Some(fill), Some(mut total)) = (self.fill.as_mut(), region) else {
+            return region;
+        };
+        let Some(plan) = self.shell.layers() else {
+            return region;
+        };
+        let stale: Vec<_> = plan.stale(total).map(|l| (l.kind, l.rect)).collect();
+        for (kind, rect) in stale {
+            let fusuma::LayerKind::Surface(id) = kind else {
+                continue;
+            };
+            self.scratch.clear();
+            self.scratch.resize(rect.w as usize * rect.h as usize, 0);
+            fill(id, rect, &mut self.scratch);
+            self.canvas.put(rect, &self.scratch);
+            total = total.union(&rect);
+        }
+        Some(total)
     }
 
     /// One frame; shows it if anything was redrawn or `force` says the window needs the picture again.
@@ -350,7 +405,9 @@ impl<A: App> State<A> {
         if self.idle {
             self.shell.resume(now);
         }
-        let redrawn = self.canvas.frame(&mut self.shell, now).is_some();
+        let region = self.canvas.frame(&mut self.shell, now);
+        let region = self.fill_surfaces(region);
+        let redrawn = region.is_some();
         self.idle = !self.shell.wants_frame();
         #[cfg(feature = "accessibility")]
         if redrawn {
@@ -363,6 +420,7 @@ impl<A: App> State<A> {
         if !(redrawn || force || self.show) {
             return Ok(());
         }
+        let whole = force || self.show;
         self.show = false;
         self.sync_ime();
         let (w, h) = self.canvas.size();
@@ -376,11 +434,31 @@ impl<A: App> State<A> {
             .surface
             .buffer_mut()
             .map_err(|e| anyhow::anyhow!("cannot get the window buffer: {e}"))?;
+        // The buffer is given what it lacks (its age says how many presents it missed), and the window system is told
+        // what this present changed.
+        let change = match region {
+            Some(r) if !whole => present::Change::Part(r),
+            _ => present::Change::All,
+        };
+        self.history.push(change);
+        let age = usize::from(buffer.age());
+        let missing = self.history.missing(age);
+        let width = w;
         let n = buffer.len().min(self.canvas.pixels().len());
-        buffer[..n].copy_from_slice(&self.canvas.pixels()[..n]);
-        buffer
-            .present()
-            .map_err(|e| anyhow::anyhow!("cannot show the frame: {e}"))
+        present::copy(&self.canvas.pixels()[..n], &mut buffer[..n], width, missing);
+        let rect = present::damage_rect(self.history.latest(), w, h);
+        match rect.and_then(|(x, y, rw, rh)| {
+            Some(softbuffer::Rect {
+                x,
+                y,
+                width: NonZeroU32::new(rw)?,
+                height: NonZeroU32::new(rh)?,
+            })
+        }) {
+            Some(r) => buffer.present_with_damage(&[r]),
+            None => buffer.present(),
+        }
+        .map_err(|e| anyhow::anyhow!("cannot show the frame: {e}"))
     }
 }
 

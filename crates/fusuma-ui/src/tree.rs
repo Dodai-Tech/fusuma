@@ -272,6 +272,11 @@ pub(crate) enum Kind {
         icon: Option<char>,
     },
     Spacer,
+    /// A place the host fills (a video, a camera, a native view): it takes room like a spacer and draws nothing. The
+    /// number is the app's name for it (see `Tree::surface` and `LayerPlan`).
+    Surface {
+        id: u32,
+    },
     /// Text that wraps to the width it is given, over as many lines as it needs.
     Paragraph {
         text: crate::paragraph::Para,
@@ -696,6 +701,9 @@ pub struct Tree<const N: usize> {
     pub(crate) pieces: crate::pieces::Pieces,
     /// The rectangles the last frame drew, cut to the screen.
     pub(crate) drawn: crate::pieces::Pieces,
+    /// What really changed in the last frame, cut to the screen: the rectangle a renderer that draws everything each
+    /// frame (the GPU) needs to read back and show, though it drew it all.
+    pub(crate) changed: Option<Rect>,
     /// The part of the damage that is a change and not the move of a scroll (see `scrollshift`).
     pub(crate) rest: Option<Rect>,
     /// A scroll container whose pixels are moved instead of redrawn.
@@ -754,6 +762,7 @@ impl<const N: usize> Tree<N> {
             damage: None,
             pieces: crate::pieces::Pieces::new(),
             drawn: crate::pieces::Pieces::new(),
+            changed: None,
             rest: None,
             shift: None,
             shift_laid: false,
@@ -1701,6 +1710,14 @@ impl<const N: usize> Tree<N> {
     #[must_use]
     pub fn frame_rects(&self) -> &[Rect] {
         self.drawn.as_slice()
+    }
+
+    /// What changed in the last [`paint_frame`](Self::paint_frame), cut to the screen, or `None` when nothing did. For a renderer that
+    /// keeps its picture it is the rectangle the frame returned; for one that draws everything each frame (the GPU) it is
+    /// smaller than what was drawn, and is all a host has to read back and present.
+    #[must_use]
+    pub const fn changed(&self) -> Option<Rect> {
+        self.changed
     }
 
     /// Like [`take_damage`](Self::take_damage), limited to `limit` (the surface or the screen), so a

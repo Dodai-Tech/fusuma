@@ -333,6 +333,7 @@ impl<M> ViewMarker for Button<'_, M> {}
 impl<M> ViewMarker for Checkbox<'_, M> {}
 impl ViewMarker for Progress {}
 impl ViewMarker for Spacer {}
+impl ViewMarker for HostSurface {}
 
 /// A message that shows for a while (see `Task::toast`), out of the flow. Give it a name with `named` so a task can find
 /// it.
@@ -358,3 +359,45 @@ impl<M: Clone> View<M> for Toast {
 }
 
 impl ViewMarker for Toast {}
+
+/// A place the host fills: a video, a camera, a map, a native view. It takes the room it is given and draws nothing; the
+/// host finds where it is in `Shell::layers`.
+#[derive(Clone, Copy, Debug)]
+pub struct HostSurface {
+    id: u32,
+    style: Style,
+}
+
+/// A surface the host knows as `id`, filling its parent until `size` says otherwise.
+#[must_use]
+pub const fn host_surface(id: u32) -> HostSurface {
+    HostSurface {
+        id,
+        style: Style::new().width(Length::Fill(1)).height(Length::Fill(1)),
+    }
+}
+
+impl HostSurface {
+    /// `width` by `height`.
+    #[must_use]
+    pub const fn size(self, width: Length, height: Length) -> Self {
+        Self {
+            style: Style::new().width(width).height(height),
+            ..self
+        }
+    }
+}
+
+impl<M: Clone> View<M> for HostSurface {
+    fn build<const N: usize, const K: usize>(
+        &self,
+        cx: &mut Cx<'_, M, N, K>,
+        parent: Option<NodeId>,
+    ) -> Result<NodeId, BuildError> {
+        cx.tree.surface(parent, self.id, self.style)
+    }
+
+    fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
+        cx.tree.set_style(node, self.style);
+    }
+}

@@ -97,6 +97,19 @@ pub trait App {
         &[]
     }
 
+    /// What really changed in the last [`frame`](Self::frame), when that is less than the rectangle it returned: a renderer
+    /// that draws everything each frame (the GPU) returns the whole screen, and a host reads back and presents only this.
+    /// `None` (the default) means the rectangle `frame` returned.
+    fn changed(&self) -> Option<Rect> {
+        None
+    }
+
+    /// The layers of the picture (see [`LayerPlan`](crate::LayerPlan)): the interface and the places the host fills itself
+    /// (a video, a camera, a native view). `None` (the default) means the interface alone.
+    fn layers(&self) -> Option<crate::LayerPlan> {
+        None
+    }
+
     /// Calls `visit` for every widget on the screen, in reading order (see [`Tree::semantics`](crate::Tree::semantics)): what a
     /// bridge to assistive technology describes. The default has none.
     fn semantics(&self, visit: &mut dyn FnMut(&crate::Semantic<'_>)) {

@@ -52,6 +52,8 @@ pub struct GpuScene {
     depth: wgpu::TextureView,
     size: (u16, u16),
     pixels: Vec<u8>,
+    /// The part of the next frame that is read back (x, y, w, h); everything when none.
+    readback: Option<(u32, u32, u32, u32)>,
     dirty: bool,
     /// Images uploaded for the frame being recorded.
     bindings: TextureBindings,
@@ -132,6 +134,7 @@ impl GpuScene {
             depth,
             size: (width, height),
             pixels: vec![0; usize::from(width) * usize::from(height) * 4],
+            readback: None,
             dirty: true,
             bindings: TextureBindings::new(),
             next_texture: 0,
@@ -239,10 +242,19 @@ impl GpuScene {
         if rendered.is_err() {
             return;
         }
-        let row = (u32::from(w) * 4).next_multiple_of(256);
+        // Only the part that changed is copied back (the whole picture when no hint was given).
+        let (rx, ry, rw, rh) = self
+            .readback
+            .take()
+            .unwrap_or((0, 0, u32::from(w), u32::from(h)));
+        if rw == 0 || rh == 0 {
+            self.queue.submit([encoder.finish()]);
+            return;
+        }
+        let row = (rw * 4).next_multiple_of(256);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("fusuma read back"),
-            size: u64::from(row) * u64::from(h),
+            size: u64::from(row) * u64::from(rh),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -250,7 +262,7 @@ impl GpuScene {
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
+                origin: wgpu::Origin3d { x: rx, y: ry, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyBufferInfo {
@@ -262,13 +274,13 @@ impl GpuScene {
                 },
             },
             wgpu::Extent3d {
-                width: u32::from(w),
-                height: u32::from(h),
+                width: rw,
+                height: rh,
                 depth_or_array_layers: 1,
             },
         );
         self.queue.submit([encoder.finish()]);
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx_done) = std::sync::mpsc::channel();
         buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
@@ -279,14 +291,16 @@ impl GpuScene {
         {
             return;
         }
-        if !matches!(rx.recv(), Ok(Ok(()))) {
+        if !matches!(rx_done.recv(), Ok(Ok(()))) {
             return;
         }
         if let Ok(mapped) = buffer.slice(..).get_mapped_range() {
-            let line = usize::from(w) * 4;
-            for (y, dst) in self.pixels.chunks_exact_mut(line).enumerate() {
-                let start = y * row as usize;
-                dst.copy_from_slice(&mapped[start..start + line]);
+            let stride = usize::from(w) * 4;
+            let line = rw as usize * 4;
+            for y in 0..rh as usize {
+                let from = y * row as usize;
+                let to = (ry as usize + y) * stride + rx as usize * 4;
+                self.pixels[to..to + line].copy_from_slice(&mapped[from..from + line]);
             }
         }
         buffer.unmap();
@@ -306,7 +320,24 @@ impl Scene for GpuScene {
         self.scene.reset();
         // The images of the forgotten frame are not needed any more.
         self.bindings = TextureBindings::new();
+        self.readback = None;
         self.dirty = true;
+    }
+
+    fn set_damage(&mut self, region: (i32, i32, u32, u32)) {
+        // The GPU draws the whole scene; the hint only narrows what is copied back to the CPU.
+        let (x, y, w, h) = region;
+        let (sw, sh) = (u32::from(self.size.0), u32::from(self.size.1));
+        let x0 = x.max(0) as u32;
+        let y0 = y.max(0) as u32;
+        let x1 = (x.saturating_add_unsigned(w).max(0) as u32).min(sw);
+        let y1 = (y.saturating_add_unsigned(h).max(0) as u32).min(sh);
+        self.readback = Some((
+            x0.min(x1),
+            y0.min(y1),
+            x1.saturating_sub(x0),
+            y1.saturating_sub(y0),
+        ));
     }
 
     fn image_source(&mut self, pixmap: Arc<fusuma_render_vello_common::Pixmap>) -> ImageSource {

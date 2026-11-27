@@ -599,7 +599,7 @@ impl<const N: usize> Tree<N> {
                 }
                 pen.clip = outer;
             }
-            Kind::Spacer | Kind::Dialog { .. } | Kind::Toast { .. } => {}
+            Kind::Spacer | Kind::Surface { .. } | Kind::Dialog { .. } | Kind::Toast { .. } => {}
             Kind::Label { text, role } => {
                 let (st, s) = match role {
                     TextRole::Title => (look.text(look.cells.emphasis.title), text.as_str()),

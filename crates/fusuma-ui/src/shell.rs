@@ -273,6 +273,19 @@ impl<A: App> Shell<A> {
         drawn
     }
 
+    /// What really changed in the last frame (see [`App::changed`]); `None` when the app does not say.
+    #[must_use]
+    pub fn changed(&self) -> Option<Rect> {
+        self.app.changed()
+    }
+
+    /// The layers of the picture (see [`App::layers`]): after a frame, the host fills the surfaces that
+    /// [`LayerPlan::stale`](crate::LayerPlan::stale) lists for the rectangle the frame returned.
+    #[must_use]
+    pub fn layers(&self) -> Option<crate::LayerPlan> {
+        self.app.layers()
+    }
+
     /// The separate rectangles the last frame drew (see [`App::frame_rects`]); empty when the app does not say.
     #[must_use]
     pub fn frame_rects(&self) -> &[Rect] {

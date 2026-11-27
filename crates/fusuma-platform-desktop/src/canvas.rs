@@ -99,9 +99,40 @@ impl Canvas {
             Surface::Gpu(r) => {
                 let r: &mut VelloGpu = r;
                 r.with_scene(vello_gpu::Scene::reset);
-                let region = log_err(shell.frame(now_ms, r))?;
-                r.with_scene(|s| blit(s.pixels(), width, region, frame));
+                let drawn = log_err(shell.frame(now_ms, r))?;
+                // The GPU drew the whole screen, but only what changed is read back and handed on.
+                let region = shell.changed().map_or(drawn, |c| c.intersect(&drawn));
+                let region = if region.is_empty() { drawn } else { region };
+                r.with_scene(|s| {
+                    vello_gpu::Scene::set_damage(s, (region.x, region.y, region.w, region.h));
+                    blit(s.pixels(), width, region, frame);
+                });
                 Some(region)
+            }
+        }
+    }
+}
+
+impl Canvas {
+    /// Puts pixels the host made into the picture, in the surface at `rect` (see `LayerPlan`): `pixels` is `rect.w` x
+    /// `rect.h`, `0x00RRGGBB`, row by row. What lies outside the picture is cut off; a buffer that is too short fills
+    /// what it covers.
+    pub fn put(&mut self, rect: Rect, pixels: &[u32]) {
+        let w = self.width as usize;
+        let rw = rect.w as usize;
+        if w == 0 || rw == 0 {
+            return;
+        }
+        for (row, line) in pixels.chunks(rw).enumerate() {
+            let y = rect.y + row as i32;
+            if y < 0 || y as usize >= self.height as usize {
+                continue;
+            }
+            for (col, &p) in line.iter().enumerate() {
+                let x = rect.x + col as i32;
+                if x >= 0 && (x as usize) < w {
+                    self.frame[y as usize * w + x as usize] = p;
+                }
             }
         }
     }
@@ -185,6 +216,22 @@ mod tests {
         blit(&src, 0, Rect::new(0, 0, 4, 3), &mut dst);
         blit(&src, 4, Rect::new(i32::MAX, i32::MAX, 5, 5), &mut dst);
         blit(&src, 4, Rect::new(i32::MIN, 0, 9, 9), &mut dst);
+    }
+
+    #[test]
+    fn put_writes_a_surface_into_the_picture_and_cuts_it_to_the_edges() {
+        let mut canvas = Canvas::new(Backend::VelloCpu, 8, 6, FontSet::default()).unwrap();
+        canvas.put(Rect::new(2, 1, 3, 2), &[1, 2, 3, 4, 5, 6]);
+        let p = canvas.pixels();
+        assert_eq!(p[8 + 2..8 + 5], [1, 2, 3]);
+        assert_eq!(p[16 + 2..16 + 5], [4, 5, 6]);
+        assert_eq!(p[8 + 5], 0);
+        // Half outside, a short buffer and an empty rectangle do not panic.
+        canvas.put(Rect::new(-1, -1, 3, 3), &[9; 9]);
+        canvas.put(Rect::new(6, 4, 5, 5), &[7; 3]);
+        canvas.put(Rect::new(0, 0, 0, 4), &[1, 2]);
+        assert_eq!(canvas.pixels()[0], 9);
+        assert_eq!(canvas.pixels()[4 * 8 + 6], 7);
     }
 
     fn showcase_canvas(backend: Backend) -> Option<(Canvas, Shell<Showcase>)> {
@@ -334,7 +381,46 @@ mod tests {
                 .filter(|(g, c)| **g == 0 && **c != 0)
                 .count();
             assert_eq!(black, 0, "black pixels on the GPU canvas after row {k}");
+            // Reading back only what changed must not leave stale pixels: the pictures agree but for anti-aliasing.
+            let apart = gpu
+                .pixels()
+                .iter()
+                .zip(cpu.pixels())
+                .filter(|(g, c)| {
+                    [16, 8, 0]
+                        .iter()
+                        .any(|s| ((**g >> s) & 255).abs_diff((**c >> s) & 255) > 40)
+                })
+                .count();
+            assert!(
+                apart * 100 < cpu.pixels().len(),
+                "{apart} pixels apart after row {k}"
+            );
         }
+    }
+
+    /// The GPU draws the whole screen for every frame, but hands on only what changed.
+    #[test]
+    fn a_gpu_frame_reports_only_what_changed() {
+        let Some((mut gpu, mut gs)) = showcase_canvas(Backend::VelloGpu) else {
+            eprintln!("no GPU here, skipped");
+            return;
+        };
+        let first = gpu.frame(&mut gs, 0).unwrap();
+        assert_eq!(
+            first,
+            Rect::new(0, 0, 1024, 600),
+            "the first picture is whole"
+        );
+        let b = gs.app.sidebar_item(fusuma_showcase::Page::ALL[2]).unwrap();
+        let r = gs.app.rect_of(b).unwrap();
+        let at = Point::new(r.x + 4, r.y + 4);
+        gs.input(fusuma::Input::Pointer(Pointer::Move(at)));
+        let region = gpu.frame(&mut gs, 16).unwrap();
+        assert!(
+            u64::from(region.w) * u64::from(region.h) < 1024 * 600 / 2,
+            "a hover on one row is not the whole screen: {region:?}"
+        );
     }
 
     /// The two Vello backends draw the same picture: where they differ it is by anti-aliasing at the edges,

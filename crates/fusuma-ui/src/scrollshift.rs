@@ -180,12 +180,17 @@ impl<const N: usize> Tree<N> {
         let shift = self.shift.take().filter(|_| retains);
         self.shift_laid = false;
         let rest = self.rest.take();
+        let real = self
+            .damage
+            .map(|d| d.intersect(&screen))
+            .filter(|d| d.w > 0 && d.h > 0);
         let mut pieces = self.pieces;
         if !retains {
             pieces.clear();
         }
         self.pieces.clear();
         self.drawn.clear();
+        self.changed = real;
         let Some(present) = self
             .damage
             .take()
@@ -789,6 +794,11 @@ mod tests {
         assert_eq!(r.draws, [screen], "one draw of everything, not two pieces");
         assert!(r.shifts.is_empty());
         same(&r, &full(&mut u), "whole");
+        // It drew everything, but what changed is only the two rows: that is what a host reads back and presents.
+        let changed = u.t.changed().expect("something changed");
+        assert!(changed.w * changed.h <= screen.w * screen.h);
+        assert!(changed.intersect(&u.t.rect(first).unwrap()).w > 0);
+        assert!(changed.intersect(&u.t.rect(last).unwrap()).w > 0);
     }
 
     fn a_tree_with_nothing_to_do_draws_nothing<B: Back>() {

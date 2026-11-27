@@ -285,7 +285,7 @@ impl<const N: usize> Tree<N> {
                 }
                 Ok(())
             }
-            Kind::Spacer | Kind::Toast { .. } => Ok(()),
+            Kind::Spacer | Kind::Surface { .. } | Kind::Toast { .. } => Ok(()),
             Kind::Dialog { open, .. } => {
                 if open {
                     self.paint_dialog_panel(i, r, theme)
