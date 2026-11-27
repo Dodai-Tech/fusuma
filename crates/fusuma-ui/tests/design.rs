@@ -157,6 +157,15 @@ fn tokens(t: &Theme, colors: &Colors) -> String {
     out
 }
 
+/// The colours of one palette mode as design-token JSON: the 16 roles under `color`, nothing else.
+fn palette_tokens(colors: &Colors) -> String {
+    let leaves: Vec<String> = roles(colors)
+        .iter()
+        .map(|(n, c)| format!("\"{n}\":{{\"$type\":\"color\",\"$value\":\"{}\"}}", hex(*c)))
+        .collect();
+    format!("{{\"color\":{{{}}}}}\n", leaves.join(","))
+}
+
 fn lum(c: Color) -> f64 {
     let f = |v: u8| {
         let v = f64::from(v) / 255.0;
@@ -437,6 +446,18 @@ fn files() -> Vec<(String, String)> {
         ));
         out.push((format!("design/spec/{}.md", s.id), spec(&s)));
     }
+    // Every palette, colours only: a collection of its own with a dark and a light mode.
+    for p in Palette::ALL {
+        let n = p.name;
+        out.push((
+            format!("design/palettes/{n}/{n}.tokens.json"),
+            palette_tokens(&p.dark),
+        ));
+        out.push((
+            format!("design/palettes/{n}/{n}-light.tokens.json"),
+            palette_tokens(&p.light),
+        ));
+    }
     out
 }
 
@@ -461,6 +482,18 @@ fn the_design_files_are_what_the_theme_says() {
         stale.is_empty(),
         "stale design files, run `nu scripts/design.nu tokens`: {stale:?}"
     );
+}
+
+#[test]
+fn every_palette_has_its_colour_tokens_in_both_modes() {
+    let all = files();
+    for p in Palette::ALL {
+        for suffix in [".tokens.json", "-light.tokens.json"] {
+            let path = format!("design/palettes/{0}/{0}{suffix}", p.name);
+            let text = &all.iter().find(|(f, _)| *f == path).expect(&path).1;
+            assert_eq!(text.matches("\"$type\":\"color\"").count(), 16, "{path}");
+        }
+    }
 }
 
 #[test]

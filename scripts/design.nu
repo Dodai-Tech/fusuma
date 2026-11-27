@@ -54,6 +54,16 @@ def "main build" [--out: string = "dist/design/fusuma.fig"] {
         let res = (^bunx @open-pencil/cli tool call import_design_tokens $fig --args-file $"($tmp)/args.json" --write | lines | where { $in !~ '^Written to' } | str join "\n" | from json)
         print $"($system): ($res.added) variables, ($res.skipped | length) skipped"
     }
+    # The palettes: a collection each (dark and light mode), drawn on the Palettes page.
+    for entry in (ls design/palettes | where type == dir | sort-by name) {
+        let dir = ($entry.name | path expand)
+        let name = ($dir | path basename)
+        let files = (system_files $name (glob $"($dir)/*.tokens.json") | each { |f|
+            { path: $"palette-($name)/($f | path basename)", text: (open --raw $f) }
+        })
+        { files: $files } | to json | save --force $"($tmp)/args.json"
+        ^bunx @open-pencil/cli tool call import_design_tokens $fig --args-file $"($tmp)/args.json" --write | ignore
+    }
     print (open --raw design/build.js | ^bunx @open-pencil/cli eval $fig --stdin --write)
     mkdir ($out | path dirname)
     cp $fig $out
@@ -92,6 +102,22 @@ def "main verify" [--fig: string = "dist/design/fusuma.fig"] {
             }
         }
     }
+    # Every palette is a collection of 16 colours whose dark and light values are the tokens.
+    for entry in (ls design/palettes | where type == dir | sort-by name) {
+        let name = ($entry.name | path basename)
+        let col = ($doc.collections | where name == $"palette-($name)")
+        if ($col | is-empty) { $errors = ($errors | append $"palette ($name) is missing"); continue }
+        $count += ($col | first | get variables | length)
+        for w in (flat (open $"($entry.name)/($name).tokens.json")) {
+            let h = ($col | first | get variables | where name == $w.name)
+            if ($h | is-empty) { $errors = ($errors | append $"palette ($name): ($w.name) is missing") } else if (($h | first | get value | into string) != ($w.value | into string)) {
+                $errors = ($errors | append $"palette ($name): ($w.name) is ($h | first | get value), the tokens say ($w.value)")
+            }
+        }
+    }
+    let palettes = (ls design/palettes | where type == dir | length)
+    let rows = (^bunx @open-pencil/cli find $fig --type FRAME --name "Palette row" --json | from json | length)
+    if $rows < $palettes { $errors = ($errors | append $"($rows) palette rows for ($palettes) palettes") }
     # What the pages draw follows the decoration tokens: tick arm, hatch step and dot step (design/check.js).
     let drawn = (open --raw design/check.js | ^bunx @open-pencil/cli eval $fig --stdin | from json | from json)
     for entry in (ls design/tokens | where type == dir | sort-by name) {

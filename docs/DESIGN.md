@@ -8,6 +8,7 @@ constants the toolkit paints with, so the design file cannot drift from the code
 | --- | --- | --- |
 | `design/tokens/<system>/<system>.tokens.json` | tokens of the dark mode (the default mode), W3C design-token format | yes |
 | `design/tokens/<system>/<system>-light.tokens.json` | the same tokens with the light colours | yes |
+| `design/palettes/<palette>/<palette>[-light].tokens.json` | the 16 colour roles of each of the 21 palettes, dark and light; one collection `palette-<name>` each, drawn on the Palettes page | yes |
 | `design/spec/<system>.md` | written spec: colour roles with contrast, typography, spacing and shape, motion, decoration and its fallbacks, widgets | yes |
 | `design/build.js` | the drawing of the `.fig` (Figma Plugin API, run by `openpencil eval`) | yes |
 | `dist/design/fusuma.fig` | design file for [OpenPencil](https://github.com/open-pencil/open-pencil), opens in Figma-compatible tools | no, build it |
@@ -23,6 +24,7 @@ system:
 
 | page | what it draws |
 | --- | --- |
+| Palettes | one page: a dark and a light row of 16 swatches for each of the 21 palettes, bound to that palette's variables |
 | Foundations | the 16 colour roles as swatches, the type scale, spacing bars, radii |
 | Controls | buttons (primary, hover, pressed, secondary, disabled), the chosen and the idle list row (hatched in cyberdeck), the dotted progress bar at three values, the progress round the frame, a card and a dialog with corner ticks |
 
@@ -48,7 +50,7 @@ Run `nu scripts/design.nu tokens` and commit the result after changing a colour,
 | tokens and spec equal what `Theme` and `Palette` generate | `cargo test --workspace` (so `just check-all`), `design check` | a changed constant with stale files |
 | the widget table is made by calling the theme's own hooks | same test | a hook change the spec does not say |
 | the pixels: tick arm, hatch step and dot step on the real renderer | `the_pixels_are_what_the_spec_says` | a painter that stops following `decor` |
-| the `.fig` carries every token by name and default-mode value, and a Foundations and a Controls frame per system, and the drawn tick arm, hatch step and dot step equal `decor/*` (`design/check.js` reads the built file) | the `design files` job (GitHub and Gitea): `design build` then `design verify` | a stale or broken `build.js`, a token the file lacks |
+| the `.fig` carries every token by name and default-mode value, and a Foundations and a Controls frame per system, every palette's colours as variables, a row per palette and mode on the Palettes page, and the drawn tick arm, hatch step and dot step equal `decor/*` (`design/check.js` reads the built file) | the `design files` job (GitHub and Gitea): `design build` then `design verify` | a stale or broken `build.js`, a token the file lacks |
 
 The job uploads the `.fig` as an artifact on GitHub. The drawing is checked by measurement, not pixel by pixel: the sheet is laid out for reading, not as a screenshot of the toolkit,
 so a pixel diff would not be meaningful. The pixel check is the Rust test above, on the toolkit's own render.

@@ -269,12 +269,50 @@ function controls(sys) {
   return page;
 }
 
+// One page with every palette: a row per palette and mode, 16 swatches bound to that palette's variables, the light row
+// shown through the palette's light mode.
+function palettes() {
+  const page = figma.createPage();
+  page.name = 'Palettes';
+  const sheet = col(10);
+  sheet.paddingLeft = sheet.paddingRight = sheet.paddingTop = sheet.paddingBottom = 24;
+  sheet.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.13 } }];
+  sheet.name = 'Palettes';
+  for (const c of collections.filter((x) => x.name.startsWith('palette-'))) {
+    use(c.name);
+    const names = inBase.map((x) => x.name);
+    c.modes.forEach((mode, mi) => {
+      const r = row(4);
+      r.name = 'Palette row';
+      const t = figma.createText();
+      t.fontName = { family: 'Inter', style: 'Regular' };
+      t.characters = `${c.name.slice(8)} ${mi === 0 ? 'dark' : 'light'}`;
+      t.fontSize = 12;
+      t.fills = [{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.85 } }];
+      t.resize(130, t.height);
+      r.appendChild(t);
+      for (const n of names) {
+        const s = figma.createFrame();
+        s.resize(26, 26);
+        s.name = n;
+        fill(s, n);
+        try { s.setExplicitVariableModeForCollection(c, mode.modeId); } catch (e) {}
+        r.appendChild(s);
+      }
+      sheet.appendChild(r);
+    });
+  }
+  page.appendChild(sheet);
+  return page;
+}
+
 const first = figma.currentPage;
-for (const c of collections) {
+palettes();
+for (const c of collections.filter((x) => !x.name.startsWith('palette-'))) {
   use(c.name);
   foundations(c.name);
   controls(c.name);
 }
 if (figma.root.children.length > 1) first.remove();
 figma.currentPage = figma.root.children[0];
-return `${collections.length} systems, ${figma.root.children.length} pages`;
+return `${collections.length} collections, ${figma.root.children.length} pages`;
