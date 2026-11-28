@@ -8,7 +8,7 @@ use fusuma::{
     paragraph, progress, radio, row, scroll, section, segmented, slider, snackbar, stat_card,
     stepper, steps, switch, tab, tab_bar, tag, text, text_field, text_fmt, toast, wrap,
 };
-use fusuma::{CrossAlign, Id, Length, Swipe, SwipeDir};
+use fusuma::{CrossAlign, Id, Length, Round, Surface, Swipe, SwipeDir};
 use fusuma::{
     avatar_group, button_group, chip_group, fab, form_field, icon_badge, key_value, marks,
     navigation_bar, search_bar, split_button, toggle_group, toolbar, top_bar,
@@ -324,7 +324,90 @@ fn name_of(base: Id, i: usize) -> Id {
     Id::new(base.0 + u16::try_from(i).unwrap_or(0))
 }
 
-/// The Overview page: one account screen put together from the widgets the other pages show one by one.
+/// A filled square with its name under it: a colour or a corner of the theme, as it is drawn.
+fn swatch<'a>(
+    look: Look,
+    name: &'a str,
+    fill: Surface,
+    round: Round,
+) -> impl fusuma::View<PageMsg> + 'a {
+    let side = if look.lite { 28 } else { 44 };
+    column((
+        row(())
+            .background(fill)
+            .round(round)
+            .width(Length::Fixed(side))
+            .height(Length::Fixed(side)),
+        text(name).caption(),
+    ))
+    .gap(look.xs)
+    .align(CrossAlign::Center)
+}
+
+/// The Foundations page: what every widget is made from, drawn from the theme in force (the colours, the corners and the
+/// type), so it changes with the design and the palette.
+pub fn foundations<'a>(look: Look, _s: State<'a>) -> impl Children<PageMsg> + 'a {
+    let colours = card((
+        section("Colour"),
+        wrap((
+            swatch(look, "Page", Surface::Background, Round::Small),
+            swatch(look, "Card", Surface::Surface, Round::Small),
+            swatch(look, "Raised", Surface::Raised, Round::Small),
+            swatch(look, "Border", Surface::Border, Round::Small),
+            swatch(look, "Primary", Surface::Primary, Round::Small),
+        ))
+        .width(Length::Fill(1))
+        .gap(look.md),
+        (!look.micro).then(|| section("Tones")),
+        (!look.micro).then(|| {
+            wrap((
+                swatch(look, "Info", Surface::Tone(Tone::Info), Round::Small),
+                swatch(look, "Success", Surface::Tone(Tone::Success), Round::Small),
+                swatch(look, "Warning", Surface::Tone(Tone::Warning), Round::Small),
+                swatch(look, "Danger", Surface::Tone(Tone::Danger), Round::Small),
+            ))
+            .width(Length::Fill(1))
+            .gap(look.md)
+        }),
+    ))
+    .padding(look.md)
+    .gap(look.sm)
+    .width(Length::Fill(1));
+    let shape = card((
+        section("Corners"),
+        wrap((
+            swatch(look, "None", Surface::Border, Round::None),
+            swatch(look, "Small", Surface::Border, Round::Small),
+            swatch(look, "Medium", Surface::Border, Round::Medium),
+            swatch(look, "Large", Surface::Border, Round::Large),
+            swatch(look, "Full", Surface::Border, Round::Full),
+        ))
+        .width(Length::Fill(1))
+        .gap(look.md),
+    ))
+    .padding(look.md)
+    .gap(look.sm)
+    .width(Length::Fill(1));
+    let type_scale = card((
+        section("Type"),
+        text("Title").title(),
+        text("Body: the quick brown fox"),
+        text("Caption: the quiet text under things").caption(),
+        text("Code: let x = 42;").code(),
+    ))
+    .padding(look.md)
+    .gap(look.xs)
+    .width(Length::Fill(1));
+    (
+        (!look.lite).then(|| text("Foundations").title()),
+        (!look.lite).then(|| text("What every widget is made from.").caption()),
+        colours,
+        (!look.lite).then_some(shape),
+        (!look.lite).then_some(type_scale),
+    )
+}
+
+/// The Examples page: one account screen put together from the widgets the other pages show one by one.
 pub fn overview<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
     let profile = card((
         row((
@@ -369,7 +452,7 @@ pub fn overview<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
         row(body).gap(look.md).align(CrossAlign::Stretch)
     };
     (
-        (!look.lite).then(|| text("Overview").title()),
+        (!look.lite).then(|| text("Examples").title()),
         (!look.lite)
             .then(|| text("An account screen made from the widgets on the other pages.").caption()),
         cards,

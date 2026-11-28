@@ -23,7 +23,7 @@ const fn requested() -> Option<Backend> {
 #[cfg(feature = "demo")]
 fn bench_view(app: &mut Showcase) {
     use std::time::Instant;
-    for page in ["Overview", "Buttons", "List", "Navigation"] {
+    for page in ["Foundations", "Buttons", "List", "Navigation"] {
         app.set_start(Some(page), None, None, true, false);
         let n = 300u32;
         let t = Instant::now();

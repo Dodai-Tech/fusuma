@@ -67,6 +67,7 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-render-integer`](crates/fusuma-render-integer) | the integer renderer for microcontrollers: RGB565, smooth text from glyph atlases, smooth shapes | yes |
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu), [`fusuma-render-vello`](crates/fusuma-render-vello) | Vello on the CPU and on the GPU (`wgpu`), sharing [`-vello-common`](crates/fusuma-render-vello-common) | CPU with `libm` |
 | [`fusuma-text`](crates/fusuma-text) | Parley layout over the linked fonts | with alloc |
+| [`fusuma-icons`](crates/fusuma-icons) | every [Lucide](https://lucide.dev/icons/) icon (2431 names) by name and as a constant, as an icon family for any renderer | yes |
 | [`fusuma-fonts`](crates/fusuma-fonts) | the font catalog: ten OFL families, five presets, Material Symbols icons, one feature each; glyph atlases | yes |
 | [`fusuma-platform`](crates/fusuma-platform) | the renderer choice, `fusuma.toml` and board files (catalog: [docs/BOARDS.md](docs/BOARDS.md)) | yes |
 | [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | a window on Linux, macOS and Windows (`winit`) | no |

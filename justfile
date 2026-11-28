@@ -316,6 +316,10 @@ fonts-list:
 fonts-fetch family="":
     nu scripts/fonts.nu fetch --family "{{ family }}"
 
+# Download the Lucide font and its names, and write crates/fusuma-icons/src/names.rs
+icons-fetch:
+    nu scripts/icons.nu fetch
+
 # ── Design files (design/, OpenPencil and Figma) ─────────────────────────────
 
 # Write the design tokens and spec from the theme constants, then build the .fig (needs bun) and check it

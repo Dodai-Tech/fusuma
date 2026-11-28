@@ -52,6 +52,8 @@ icons = ["fonts", "fusuma-fonts/material-symbols"]
 # Lucide and Phosphor as icon families too (opt-in; `[fonts] icons = "lucide"` picks one): the same names as `icons`.
 icons-lucide = ["fonts", "fusuma-fonts/lucide"]
 icons-phosphor = ["fonts", "fusuma-fonts/phosphor"]
+# Every Lucide icon under Lucide's own names (`fusuma::lucide`, about 1 MB of font: not for a small chip).
+icons-lucide-all = ["fonts", "dep:fusuma-icons"]
 # `png()` for the CPU Vello renderer: the surface as a PNG file.
 png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 
@@ -63,6 +65,7 @@ fusuma-cells.workspace = true
 fusuma-platform.workspace = true
 fusuma-text = { workspace = true, optional = true }
 fusuma-fonts = { workspace = true, optional = true, default-features = false }
+fusuma-icons = { workspace = true, optional = true }
 fusuma-render-integer = { workspace = true, optional = true }
 fusuma-render-vello-cpu = { workspace = true, optional = true }
 fusuma-render-vello = { workspace = true, optional = true }

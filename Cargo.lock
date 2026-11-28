@@ -1296,6 +1296,7 @@ dependencies = [
  "fusuma-anim",
  "fusuma-cells",
  "fusuma-fonts",
+ "fusuma-icons",
  "fusuma-platform",
  "fusuma-render",
  "fusuma-render-integer",
@@ -1341,6 +1342,13 @@ dependencies = [
  "serde",
  "toml",
  "ttf-parser",
+]
+
+[[package]]
+name = "fusuma-icons"
+version = "0.2.0"
+dependencies = [
+ "fusuma-fonts",
 ]
 
 [[package]]

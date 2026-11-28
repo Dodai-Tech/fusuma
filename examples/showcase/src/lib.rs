@@ -200,8 +200,8 @@ fn palette_order(design: Design) -> impl Iterator<Item = usize> {
 /// The pages in the sidebar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
-    /// Cards, badges, an avatar, a stepper and progress: the look of the toolkit at a glance.
-    Overview,
+    /// The colours, corners and type every widget is made from.
+    Foundations,
     /// Buttons of both looks, enabled and disabled.
     Buttons,
     /// Checkboxes and radio buttons.
@@ -229,32 +229,36 @@ pub enum Page {
     /// Top bar, toolbar, navigation bar and rail, form field, toggle, chip and button groups, split button, floating action
     /// button, search bar and avatar group.
     Bars,
+    /// Cards, badges, an avatar, a stepper and progress put together: what a screen made from the widgets looks like.
+    Overview,
 }
 
 impl Page {
     /// Every page, in sidebar order.
-    pub const ALL: [Self; 14] = [
-        Self::Overview,
+    pub const ALL: [Self; 15] = [
+        Self::Foundations,
+        Self::Typography,
         Self::Buttons,
         Self::Selection,
         Self::List,
         Self::Progress,
         Self::Controls,
         Self::Text,
-        Self::Typography,
         Self::Navigation,
         Self::Reading,
         Self::Components,
         Self::Data,
         Self::Pickers,
         Self::Bars,
+        Self::Overview,
     ];
 
     /// The name in the sidebar.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Overview => "Overview",
+            Self::Foundations => "Foundations",
+            Self::Overview => "Examples",
             Self::Buttons => "Buttons",
             Self::Selection => "Selection",
             Self::List => "List",
@@ -339,7 +343,7 @@ pub struct Showcase {
     scale: u32,
     bounds: Rect,
     page: Page,
-    sidebar: [Option<NodeId>; 14],
+    sidebar: [Option<NodeId>; 15],
     /// Compact layout only: the Previous button, the page name and the Next button.
     nav: [Option<NodeId>; 3],
     /// The class of screen the tree was built for.
@@ -355,7 +359,7 @@ pub struct Showcase {
     /// Watch only: a page is open (otherwise the tile grid shows).
     open: bool,
     /// Watch only: the tile of each page, and the back button.
-    tiles: [Option<NodeId>; 14],
+    tiles: [Option<NodeId>; 15],
     back: Option<NodeId>,
     body: Option<NodeId>,
     content: Option<NodeId>,
@@ -381,7 +385,7 @@ pub struct Showcase {
     /// The tab that is chosen, and how many swipes the card has seen.
     tab: usize,
     swipes: u32,
-    /// The Overview page's stepper value.
+    /// The Examples page's stepper value.
     quantity: u32,
     /// The Components page: the segment, the page number, the step and the chips.
     segment: u8,
@@ -392,7 +396,7 @@ pub struct Showcase {
     x: pages::Extra,
     /// The person's font size setting in percent, on top of the display's scale.
     text_scale: u32,
-    /// The Overview page's view, kept in step with its part of the tree.
+    /// The Examples page's view, kept in step with its part of the tree.
     pages: fusuma::Host<pages::PageMsg, 160>,
     /// The icon characters, looked up once (a lookup by name is not free on a chip).
     icons: Option<pages::Icons>,
@@ -421,8 +425,8 @@ impl Showcase {
             dark: true,
             palette: Palette::WASHI,
             bounds: Rect::new(0, 0, width, height),
-            page: Page::Overview,
-            sidebar: [None; 14],
+            page: Page::Foundations,
+            sidebar: [None; 15],
             nav: [None; 3],
             class: Class::of(width),
             dialog: [None; 3],
@@ -430,7 +434,7 @@ impl Showcase {
             shape: fusuma::Shape::Rect,
             device: fusuma::Screen::new(0, 0),
             open: false,
-            tiles: [None; 14],
+            tiles: [None; 15],
             back: None,
             body: None,
             content: None,
@@ -484,9 +488,9 @@ impl Showcase {
         s.class = Class::of(cols.saturating_mul(CELL_PX));
         s.theme = s.make_theme();
         s.tree.clear();
-        s.sidebar = [None; 14];
+        s.sidebar = [None; 15];
         s.nav = [None; 3];
-        s.tiles = [None; 14];
+        s.tiles = [None; 15];
         s.back = None;
         s.content = None;
         let _ = s.build();
@@ -1087,6 +1091,7 @@ impl Showcase {
         // The tree has room for the page (the whole app is checked to fit), so a failure leaves a smaller page.
         let (tree, host) = (&mut self.tree, &mut self.pages);
         let _ = match self.page {
+            Page::Foundations => host.sync_children(tree, c, &pages::foundations(look, state)),
             Page::Overview => host.sync_children(tree, c, &pages::overview(look, state)),
             Page::Buttons => host.sync_children(tree, c, &pages::buttons(look, state)),
             Page::Selection => host.sync_children(tree, c, &pages::selection(look, state)),
@@ -1354,9 +1359,9 @@ impl Showcase {
     fn rebuild(&mut self) {
         self.tree.clear();
         self.pages.forget();
-        self.sidebar = [None; 14];
+        self.sidebar = [None; 15];
         self.nav = [None; 3];
-        self.tiles = [None; 14];
+        self.tiles = [None; 15];
         self.back = None;
         self.content = None;
         let _ = self.build();
@@ -1919,9 +1924,9 @@ impl App for Showcase {
             self.bounds = bounds;
             self.tree.clear();
             self.pages.forget();
-            self.sidebar = [None; 14];
+            self.sidebar = [None; 15];
             self.nav = [None; 3];
-            self.tiles = [None; 14];
+            self.tiles = [None; 15];
             self.back = None;
             self.content = None;
             let _ = self.build();
@@ -2275,7 +2280,8 @@ mod tests {
             "the header comes first"
         );
         s.key(Key::Next);
-        assert_eq!(s.tree().focused(), s.sidebar_item(Page::Overview));
+        assert_eq!(s.tree().focused(), s.sidebar_item(Page::Foundations));
+        s.key(Key::Down);
         s.key(Key::Down);
         s.key(Key::Down);
         s.key(Key::Activate);
@@ -2510,7 +2516,11 @@ mod tests {
             s.frame(&mut r).unwrap();
         }
         tap(&mut s, next);
-        assert_eq!(s.page(), Page::Overview, "after the last comes the first");
+        assert_eq!(
+            s.page(),
+            Page::Foundations,
+            "after the last comes the first"
+        );
         tap(&mut s, prev);
         assert_eq!(
             s.page(),

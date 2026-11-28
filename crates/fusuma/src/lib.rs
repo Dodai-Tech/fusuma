@@ -36,6 +36,10 @@ pub use fusuma_text as text;
 #[cfg(feature = "fonts")]
 pub use fusuma_fonts as fonts;
 
+/// Every Lucide icon, by Lucide's names (the `icons-lucide-all` feature).
+#[cfg(feature = "icons-lucide-all")]
+pub use fusuma_icons as lucide;
+
 /// The renderer backends linked by the `renderer-*` features.
 pub mod renderers {
     /// The integer, `no_std` renderer for microcontroller displays (`renderer-integer`).

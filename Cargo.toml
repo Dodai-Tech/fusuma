@@ -7,6 +7,7 @@ members = [
     "crates/fusuma",
     "crates/fusuma-ui",
     "crates/fusuma-fonts",
+    "crates/fusuma-icons",
     "crates/fusuma-text",
     "crates/fusuma-platform",
     "crates/fusuma-platform-desktop",
@@ -58,6 +59,7 @@ fusuma-ui = { path = "crates/fusuma-ui", version = "0.2.0" }
 fusuma-platform = { path = "crates/fusuma-platform", version = "0.2.0" }
 fusuma = { path = "crates/fusuma", version = "0.2.0", default-features = false }
 fusuma-fonts = { path = "crates/fusuma-fonts", version = "0.2.0", default-features = false }
+fusuma-icons = { path = "crates/fusuma-icons", version = "0.2.0" }
 fusuma-text = { path = "crates/fusuma-text", version = "0.2.0", default-features = false }
 parley = { version = "0.13", default-features = false, features = ["libm"] }
 fusuma-anim = { path = "crates/fusuma-anim", version = "0.2.0" }
