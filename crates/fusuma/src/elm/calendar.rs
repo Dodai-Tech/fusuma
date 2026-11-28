@@ -154,10 +154,13 @@ impl<M: Clone> Calendar<M> {
         if let Some(names) = names {
             let mut at = cx.tree.first_child(names);
             for k in 0..7usize {
-                let Some(l) = at else { break };
+                let Some(cell) = at else { break };
+                let Some(l) = cx.tree.first_child(cell) else {
+                    break;
+                };
                 let day = if self.monday_first { k } else { (k + 6) % 7 };
                 cx.tree.set_text(l, WEEKDAYS[day]);
-                at = cx.tree.next_sibling(l);
+                at = cx.tree.next_sibling(cell);
             }
         }
         // The days: 42 cells, the ones outside the month empty.
@@ -185,7 +188,7 @@ impl<M: Clone> Calendar<M> {
                             if self.selected == Some(d) {
                                 ButtonVariant::Primary
                             } else {
-                                ButtonVariant::Secondary
+                                ButtonVariant::Ghost
                             },
                         );
                         cx.msgs.on(button, Handler::Press((self.on_pick)(d)));
@@ -210,16 +213,20 @@ impl<M: Clone> View<M> for Calendar<M> {
         let head = cx
             .tree
             .row(Some(root), Style::new().gap(8).align(CrossAlign::Center))?;
-        cx.tree.button(Some(head), "<", ButtonVariant::Secondary)?;
+        cx.tree.button(Some(head), "<", ButtonVariant::Ghost)?;
         let title = cx.tree.label(Some(head), "", TextRole::Body)?;
         cx.tree
             .set_style(title, Style::new().width(Length::Fill(1)));
-        cx.tree.button(Some(head), ">", ButtonVariant::Secondary)?;
+        cx.tree.button(Some(head), ">", ButtonVariant::Ghost)?;
         let names = cx
             .tree
             .grid(Some(root), 7, Style::new().width(Length::Fill(1)).gap(2))?;
         for _ in 0..7 {
-            cx.tree.label(Some(names), "", TextRole::Caption)?;
+            // Each name sits in the middle of the column of its day.
+            let cell = cx
+                .tree
+                .column(Some(names), Style::new().align(CrossAlign::Center))?;
+            cx.tree.label(Some(cell), "", TextRole::Caption)?;
         }
         let days = cx.tree.grid(
             Some(root),
@@ -234,7 +241,7 @@ impl<M: Clone> View<M> for Calendar<M> {
             let slot = cx
                 .tree
                 .column(Some(days), Style::new().align(CrossAlign::Stretch))?;
-            cx.tree.button(Some(slot), "", ButtonVariant::Secondary)?;
+            cx.tree.button(Some(slot), "", ButtonVariant::Ghost)?;
         }
         self.sync(cx, root);
         Ok(root)

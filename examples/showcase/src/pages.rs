@@ -324,56 +324,56 @@ fn name_of(base: Id, i: usize) -> Id {
     Id::new(base.0 + u16::try_from(i).unwrap_or(0))
 }
 
-/// The Overview page.
+/// The Overview page: one account screen put together from the widgets the other pages show one by one.
 pub fn overview<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
-    let seats = |s: State<'_>| s.quantity;
-    let who = card((
+    let profile = card((
         row((
             avatar("AM", look.avatar),
-            column((text("Ana Maria"), text("Designer").caption())),
+            column((text("Ana Maria"), text("Designer, Porto").caption())),
         ))
         .gap(look.md)
         .align(CrossAlign::Center),
         divider(),
-        row((badge("Pro", true), badge("Team", false))).gap(look.sm),
+        row((
+            badge("Pro", true),
+            badge("Team", false),
+            badge("Online", false),
+        ))
+        .gap(look.sm),
     ))
     .padding(look.md)
     .gap(look.sm)
     .width(Length::Fill(1));
-    let seats_card = card((
-        section("Seats"),
-        stepper(seats_text(seats(s)).as_str())
-            .on_dec(PageMsg::Fewer)
-            .on_inc(PageMsg::More),
+    let plan = card((
+        section("Plan"),
+        row((
+            text("Seats"),
+            stepper(seats_text(s.quantity).as_str())
+                .on_dec(PageMsg::Fewer)
+                .on_inc(PageMsg::More),
+        ))
+        .gap(look.md)
+        .align(CrossAlign::Center),
+        (!look.lite).then(divider),
+        (!look.lite).then(|| section("Storage")),
+        (!look.lite).then(|| progress(640)),
+        (!look.lite).then(|| text("6.4 of 10 GB used").caption()),
     ))
     .padding(look.md)
     .gap(look.sm)
     .width(Length::Fill(1));
-    let usage = (!look.lite).then(|| {
-        card((section("Storage"), progress(640), text("6.4 of 10 GB")))
-            .padding(look.md)
-            .gap(look.sm)
-            .width(Length::Fill(1))
-    });
-    let body = (who, seats_card, usage);
+    let body = (profile, plan);
     let cards = if look.compact {
         column(body).gap(look.md)
     } else {
-        row(body).gap(look.md)
+        row(body).gap(look.md).align(CrossAlign::Stretch)
     };
     (
         (!look.lite).then(|| text("Overview").title()),
+        (!look.lite)
+            .then(|| text("An account screen made from the widgets on the other pages.").caption()),
         cards,
-        (!look.lite).then(|| section("Status")),
-        (!look.lite).then(|| {
-            row((
-                badge("Online", true),
-                badge("Synced", false),
-                badge("3 new", false),
-                badge("v0.2", false),
-            ))
-            .gap(look.sm)
-        }),
+        (!look.lite).then(|| stat_card("Steps today", "8,412", "+12%", Tone::Success)),
     )
 }
 
@@ -708,11 +708,13 @@ pub fn controls<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
 pub fn progress_page<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
     (
         (!look.lite).then(|| text("Progress").title()),
+        (!look.lite).then(|| section("Linear")),
         named(wid::BAR, progress(s.permille)),
         named(
             wid::BAR_LABEL,
             text_fmt(format_args!("{}%", s.permille / 10)),
         ),
+        (!look.lite).then(|| section("Tall, the same value")),
         (!look.lite).then(|| progress(s.permille).tall(80)),
         side_by_side(
             look,

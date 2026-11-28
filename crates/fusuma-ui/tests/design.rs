@@ -48,6 +48,39 @@ fn hex(c: Color) -> String {
     format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
 }
 
+/// A colour with its alpha when it is not opaque.
+fn hex8(c: Color) -> String {
+    if c.a == 255 {
+        hex(c)
+    } else {
+        format!("{}{:02x}", hex(c), c.a)
+    }
+}
+
+/// The roles other design systems name (Material, dodai-ui) that this one has under another name or makes from the
+/// 16 it has: (token name, value). Aliases are the same colour, so a tool that asks for `outline` finds `border-strong`.
+fn derived(c: &Colors) -> Vec<(&'static str, Color)> {
+    use fusuma_ui::mix;
+    vec![
+        ("on-surface", c.text),
+        ("on-surface-variant", c.text_muted),
+        ("outline", c.border_strong),
+        ("outline-variant", c.border),
+        ("focus-ring", c.primary),
+        ("link", c.primary),
+        ("selection", c.primary.with_alpha(72)),
+        ("scrim", Color::rgba(0, 0, 0, 150)),
+        ("surface-container-lowest", c.background),
+        ("surface-container-low", c.surface),
+        ("surface-container", mix(c.surface, c.surface_raised, 500)),
+        ("surface-container-high", c.surface_raised),
+        (
+            "surface-container-highest",
+            mix(c.surface_raised, c.border, 500),
+        ),
+    ]
+}
+
 fn family(f: Font) -> &'static str {
     match f {
         Font::Sans | Font::SansBold => "Inter",
@@ -123,6 +156,74 @@ fn tokens(t: &Theme, colors: &Colors) -> String {
     };
     for (name, c) in roles(colors) {
         add("color", name, "color", format!("\"{}\"", hex(c)));
+    }
+    for (name, c) in derived(colors) {
+        add("color", name, "color", format!("\"{}\"", hex8(c)));
+    }
+    // What a button and a list row look like in each state, as the theme's own hooks say.
+    {
+        use fusuma_ui::{ButtonState as St, ButtonVariant as Var};
+        let states = [
+            ("idle", St::Idle),
+            ("hover", St::Hovered),
+            ("pressed", St::Pressed),
+            ("disabled", St::Disabled),
+        ];
+        for (vname, v) in [
+            ("primary", Var::Primary),
+            ("secondary", Var::Secondary),
+            ("ghost", Var::Ghost),
+        ] {
+            for (sname, st) in states {
+                let b = t.button(v, st);
+                let none = Color::rgba(0, 0, 0, 0);
+                add(
+                    "button",
+                    &format!("{vname}-{sname}-bg"),
+                    "color",
+                    format!("\"{}\"", hex8(b.background)),
+                );
+                add(
+                    "button",
+                    &format!("{vname}-{sname}-border"),
+                    "color",
+                    format!("\"{}\"", hex8(b.border.unwrap_or(none))),
+                );
+                add(
+                    "button",
+                    &format!("{vname}-{sname}-fg"),
+                    "color",
+                    format!("\"{}\"", hex8(b.text)),
+                );
+            }
+        }
+        add(
+            "button",
+            "radius",
+            "number",
+            t.button(Var::Primary, St::Idle).radius.to_string(),
+        );
+        for (label, st, sel) in [
+            ("chosen", St::Idle, true),
+            ("idle", St::Idle, false),
+            ("hover", St::Hovered, false),
+            ("pressed", St::Pressed, false),
+        ] {
+            let i = t.item(st, sel);
+            let none = Color::rgba(0, 0, 0, 0);
+            add(
+                "item",
+                &format!("{label}-fill"),
+                "color",
+                format!("\"{}\"", hex8(i.fill.unwrap_or(none))),
+            );
+            add(
+                "item",
+                &format!("{label}-fg"),
+                "color",
+                format!("\"{}\"", hex8(i.text)),
+            );
+        }
     }
     for (path, n) in numbers(t) {
         let (group, name) = path.split_once('/').unwrap();
@@ -350,7 +451,11 @@ fn widgets(o: &mut String, t: &Theme, colors: &Colors) {
         return;
     }
     if let Some(h) = t.hooks.button {
-        for (name, v) in [("primary", Var::Primary), ("secondary", Var::Secondary)] {
+        for (name, v) in [
+            ("primary", Var::Primary),
+            ("secondary", Var::Secondary),
+            ("ghost", Var::Ghost),
+        ] {
             for (state, st) in [
                 ("idle", St::Idle),
                 ("hover", St::Hovered),
@@ -517,7 +622,10 @@ fn every_palette_has_its_colour_tokens_in_both_modes() {
 fn the_tokens_are_valid_and_carry_every_role_and_number() {
     for s in systems() {
         let t = tokens(&s.theme, &s.palette.dark);
-        assert_eq!(t.matches("\"$type\":\"color\"").count(), 16, "{}", s.id);
+        // 16 roles, the roles under other names, and a fill, an outline and a text colour for each of the 3 buttons in 4
+        // states and a fill and a text colour for each of the 4 list rows.
+        let colors = 16 + derived(&s.palette.dark).len() + 3 * 4 * 3 + 4 * 2;
+        assert_eq!(t.matches("\"$type\":\"color\"").count(), colors, "{}", s.id);
         assert!(t.contains("\"ticks\":{\"$type\":\"number\",\"$value\":"));
         assert_eq!(
             t.matches('{').count(),

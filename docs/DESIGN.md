@@ -15,6 +15,8 @@ constants the toolkit paints with, so the design file cannot drift from the code
 | `crates/fusuma-ui/tests/design.rs` | the generator, and the test that fails when the tracked files are stale | yes |
 | `scripts/design.nu` | `tokens`, `build`, `verify`, `check` | yes |
 
+The tokens of a system hold, besides the 16 colour roles and the numbers: the roles other systems name (`on-surface`, `outline`, `outline-variant`, `focus-ring`, `link`, `selection`, `scrim` and five `surface-container-*` steps, aliases or mixes of the 16, as in dodai-ui and Material), a `button` group (fill, outline and text of the primary, secondary and ghost button in idle, hover, pressed and disabled, with the radius) and an `item` group (the chosen, idle, hover and pressed list row). They are read from the theme's own hooks, so they are what the toolkit paints. A colour with an alpha is written `#rrggbbaa`.
+
 A host surface (`Kind::Surface`, the `host_surface` view) has no design: it draws nothing, and the host fills it. The design
 files describe only what the toolkit draws.
 

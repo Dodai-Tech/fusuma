@@ -84,6 +84,10 @@ fast 100 ms, normal 240 ms, slow 420 ms.
 | secondary button, hover | `surface-raised` fill, `border-strong` outline, `text` text, radius 2 |
 | secondary button, pressed | `border` fill, `border-strong` outline, `text` text, radius 2 |
 | secondary button, disabled | `surface` fill, `border` outline, `text-disabled` text, radius 2 |
+| ghost button, idle | #28221e fill, no outline, `text` text, radius 2 |
+| ghost button, hover | `surface-raised` fill, no outline, `text` text, radius 2 |
+| ghost button, pressed | `border` fill, no outline, `text` text, radius 2 |
+| ghost button, disabled | `surface` fill, `border` outline, `text-disabled` text, radius 2 |
 | list item, chosen | `surface-raised` fill, `text` text |
 | list item, idle | no fill, `text` text |
 | list item, hover | `surface-raised` fill, `text` text |

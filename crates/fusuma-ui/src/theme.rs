@@ -1492,6 +1492,8 @@ pub enum ButtonVariant {
     Primary,
     /// An ordinary action: a raised surface with an outline.
     Secondary,
+    /// A quiet action in a grid or a toolbar: no fill and no outline until it is under the pointer.
+    Ghost,
 }
 
 /// The state of a button.
@@ -1899,6 +1901,16 @@ impl Theme {
                     ButtonState::Hovered | ButtonState::Pressed => c.border_strong,
                     _ => c.border,
                 }),
+                text: c.text,
+                radius,
+            },
+            ButtonVariant::Ghost => ButtonStyle {
+                background: match state {
+                    ButtonState::Hovered => c.surface_raised,
+                    ButtonState::Pressed => c.border,
+                    _ => c.surface_raised.with_alpha(0),
+                },
+                border: None,
                 text: c.text,
                 radius,
             },

@@ -1401,6 +1401,12 @@ fn a_calendar_puts_the_days_under_their_weekdays_and_sends_the_day_and_the_month
             .last()
             .unwrap()
             .id;
+        // A weekday name sits in a column of its own, centred over its day: the column is what lines up.
+        let id = a
+            .tree
+            .parent(id)
+            .filter(|_| n.len() == 2 && n.chars().all(char::is_alphabetic))
+            .unwrap_or(id);
         a.tree.rect(id).unwrap()
     };
     let (d1, d2, d8) = (rect(&a, "1"), rect(&a, "2"), rect(&a, "8"));

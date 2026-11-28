@@ -268,6 +268,16 @@ fn button(t: &Theme, _: Class, variant: ButtonVariant, state: ButtonState) -> Bu
             text: c.text,
             radius: r,
         },
+        (s, ButtonVariant::Ghost) => ButtonStyle {
+            background: match s {
+                ButtonState::Hovered => c.surface_raised,
+                ButtonState::Pressed => c.border,
+                _ => c.surface_raised.with_alpha(0),
+            },
+            border: None,
+            text: c.text,
+            radius: r,
+        },
     }
 }
 

@@ -647,6 +647,7 @@ impl<const N: usize> Tree<N> {
                     (_, true) => (c.text_disabled, c.surface),
                     (ButtonVariant::Primary, _) => (c.on_primary, c.primary),
                     (ButtonVariant::Secondary, _) => (c.text, c.surface_raised),
+                    (ButtonVariant::Ghost, _) => (c.text, c.surface),
                 };
                 let st = look.style(
                     fg,
