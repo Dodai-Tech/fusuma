@@ -270,7 +270,7 @@ impl<M> ViewMarker for TextField<'_, M> {}
 pub struct Item<'a, M> {
     text: &'a str,
     selected: bool,
-    icon: Option<char>,
+    icon: Option<fusuma_icons::Icon>,
     on_select: Option<M>,
 }
 
@@ -295,7 +295,7 @@ impl<M> Item<'_, M> {
 
     /// An icon before the text.
     #[must_use]
-    pub const fn icon(mut self, icon: char) -> Self {
+    pub const fn icon(mut self, icon: fusuma_icons::Icon) -> Self {
         self.icon = Some(icon);
         self
     }
@@ -335,7 +335,7 @@ impl<M> ViewMarker for Item<'_, M> {}
 pub struct Tab<'a, M> {
     text: &'a str,
     selected: bool,
-    icon: Option<char>,
+    icon: Option<fusuma_icons::Icon>,
     on_select: Option<M>,
 }
 
@@ -360,7 +360,7 @@ impl<M> Tab<'_, M> {
 
     /// An icon before the text.
     #[must_use]
-    pub const fn icon(mut self, icon: char) -> Self {
+    pub const fn icon(mut self, icon: fusuma_icons::Icon) -> Self {
         self.icon = Some(icon);
         self
     }
@@ -423,17 +423,17 @@ impl<M: Clone> View<M> for Paragraph {
 
 impl ViewMarker for Paragraph {}
 
-/// An icon (a character of the icon font) as a view of its own.
+/// An icon as a view of its own.
 #[derive(Clone, Copy, Debug)]
-pub struct Icon(char);
+pub struct IconView(fusuma_icons::Icon);
 
 /// An icon.
 #[must_use]
-pub const fn icon(c: char) -> Icon {
-    Icon(c)
+pub const fn icon(icon: fusuma_icons::Icon) -> IconView {
+    IconView(icon)
 }
 
-impl<M: Clone> View<M> for Icon {
+impl<M: Clone> View<M> for IconView {
     fn build<const N: usize, const K: usize>(
         &self,
         cx: &mut Cx<'_, M, N, K>,
@@ -444,11 +444,11 @@ impl<M: Clone> View<M> for Icon {
 
     fn rebuild<const N: usize, const K: usize>(&self, cx: &mut Cx<'_, M, N, K>, node: NodeId) {
         let mut buf = [0u8; 4];
-        cx.tree.set_text(node, self.0.encode_utf8(&mut buf));
+        cx.tree.set_text(node, self.0.glyph().encode_utf8(&mut buf));
     }
 }
 
-impl ViewMarker for Icon {}
+impl ViewMarker for IconView {}
 
 /// What a container made by [`scroll`] or [`tab_bar`] is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

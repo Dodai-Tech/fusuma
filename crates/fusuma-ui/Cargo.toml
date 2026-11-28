@@ -20,6 +20,7 @@ long-text = []
 fusuma-anim.workspace = true
 fusuma-render.workspace = true
 fusuma-cells.workspace = true
+fusuma-icons.workspace = true
 
 [dev-dependencies]
 fusuma-render-vello-cpu = { workspace = true, features = ["std"] }

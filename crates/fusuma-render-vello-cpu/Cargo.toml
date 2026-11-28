@@ -22,6 +22,8 @@ png = ["std", "vello_cpu/png"]
 # Vector fonts for `draw_text` and `measure_text`, from the families `fusuma-fonts` links (an app turns them on
 # there, or through the `fusuma` facade's `fonts-*` features).
 text = ["fusuma-render-vello-common/text", "vello_cpu/text", "dep:fusuma-text"]
+# Icons (`fusuma-icons`' Lucide font) drawn like text.
+icons = ["text", "fusuma-text/icons"]
 
 [dependencies]
 fusuma-render.workspace = true
@@ -30,7 +32,8 @@ vello_cpu.workspace = true
 fusuma-text = { workspace = true, optional = true }
 
 [dev-dependencies]
-fusuma-fonts = { workspace = true, features = ["preset-fusuma", "material-symbols", "lucide", "phosphor"] }
+fusuma-fonts = { workspace = true, features = ["preset-fusuma"] }
+fusuma-icons.workspace = true
 fusuma-render = { workspace = true, features = ["conformance"] }
 fusuma-render-integer.workspace = true
 

@@ -27,7 +27,7 @@ pub enum Font {
     Mono,
     /// The built-in bitmap font, on every backend and with no font data: three monospace sizes.
     Bitmap,
-    /// The icon font (Material Symbols when bundled): each character is an icon that fills a square as high as the
+    /// The icon font (Lucide, from `fusuma-icons`, when linked): each character is an icon that fills a square as high as the
     /// line. A backend without it draws the characters with the bitmap font.
     Icons,
 }

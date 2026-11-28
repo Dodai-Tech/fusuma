@@ -47,13 +47,15 @@ fonts-plex = ["fonts", "fusuma-fonts/preset-plex"]
 fonts-noto = ["fonts", "fusuma-fonts/preset-noto"]
 # Every family.
 fonts-all = ["fonts", "fusuma-fonts/all-families"]
-# Icons drawn like text (`Tree::icon`, `fonts::FontSet::icon`): Material Symbols Rounded, the catalog's 90 icons.
-icons = ["fonts", "fusuma-fonts/material-symbols"]
-# Lucide and Phosphor as icon families too (opt-in; `[fonts] icons = "lucide"` picks one): the same names as `icons`.
-icons-lucide = ["fonts", "fusuma-fonts/lucide"]
-icons-phosphor = ["fonts", "fusuma-fonts/phosphor"]
-# Every Lucide icon under Lucide's own names (`fusuma::lucide`, about 1 MB of font: not for a small chip).
-icons-lucide-all = ["fonts", "dep:fusuma-icons"]
+# Icons (`fusuma::icons`: the typed `Icon` enum of every Lucide icon, `Tree::icon`): the Vello renderers draw them from the
+# Lucide font, the integer one from glyph atlases of the icons the app uses (`[icons] used` in `fusuma.toml` and the
+# toolkit's own).
+icons = [
+    "fonts",
+    "fusuma-render-vello-cpu?/icons",
+    "fusuma-render-vello?/icons",
+    "fusuma-render-integer?/icons",
+]
 # `png()` for the CPU Vello renderer: the surface as a PNG file.
 png = ["renderer-vello-cpu", "fusuma-render-vello-cpu/png"]
 
@@ -65,7 +67,7 @@ fusuma-cells.workspace = true
 fusuma-platform.workspace = true
 fusuma-text = { workspace = true, optional = true }
 fusuma-fonts = { workspace = true, optional = true, default-features = false }
-fusuma-icons = { workspace = true, optional = true }
+fusuma-icons.workspace = true
 fusuma-render-integer = { workspace = true, optional = true }
 fusuma-render-vello-cpu = { workspace = true, optional = true }
 fusuma-render-vello = { workspace = true, optional = true }

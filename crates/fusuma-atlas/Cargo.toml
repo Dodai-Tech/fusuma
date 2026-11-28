@@ -1,0 +1,16 @@
+[package]
+name = "fusuma-atlas"
+description = "Glyph atlas types for Fusuma: a font or an icon set rasterised at build time to 4-bit coverage, for renderers without a vector rasteriser (no_std, no allocator)"
+readme = "README.md"
+documentation = "https://docs.rs/fusuma-atlas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords = ["fonts", "icons", "atlas", "embedded", "no-std"]
+categories = ["gui", "embedded", "no-std"]
+
+[lints]
+workspace = true

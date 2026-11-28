@@ -24,7 +24,7 @@ wide: 日本語 and é
   B.........RBBBBBBBBBBBBB
  Search
   .DDDDDD
-[ Home ] s Find
+[ Home ] ◆ Find
   U.UUUU.U
   Aurora       █
 ▸ Birch        │

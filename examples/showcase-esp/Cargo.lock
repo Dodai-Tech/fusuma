@@ -1013,6 +1013,7 @@ dependencies = [
  "fusuma-anim",
  "fusuma-cells",
  "fusuma-fonts",
+ "fusuma-icons",
  "fusuma-platform",
  "fusuma-render",
  "fusuma-render-integer",
@@ -1026,6 +1027,10 @@ name = "fusuma-anim"
 version = "0.2.0"
 
 [[package]]
+name = "fusuma-atlas"
+version = "0.2.0"
+
+[[package]]
 name = "fusuma-cells"
 version = "0.2.0"
 
@@ -1034,9 +1039,20 @@ name = "fusuma-fonts"
 version = "0.2.0"
 dependencies = [
  "ab_glyph",
+ "fusuma-atlas",
  "serde",
  "toml 1.2.2+spec-1.1.0",
  "ttf-parser",
+]
+
+[[package]]
+name = "fusuma-icons"
+version = "0.2.0"
+dependencies = [
+ "ab_glyph",
+ "fusuma-atlas",
+ "serde",
+ "toml 1.2.2+spec-1.1.0",
 ]
 
 [[package]]
@@ -1079,6 +1095,7 @@ version = "0.2.0"
 dependencies = [
  "embedded-graphics",
  "fusuma-fonts",
+ "fusuma-icons",
  "fusuma-render",
 ]
 
@@ -1138,6 +1155,7 @@ name = "fusuma-text"
 version = "0.2.0"
 dependencies = [
  "fusuma-fonts",
+ "fusuma-icons",
  "fusuma-render",
  "parley",
 ]
@@ -1148,6 +1166,7 @@ version = "0.2.0"
 dependencies = [
  "fusuma-anim",
  "fusuma-cells",
+ "fusuma-icons",
  "fusuma-render",
 ]
 

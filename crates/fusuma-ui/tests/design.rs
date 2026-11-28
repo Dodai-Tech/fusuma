@@ -86,7 +86,7 @@ fn family(f: Font) -> &'static str {
         Font::Sans | Font::SansBold => "Inter",
         Font::Mono => "JetBrains Mono",
         Font::Bitmap => "Bitmap",
-        Font::Icons => "Material Symbols",
+        Font::Icons => "Lucide",
     }
 }
 

@@ -18,18 +18,22 @@ bitmap-extended = ["fusuma-render/bitmap-extended"]
 # Smooth text: the families `fusuma-fonts` links, from glyph atlases rasterised at build time (about 40 KB a face
 # at the default line heights 10, 15 and 20), blended into the target. Without it text is the bitmap font.
 fonts = ["dep:fusuma-fonts", "fusuma-fonts/atlas"]
+# Icons (Lucide) from glyph atlases of the icons the app uses (`[icons] used`, and the toolkit's own).
+icons = ["fonts", "dep:fusuma-icons", "fusuma-icons/atlas"]
 
 [dependencies]
 fusuma-render = { workspace = true, features = ["bitmap"] }
 embedded-graphics.workspace = true
 fusuma-fonts = { workspace = true, optional = true, default-features = false }
+fusuma-icons = { workspace = true, optional = true }
 
 [dev-dependencies]
 fusuma-render = { workspace = true, features = ["conformance"] }
 # The reference smooth text is held to: Vello drawing the same fonts.
-fusuma-render-vello-cpu = { workspace = true, features = ["std", "text"] }
+fusuma-render-vello-cpu = { workspace = true, features = ["std", "text", "icons"] }
 # The tests draw with the default preset.
-fusuma-fonts = { workspace = true, features = ["preset-fusuma", "material-symbols", "lucide", "phosphor", "atlas"] }
+fusuma-fonts = { workspace = true, features = ["preset-fusuma", "atlas"] }
+fusuma-icons = { workspace = true, features = ["atlas"] }
 
 [lints]
 workspace = true

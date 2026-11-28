@@ -10,8 +10,10 @@
 //! preset = "material"   # a preset of fusuma-fonts' catalog; default: the first one the build linked
 //! sans = "roboto"       # or name the families one by one, overriding the preset's
 //! mono = "roboto-mono"
-//! icons = "material-symbols"  # the icon family; default: the first one the build linked
 //! sizes = [10, 15, 20]  # line heights of the glyph atlases (the integer renderer), read at build time
+//!
+//! [icons]
+//! used = ["house", "settings"]  # Lucide icons (lucide.dev names) the integer renderer has atlases of, besides the toolkit's own; read at build time
 //!
 //! [theme]
 //! palette = "forest"    # fusuma (default), forest, ocean, petrol or violet; the app can switch at run time
@@ -97,8 +99,6 @@ pub struct FontChoice {
     pub sans: Option<std::string::String>,
     /// The mono family's id, over the preset's.
     pub mono: Option<std::string::String>,
-    /// The icon family's id (`material-symbols`); default: the first one linked.
-    pub icons: Option<std::string::String>,
     /// Line heights the glyph atlases are made at. Read at build time (`fusuma-fonts` reads the file
     /// `FUSUMA_SETTINGS` names); at run time only compared with what the build made.
     pub sizes: Option<std::vec::Vec<u16>>,
@@ -129,6 +129,16 @@ pub struct CellsChoice {
         Option<std::collections::BTreeMap<std::string::String, std::vec::Vec<std::string::String>>>,
 }
 
+/// The `[icons]` table: which Lucide icons the integer renderer makes glyph atlases of, besides the toolkit's own. Read at
+/// build time (`fusuma-icons` reads the file `FUSUMA_SETTINGS` names, and stops the build on a name Lucide does not
+/// have); a renderer that draws from the font needs none.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IconChoice {
+    /// The names on lucide.dev (`arrow-left`), the ones the app draws.
+    pub used: Option<std::vec::Vec<std::string::String>>,
+}
+
 /// A settings file (`fusuma.toml`), read and checked.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
@@ -136,6 +146,8 @@ pub struct Settings {
     pub render: RenderLayer,
     /// The `[fonts]` table (all `None` when the file has none).
     pub fonts: FontChoice,
+    /// The `[icons]` table (all `None` when the file has none).
+    pub icons: IconChoice,
     /// The `[theme]` table (all `None` when the file has none).
     pub theme: ThemeChoice,
     /// The `[cells]` table (all `None` when the file has none).
@@ -147,6 +159,7 @@ pub struct Settings {
 struct File {
     render: Option<RawRender>,
     fonts: Option<FontChoice>,
+    icons: Option<IconChoice>,
     theme: Option<ThemeChoice>,
     cells: Option<CellsChoice>,
 }
@@ -176,6 +189,7 @@ impl Settings {
                 .render
                 .map_or(Ok(RenderLayer::EMPTY), RawRender::into_layer)?,
             fonts,
+            icons: file.icons.unwrap_or_default(),
             theme: file.theme.unwrap_or_default(),
             cells: file.cells.unwrap_or_default(),
         })
@@ -241,7 +255,6 @@ mod tests {
                 preset: Some("material".into()),
                 sans: None,
                 mono: Some("jetbrains-mono".into()),
-                icons: None,
                 sizes: Some(std::vec![12, 18]),
             }
         );
@@ -254,7 +267,7 @@ mod tests {
         assert!(err("[fonts]\nsizes = [4]\n").contains("fonts.sizes: 4"));
         assert!(err("[fonts]\nfamily = \"x\"\n").contains("family"));
         assert!(err("[font]\npreset = \"x\"\n").contains("font"));
-        for key in ["preset", "sans", "mono", "icons", "sizes"] {
+        for key in ["preset", "sans", "mono", "sizes"] {
             assert!(
                 SETTINGS_SCHEMA.contains(&std::format!("\"{key}\"")),
                 "the schema has fonts.{key}"

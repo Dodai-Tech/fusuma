@@ -1,6 +1,7 @@
-//! Icons in buttons, list items and tabs, and the tab itself: an icon (a character of the icon font, found by name
-//! with `FontSet::icon`) before the text, the pair sized and placed together.
+//! Icons in buttons, list items and tabs, and the tab itself: an [`Icon`] before the text, the pair sized and placed
+//! together.
 
+use fusuma_icons::Icon;
 use fusuma_render::{Color, Point, Rect, Renderer, Size, TextStyle};
 
 use crate::paint::centred;
@@ -39,7 +40,7 @@ impl<const N: usize> Tree<N> {
     pub fn button_with_icon(
         &mut self,
         parent: Option<NodeId>,
-        icon: char,
+        icon: Icon,
         text: &str,
         variant: ButtonVariant,
     ) -> Result<NodeId, BuildError> {
@@ -55,7 +56,7 @@ impl<const N: usize> Tree<N> {
     pub fn list_item_with_icon(
         &mut self,
         parent: Option<NodeId>,
-        icon: char,
+        icon: Icon,
         text: &str,
         selected: bool,
     ) -> Result<NodeId, BuildError> {
@@ -81,7 +82,7 @@ impl<const N: usize> Tree<N> {
     pub fn tab(
         &mut self,
         parent: Option<NodeId>,
-        icon: Option<char>,
+        icon: Option<Icon>,
         text: &str,
         selected: bool,
     ) -> Result<NodeId, BuildError> {
@@ -102,7 +103,7 @@ impl<const N: usize> Tree<N> {
 
     /// The icon of a button, list item or tab.
     #[must_use]
-    pub fn icon_of(&self, id: NodeId) -> Option<char> {
+    pub fn icon_of(&self, id: NodeId) -> Option<Icon> {
         match self.nodes[self.slot(id)?].kind {
             Kind::Button { icon, .. } | Kind::ListItem { icon, .. } | Kind::Tab { icon, .. } => {
                 icon
@@ -112,7 +113,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Sets or removes the icon of a button, list item or tab; the layout is redone.
-    pub fn set_icon(&mut self, id: NodeId, to: Option<char>) {
+    pub fn set_icon(&mut self, id: NodeId, to: Option<Icon>) {
         let Some(i) = self.slot(id) else { return };
         if let Kind::Button { icon, .. } | Kind::ListItem { icon, .. } | Kind::Tab { icon, .. } =
             &mut self.nodes[i].kind
@@ -127,11 +128,12 @@ impl<const N: usize> Tree<N> {
     pub(crate) fn measure_icon_text<M: fusuma_render::Measure>(
         r: &M,
         theme: &Theme,
-        icon: Option<char>,
+        icon: Option<Icon>,
         text: &str,
     ) -> IconText {
         let body = TextStyle::new(theme.text.body, Color::BLACK).font(theme.fonts.body);
-        let icon = icon.map(|c| {
+        let icon = icon.map(|icon| {
+            let c = icon.glyph();
             let mut buf = [0u8; 4];
             let style = TextStyle::new(theme.text.icon, Color::BLACK).font(theme.fonts.icons);
             (c, r.measure_text(c.encode_utf8(&mut buf), &style))
@@ -219,6 +221,7 @@ impl<const N: usize> Tree<N> {
 
 #[cfg(test)]
 mod tests {
+    use fusuma_icons::Icon;
     use fusuma_render::{Color, Point, Probe, Rect, Renderer};
     use fusuma_render_vello_cpu::VelloCpu;
 
@@ -274,10 +277,10 @@ mod tests {
             .button(Some(root), "Save", ButtonVariant::Primary)
             .unwrap();
         let with = t
-            .button_with_icon(Some(root), 'S', "Save", ButtonVariant::Primary)
+            .button_with_icon(Some(root), Icon::Save, "Save", ButtonVariant::Primary)
             .unwrap();
         let only = t
-            .button_with_icon(Some(root), 'S', "", ButtonVariant::Primary)
+            .button_with_icon(Some(root), Icon::Save, "", ButtonVariant::Primary)
             .unwrap();
         lay(&mut t);
         let (a, b, c) = (
@@ -296,7 +299,7 @@ mod tests {
         assert_eq!(b.w, a.w + icon + THEME.spacing.sm, "icon, gap, text");
         assert!(b.h >= a.h);
         assert_eq!(c.w, icon + THEME.spacing.md * 2, "icon and padding, no gap");
-        assert_eq!(t.icon_of(with), Some('S'));
+        assert_eq!(t.icon_of(with), Some(Icon::Save));
         assert_eq!(t.icon_of(plain), None);
         t.set_icon(with, None);
         lay(&mut t);
@@ -312,7 +315,7 @@ mod tests {
         let mut t = Tree::<16>::new();
         let root = t.column(None, Style::new().padding(6)).unwrap();
         let li = t
-            .list_item_with_icon(Some(root), 'I', "Row", false)
+            .list_item_with_icon(Some(root), Icon::Info, "Row", false)
             .unwrap();
         let bare = t.list_item(Some(root), "Row", false).unwrap();
         let s = paint(&mut t);
@@ -351,9 +354,9 @@ mod tests {
             .unwrap();
         let bar = t.tab_bar(Some(root), Style::new()).unwrap();
         let tabs = [
-            t.tab(Some(bar), Some('H'), "Home", true).unwrap(),
+            t.tab(Some(bar), Some(Icon::House), "Home", true).unwrap(),
             t.tab(Some(bar), None, "Search", false).unwrap(),
-            t.tab(Some(bar), Some('P'), "", false).unwrap(),
+            t.tab(Some(bar), Some(Icon::Pencil), "", false).unwrap(),
         ];
         lay(&mut t);
         let w = tabs.map(|id| t.rect(id).unwrap().w);
@@ -416,10 +419,10 @@ mod tests {
             .label(Some(root), "x", crate::theme::TextRole::Body)
             .unwrap();
         let b = t.button(Some(root), "b", ButtonVariant::Primary).unwrap();
-        t.set_icon(l, Some('x'));
+        t.set_icon(l, Some(Icon::X));
         assert_eq!(t.icon_of(l), None, "a label has no icon slot");
         t.remove(b);
-        t.set_icon(b, Some('x'));
+        t.set_icon(b, Some(Icon::X));
         assert_eq!(t.icon_of(b), None);
     }
 }

@@ -65,8 +65,8 @@ pub struct Semantic<'a> {
     pub name: &'a str,
     /// A text field's hint while it is empty (its placeholder); empty otherwise.
     pub hint: &'a str,
-    /// An icon in front of the name (a button, list item or tab), as the icon font's character.
-    pub icon: Option<char>,
+    /// An icon in front of the name (a button, list item or tab).
+    pub icon: Option<fusuma_icons::Icon>,
     /// On or off, for a checkbox, a radio button, a switch.
     pub checked: Option<bool>,
     /// Chosen, for a list item or a tab.
@@ -393,9 +393,14 @@ mod tests {
             .unwrap();
         t.label(Some(root), "Settings", TextRole::Title).unwrap();
         let row = t.row(Some(root), Style::new().gap(4)).unwrap();
-        t.icon(Some(row), 'i').unwrap();
-        t.button_with_icon(Some(row), 'b', "Save", ButtonVariant::Primary)
-            .unwrap();
+        t.icon(Some(row), fusuma_icons::Icon::Info).unwrap();
+        t.button_with_icon(
+            Some(row),
+            fusuma_icons::Icon::Bold,
+            "Save",
+            ButtonVariant::Primary,
+        )
+        .unwrap();
         let check = t.checkbox(Some(root), "Notify", true).unwrap();
         t.radio(Some(root), "Small", false).unwrap();
         t.switch(Some(root), "Wi-Fi", false).unwrap();
@@ -405,7 +410,8 @@ mod tests {
         t.set_placeholder(field, "Name");
         let bar = t.tab_bar(Some(root), Style::new()).unwrap();
         t.tab(Some(bar), None, "One", true).unwrap();
-        t.tab(Some(bar), Some('t'), "Two", false).unwrap();
+        t.tab(Some(bar), Some(fusuma_icons::Icon::Type), "Two", false)
+            .unwrap();
         let list = t
             .scroll(
                 Some(root),
@@ -475,8 +481,9 @@ mod tests {
         };
         assert_eq!(by(Role::Heading)[0].name, "Settings");
         let b = by(Role::Button)[0];
-        assert_eq!((b.name, b.icon), ("Save", Some('b')));
-        assert_eq!(by(Role::Icon)[0].name, "i");
+        assert_eq!((b.name, b.icon), ("Save", Some(fusuma_icons::Icon::Bold)));
+        let info = fusuma_icons::Icon::Info.glyph();
+        assert_eq!(by(Role::Icon)[0].name, info.encode_utf8(&mut [0; 4]));
         assert_eq!(by(Role::Checkbox)[0].checked, Some(true));
         assert_eq!(by(Role::Radio)[0].checked, Some(false));
         assert_eq!(by(Role::Switch)[0].checked, Some(false));
@@ -487,7 +494,7 @@ mod tests {
         let tabs = by(Role::Tab);
         assert_eq!(
             (tabs[0].selected, tabs[1].selected, tabs[1].icon),
-            (Some(true), Some(false), Some('t'))
+            (Some(true), Some(false), Some(fusuma_icons::Icon::Type))
         );
         assert_eq!(by(Role::ListItem)[0].selected, Some(true));
         assert_eq!(by(Role::ScrollArea)[0].value, Some(0));

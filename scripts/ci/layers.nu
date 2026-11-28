@@ -17,7 +17,7 @@ export def is_renderer [name: string]: nothing -> bool {
 
 # The crates that draw text for the renderers: font data and text layout. They sit below the renderers (a renderer
 # measures and draws text with them) and know nothing of widgets, so a renderer may depend on them.
-export const DRAWING_SUPPORT = ["fusuma-fonts" "fusuma-icons" "fusuma-text"]
+export const DRAWING_SUPPORT = ["fusuma-atlas" "fusuma-fonts" "fusuma-icons" "fusuma-text"]
 
 # Whether `name` is a toolkit crate: a `fusuma` crate that is neither a renderer crate nor drawing support.
 export def is_toolkit [name: string]: nothing -> bool {

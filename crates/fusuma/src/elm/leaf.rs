@@ -114,7 +114,7 @@ pub struct Button<'a, M> {
     variant: ButtonVariant,
     on_press: Option<M>,
     enabled: bool,
-    icon: Option<char>,
+    icon: Option<fusuma_icons::Icon>,
 }
 
 /// A button with `text`, secondary until [`Button::primary`].
@@ -153,7 +153,7 @@ impl<'a, M> Button<'a, M> {
 
     /// An icon (a character of the icon font) before the text.
     #[must_use]
-    pub const fn icon(mut self, icon: char) -> Self {
+    pub const fn icon(mut self, icon: fusuma_icons::Icon) -> Self {
         self.icon = Some(icon);
         self
     }

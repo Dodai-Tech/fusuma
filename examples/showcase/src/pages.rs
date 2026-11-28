@@ -8,7 +8,7 @@ use fusuma::{
     paragraph, progress, radio, row, scroll, section, segmented, slider, snackbar, stat_card,
     stepper, steps, switch, tab, tab_bar, tag, text, text_field, text_fmt, toast, wrap,
 };
-use fusuma::{CrossAlign, Id, Length, Round, Surface, Swipe, SwipeDir};
+use fusuma::{CrossAlign, Icon, Id, Length, Round, Surface, Swipe, SwipeDir};
 use fusuma::{
     avatar_group, button_group, chip_group, fab, form_field, icon_badge, key_value, marks,
     navigation_bar, search_bar, split_button, toggle_group, toolbar, top_bar,
@@ -278,22 +278,19 @@ pub struct State<'a> {
     pub step: u8,
     pub chips: [bool; 3],
     pub x: Extra,
-    pub icons: Icons,
 }
 
-/// The icon characters the pages use, when the build has the font (a `char` is `None` where it does not).
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Icons {
-    pub home: Option<char>,
-    pub search: Option<char>,
-    pub settings: Option<char>,
-    pub more: Option<char>,
-    pub share: Option<char>,
-    pub edit: Option<char>,
-    pub delete: Option<char>,
-    /// The row of icons on the Foundations page.
-    pub row: [Option<char>; 9],
-}
+/// The icons of the Foundations page.
+pub const ICON_ROW: [Icon; 8] = [
+    Icon::House,
+    Icon::Settings,
+    Icon::Wifi,
+    Icon::Bluetooth,
+    Icon::Palette,
+    Icon::BatteryFull,
+    Icon::Bell,
+    Icon::PlugZap,
+];
 
 pub const RADIO_NAMES: [&str; 3] = ["Small", "Medium", "Large"];
 pub const TAB_NAMES: [&str; 3] = ["Home", "Search", "Settings"];
@@ -360,7 +357,7 @@ fn gap_bar<'a>(look: Look, name: &'a str, px: u32) -> impl fusuma::View<PageMsg>
 
 /// The Foundations page: what every widget is made from, drawn from the theme in force (the colours, the corners and the
 /// type), so it changes with the design and the palette.
-pub fn foundations<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
+pub fn foundations<'a>(look: Look, _s: State<'a>) -> impl Children<PageMsg> + 'a {
     let colours = card((
         section("Colour"),
         wrap((
@@ -426,25 +423,14 @@ pub fn foundations<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a 
     .padding(look.md)
     .gap(look.sm)
     .width(Length::Fill(1));
-    // The icons the build has, in order, as a list with a key each.
-    let mut icons = [(0u32, ' '); 9];
-    let mut n = 0;
-    for (k, c) in s.icons.row.iter().enumerate() {
-        if let Some(c) = *c {
-            icons[n] = (u32::try_from(k).unwrap_or(0), c);
-            n += 1;
-        }
-    }
-    let icon_card = (n > 0).then(|| {
-        card((
-            section("Icons"),
-            IconRow(icons, n, look.md),
-            text("Font icons: one colour, any size, drawn like text.").caption(),
-        ))
-        .padding(look.md)
-        .gap(look.sm)
-        .width(Length::Fill(1))
-    });
+    let icon_card = card((
+        section("Icons"),
+        IconRow(ICON_ROW, look.md),
+        text("Lucide: one colour, any size, drawn like text.").caption(),
+    ))
+    .padding(look.md)
+    .gap(look.sm)
+    .width(Length::Fill(1));
     (
         (!look.lite).then(|| text("Foundations").title()),
         (!look.lite).then(|| text("What every widget is made from.").caption()),
@@ -452,7 +438,7 @@ pub fn foundations<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a 
         (!look.lite).then_some(shape),
         (!look.lite).then_some(space),
         (!look.lite).then_some(type_scale),
-        icon_card,
+        (!look.lite).then_some(icon_card),
     )
 }
 
@@ -685,7 +671,7 @@ pub fn bars<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
             button_group(&BAR_ACTIONS, |i| PageMsg::BarAct(i as u8)),
         )),
         search_bar(
-            s.icons.search.unwrap_or(' '),
+            Icon::Search,
             s.typed,
             |_| PageMsg::BarSearch,
             PageMsg::BarSubmit,
@@ -695,8 +681,8 @@ pub fn bars<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
         chip_group(&BAR_CHIPS, marks(&x.filters), |i| PageMsg::BarChip(i as u8)),
         row((
             split_button("Charge", PageMsg::BarMain, PageMsg::BarMore),
-            fab(s.icons.edit.unwrap_or('+'), "Add").on_press(PageMsg::BarAdd),
-            icon_badge(s.icons.home.unwrap_or('i'), 3),
+            fab(Icon::Pencil, "Add").on_press(PageMsg::BarAdd),
+            icon_badge(Icon::Bell, 3),
         ))
         .gap(look.md),
         avatar_group(&PEOPLE[..x.people], look.avatar.max(24), 3),
@@ -895,44 +881,34 @@ pub fn typography<'a>(look: Look, _s: State<'a>) -> impl Children<PageMsg> + 'a 
 
 /// The Navigation page.
 pub fn navigation<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
-    let tab_of = move |i: usize, ic: Option<char>| {
-        let t = tab(TAB_NAMES[i], usize::from(s.tab) == i)
-            .on_select(PageMsg::Tab(u8::try_from(i).unwrap_or(0)));
+    let tab_of = move |i: usize, icon: Icon| {
         named(
             name_of(wid::TAB0, i),
-            match ic {
-                Some(c) => t.icon(c),
-                None => t,
-            },
+            tab(TAB_NAMES[i], usize::from(s.tab) == i)
+                .on_select(PageMsg::Tab(u8::try_from(i).unwrap_or(0)))
+                .icon(icon),
         )
     };
-    let menu_row = move |i: usize, ic: Option<char>| {
-        let it =
-            item(MENU_NAMES[i], false).on_select(PageMsg::MenuChoice(u8::try_from(i).unwrap_or(0)));
+    let menu_row = move |i: usize, icon: Icon| {
         named(
             name_of(wid::MENU_ITEM0, i),
-            match ic {
-                Some(c) => it.icon(c),
-                None => it,
-            },
+            item(MENU_NAMES[i], false)
+                .on_select(PageMsg::MenuChoice(u8::try_from(i).unwrap_or(0)))
+                .icon(icon),
         )
     };
-    let menu_button = {
-        let b = button("Menu").on_press(PageMsg::MenuOpen);
-        named(
-            wid::MENU_BUTTON,
-            match s.icons.more {
-                Some(c) => b.icon(c),
-                None => b,
-            },
-        )
-    };
+    let menu_button = named(
+        wid::MENU_BUTTON,
+        button("Menu")
+            .on_press(PageMsg::MenuOpen)
+            .icon(Icon::EllipsisVertical),
+    );
     (
         (!look.lite).then(|| text("Navigation").title()),
         tab_bar((
-            tab_of(0, s.icons.home),
-            tab_of(1, s.icons.search),
-            tab_of(2, s.icons.settings),
+            tab_of(0, Icon::House),
+            tab_of(1, Icon::Search),
+            tab_of(2, Icon::Settings),
         )),
         named(
             wid::TAB_LABEL,
@@ -945,9 +921,9 @@ pub fn navigation<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
                 s.menu_open,
                 wid::MENU_BUTTON,
                 (
-                    menu_row(0, s.icons.share),
-                    menu_row(1, s.icons.edit),
-                    menu_row(2, s.icons.delete),
+                    menu_row(0, Icon::Share2),
+                    menu_row(1, Icon::Pencil),
+                    menu_row(2, Icon::Trash2),
                 ),
             )
             .padding(look.xs)
@@ -989,9 +965,9 @@ pub fn reading<'a>(look: Look, _: State<'a>) -> impl Children<PageMsg> + 'a {
     )
 }
 
-/// The row of icons of the Typography page: as many as the font has.
+/// A row of icons, a key each (the icon's own index).
 #[derive(Clone, Copy, Debug)]
-struct IconRow([(u32, char); 9], usize, u32);
+struct IconRow([Icon; 8], u32);
 
 impl fusuma::ViewMarker for IconRow {}
 
@@ -1001,8 +977,8 @@ impl fusuma::View<PageMsg> for IconRow {
         cx: &mut fusuma::Cx<'_, PageMsg, N, K>,
         parent: Option<fusuma::NodeId>,
     ) -> Result<fusuma::NodeId, fusuma::BuildError> {
-        row((each(&self.0[..self.1], |i| i.0, |i| icon(i.1)),))
-            .gap(self.2)
+        row((each(&self.0, |i| *i as u32, |i| icon(*i)),))
+            .gap(self.1)
             .build(cx, parent)
     }
 
@@ -1011,8 +987,8 @@ impl fusuma::View<PageMsg> for IconRow {
         cx: &mut fusuma::Cx<'_, PageMsg, N, K>,
         node: fusuma::NodeId,
     ) {
-        row((each(&self.0[..self.1], |i| i.0, |i| icon(i.1)),))
-            .gap(self.2)
+        row((each(&self.0, |i| *i as u32, |i| icon(*i)),))
+            .gap(self.1)
             .rebuild(cx, node);
     }
 }

@@ -3,13 +3,16 @@
 
 mod names;
 
-pub use names::*;
+use core::fmt;
 
-use fusuma_fonts::{Family, FontFile, Role};
+pub use names::{COUNT, Icon};
 
-/// The Lucide font, every icon of it (about 1 MB: a build for a small chip draws from a cut of it instead, see the
-/// README).
+/// The Lucide font, every icon of it (about 1 MB, linked only where it is used: a vector renderer draws icons from
+/// it, a microcontroller build draws from the [`atlas`] instead).
 pub const FONT: &[u8] = include_bytes!("../fonts/lucide.ttf");
+
+/// The family name the font calls itself, which is what a text layout asks for.
+pub const FONT_FAMILY: &str = "lucide";
 
 /// The licence text of the Lucide font (ISC, with parts MIT from Feather): ship it with any binary that bundles it.
 pub const LICENCE: &str = include_str!("../fonts/LICENSE-lucide.txt");
@@ -17,65 +20,85 @@ pub const LICENCE: &str = include_str!("../fonts/LICENSE-lucide.txt");
 /// The lucide-static version the font and the names are from.
 pub const VERSION: &str = "1.80.0";
 
-/// Lucide as an icon family, for a `FontSet`: `FontSet { icons: Some(&fusuma_icons::FAMILY), ..set }` makes every
-/// renderer draw its icons with Lucide, found by Lucide's names.
-pub static FAMILY: Family = Family {
-    id: "lucide-full",
-    name: "lucide",
-    role: Role::Icons,
-    about: "Lucide, every icon, line icons on a 24 px grid (ISC, with parts MIT from Feather)",
-    regular: FontFile {
-        family: "lucide",
-        bold: false,
-        data: FONT,
-    },
-    bold: None,
-    licence: LICENCE,
-    icons: &NAMES,
-};
+impl Icon {
+    /// The character of the icon in [`FONT`]: drawn as text in that font, it is the icon.
+    #[must_use]
+    pub fn glyph(self) -> char {
+        names::GLYPHS[self as usize]
+    }
 
-/// The character of the icon called `name` (`"arrow-left"`, Lucide's own names, the ones on lucide.dev/icons), or
-/// `None` when Lucide has no such icon.
-#[must_use]
-pub fn icon(name: &str) -> Option<char> {
-    NAMES
-        .binary_search_by(|(n, _)| (*n).cmp(name))
-        .ok()
-        .map(|i| NAMES[i].1)
+    /// The name on lucide.dev (`"arrow-left"`).
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        names::NAMES[self as usize]
+    }
+
+    /// The icon called `name` on lucide.dev (`"arrow-left"`), for a name read from a file; `None` when Lucide has no
+    /// such icon. In code, use the variant (`Icon::ArrowLeft`), which the compiler checks.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        names::NAMES.binary_search(&name).ok().map(|i| Self::ALL[i])
+    }
+}
+
+impl fmt::Display for Icon {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+/// Glyph atlases of the icons the app uses (feature `atlas`).
+#[cfg(feature = "atlas")]
+pub mod atlas {
+    pub use fusuma_atlas::{Atlas, AtlasGlyph, Kerning};
+
+    include!(concat!(env!("OUT_DIR"), "/atlas.rs"));
+
+    /// The atlas that fits a line of `size` pixels: the largest not above it, else the smallest.
+    #[must_use]
+    pub fn for_size(size: u32) -> Option<&'static Atlas> {
+        Atlas::pick(ATLASES, "lucide", false, size)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
 
     #[test]
-    fn names_are_sorted_and_unique_so_the_lookup_finds_every_one() {
-        for pair in NAMES.windows(2) {
-            assert!(pair[0].0 < pair[1].0, "{} before {}", pair[0].0, pair[1].0);
+    fn the_names_are_sorted_and_every_icon_finds_itself_by_its_name() {
+        for pair in names::NAMES.windows(2) {
+            assert!(pair[0] < pair[1], "{} before {}", pair[0], pair[1]);
         }
-        for &(name, ch) in &NAMES {
-            assert_eq!(icon(name), Some(ch), "{name}");
+        assert_eq!(Icon::ALL.len(), COUNT);
+        for (i, icon) in Icon::ALL.into_iter().enumerate() {
+            assert_eq!(icon as usize, i, "{icon}");
+            assert_eq!(Icon::from_name(icon.name()), Some(icon), "{icon}");
         }
-        assert_eq!(NAMES.len(), COUNT);
     }
 
     #[test]
-    fn an_icon_is_found_by_name_and_by_constant() {
-        assert_eq!(icon("house"), Some(HOUSE));
-        assert_eq!(icon("arrow-left"), Some(ARROW_LEFT));
-        assert_eq!(icon("not-an-icon"), None);
+    fn an_icon_is_a_variant_with_a_name_and_a_character() {
+        assert_eq!(Icon::House.name(), "house");
+        assert_eq!(Icon::ArrowLeft.name(), "arrow-left");
+        assert_eq!(Icon::from_name("arrow-left"), Some(Icon::ArrowLeft));
+        assert_eq!(Icon::from_name("not-an-icon"), None);
+        assert_ne!(Icon::House.glyph(), Icon::Settings.glyph());
+        assert_eq!(std::format!("{}", Icon::ArrowDown0_1), "arrow-down-0-1");
     }
 
     #[test]
     fn every_character_is_in_the_private_use_area_and_in_the_font() {
-        let face = ttf_cmap(FONT);
-        for &(name, ch) in &NAMES {
-            assert!(('\u{e000}'..='\u{f8ff}').contains(&ch), "{name}");
-            assert!(face(ch), "{name} is not in the font");
+        let has = ttf_cmap(FONT);
+        for icon in Icon::ALL {
+            let c = icon.glyph();
+            assert!(('\u{e000}'..='\u{f8ff}').contains(&c), "{icon}");
+            assert!(has(c), "{icon} is not in the font");
         }
     }
 
-    /// A check that the font has a glyph for a character, from its `cmap` (formats 4 and 12), with no dependency.
+    /// A check that the font has a glyph for a character, from its `cmap` (format 12 groups), with no dependency.
     fn ttf_cmap(data: &'static [u8]) -> impl Fn(char) -> bool {
         let u16_at = move |o: usize| u32::from(u16::from_be_bytes([data[o], data[o + 1]]));
         let u32_at =
@@ -87,7 +110,7 @@ mod tests {
             .map(|r| u32_at(r + 8) as usize)
             .expect("a cmap table");
         let subs = u16_at(cmap + 2) as usize;
-        let ranges: alloc_free::Ranges = (0..subs)
+        let ranges: std::vec::Vec<(u32, u32)> = (0..subs)
             .map(|i| cmap + u32_at(cmap + 4 + i * 8 + 4) as usize)
             .filter(|&s| u16_at(s) == 12)
             .flat_map(|s| {
@@ -98,16 +121,28 @@ mod tests {
                 })
             })
             .collect();
-        move |c| ranges.0.iter().any(|&(a, b)| (a..=b).contains(&(c as u32)))
+        move |c| ranges.iter().any(|&(a, b)| (a..=b).contains(&(c as u32)))
     }
 
-    mod alloc_free {
-        extern crate std;
-        pub struct Ranges(pub std::vec::Vec<(u32, u32)>);
-        impl FromIterator<(u32, u32)> for Ranges {
-            fn from_iter<I: IntoIterator<Item = (u32, u32)>>(i: I) -> Self {
-                Self(i.into_iter().collect())
+    #[cfg(feature = "atlas")]
+    #[test]
+    fn the_atlas_has_the_toolkits_icons_inside_their_square() {
+        for a in atlas::ATLASES {
+            assert!(a.glyphs.windows(2).all(|w| w[0].ch < w[1].ch), "sorted");
+            assert_eq!(a.baseline, a.line);
+            for icon in [Icon::House, Icon::Settings, Icon::ChevronDown, Icon::X] {
+                let g = a.glyph(icon.glyph()).unwrap_or_else(|| panic!("{icon}"));
+                assert!(
+                    i32::from(g.top) >= 0
+                        && i32::from(g.top) + i32::from(g.height) <= i32::from(a.line),
+                    "{} {icon}: top {} height {}",
+                    a.line,
+                    g.top,
+                    g.height
+                );
+                assert!(g.width > 0 && u32::from(g.width) <= u32::from(a.line) + 1);
             }
         }
+        assert_eq!(atlas::for_size(15).unwrap().line, 15);
     }
 }

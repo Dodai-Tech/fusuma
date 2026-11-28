@@ -15,6 +15,8 @@ categories.workspace = true
 [features]
 # Vector fonts for `draw_text` and `measure_text`, from the families `fusuma-fonts` links.
 text = ["fusuma-render-vello-common/text", "vello_gpu/text", "dep:fusuma-text", "dep:glifo"]
+# Icons (`fusuma-icons`' Lucide font) drawn like text.
+icons = ["text", "fusuma-text/icons"]
 
 [dependencies]
 fusuma-render-vello-common = { workspace = true, features = ["std"] }

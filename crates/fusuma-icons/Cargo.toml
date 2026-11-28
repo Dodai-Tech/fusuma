@@ -1,6 +1,6 @@
 [package]
 name = "fusuma-icons"
-description = "Every Lucide icon for Fusuma: the icon font, each icon by name and as a constant, ready to draw on any renderer and platform"
+description = "Every Lucide icon for Fusuma as a typed enum, with the icon font and, for microcontrollers, glyph atlases of the icons an app uses"
 readme = "README.md"
 documentation = "https://docs.rs/fusuma-icons"
 version.workspace = true
@@ -12,10 +12,21 @@ authors.workspace = true
 repository.workspace = true
 keywords = ["icons", "lucide", "gui", "embedded", "no-std"]
 categories = ["gui", "embedded", "no-std"]
-include = ["src/**", "fonts/**", "README.md", "LICENSE*"]
+include = ["src/**", "fonts/**", "build.rs", "README.md", "LICENSE*"]
+
+[features]
+default = []
+# Glyph atlases of the icons an app uses (the toolkit's own and `[icons] used` in the file `FUSUMA_SETTINGS` names), at the
+# line heights `[fonts] sizes` gives, for a renderer without a vector rasteriser (the integer one).
+atlas = ["dep:ab_glyph", "dep:fusuma-atlas", "dep:serde", "dep:toml"]
 
 [dependencies]
-fusuma-fonts.workspace = true
+fusuma-atlas = { workspace = true, optional = true }
+
+[build-dependencies]
+ab_glyph = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
 
 [lints]
 workspace = true

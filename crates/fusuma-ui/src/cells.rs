@@ -8,6 +8,7 @@
 //! `fusuma_cells::Depth`).
 
 use fusuma_cells::{Attrs, Cell, Color as CColor, Grid, Style, char_width};
+use fusuma_icons::Icon;
 use fusuma_render::{Color, Measure, Point, Rect, Size, TextStyle};
 
 use crate::paragraph::Lines;
@@ -1048,7 +1049,7 @@ impl<const N: usize> Tree<N> {
         look: &Look<'_>,
         area: Rect,
         row: i32,
-        icon: Option<char>,
+        icon: Option<Icon>,
         text: &str,
         st: Style,
         centered: bool,
@@ -1063,13 +1064,9 @@ impl<const N: usize> Tree<N> {
         } else {
             area.x
         };
-        if let Some(ch) = icon {
-            let ch = if ('\u{e000}'..='\u{f8ff}').contains(&ch) {
-                g.icon
-            } else {
-                ch
-            };
-            pen.put(x, row, ch, st);
+        if icon.is_some() {
+            // A text screen has no icon font: every icon is its one stand-in character.
+            pen.put(x, row, g.icon, st);
             x += 1 + gap as i32;
         }
         pen.text(x, row, text, st);
@@ -1120,7 +1117,7 @@ mod tests {
         t.label(Some(root), "a caption", TextRole::Caption).unwrap();
         t.label(Some(root), "wide: 日本語 and é", TextRole::Body)
             .unwrap();
-        t.icon(Some(root), '\u{e88a}').unwrap();
+        t.icon(Some(root), Icon::House).unwrap();
         let row = t.row(Some(root), LayoutStyle::new().gap(1)).unwrap();
         t.button(Some(row), "Save", ButtonVariant::Primary).unwrap();
         t.button(Some(row), "Cancel", ButtonVariant::Secondary)
@@ -1129,8 +1126,13 @@ mod tests {
             .button(Some(row), "Off", ButtonVariant::Secondary)
             .unwrap();
         t.set_enabled(off, false);
-        t.button_with_icon(Some(root), '\u{e8b8}', "Settings", ButtonVariant::Secondary)
-            .unwrap();
+        t.button_with_icon(
+            Some(root),
+            Icon::Settings,
+            "Settings",
+            ButtonVariant::Secondary,
+        )
+        .unwrap();
         t.checkbox(Some(root), "Notify", true).unwrap();
         t.checkbox(Some(root), "Track", false).unwrap();
         let off = t.checkbox(Some(root), "Locked", true).unwrap();
@@ -1148,7 +1150,8 @@ mod tests {
         t.set_placeholder(empty, "Search");
         let tabs = t.tab_bar(Some(root), LayoutStyle::new()).unwrap();
         t.tab(Some(tabs), None, "Home", true).unwrap();
-        t.tab(Some(tabs), Some('s'), "Find", false).unwrap();
+        t.tab(Some(tabs), Some(Icon::Search), "Find", false)
+            .unwrap();
         let list = t
             .scroll(
                 Some(root),

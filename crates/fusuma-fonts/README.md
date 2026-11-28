@@ -66,4 +66,4 @@ The code is MIT. Every family is under the **SIL Open Font License 1.1**, which 
 with software but requires the licence text to travel with the font: `Family::licence` is the text, and the files
 are in `fonts/<id>/`. An application that ships a family should show it (an About screen or a notices file).
 
-**Icon families.** `material-symbols` is the default; `lucide` and `phosphor` are opt-in features with the same names (`home`, `settings`, ...), so `[fonts] icons = "lucide"` changes the drawing style and nothing else. **Kerning**: with the `atlas` feature each face carries the kerning pairs of the printable ASCII, and the integer renderer applies them.
+**Icons** are not here: they are [`fusuma-icons`](../fusuma-icons). **Kerning**: with the `atlas` feature each face carries the kerning pairs of the printable ASCII, and the integer renderer applies them.

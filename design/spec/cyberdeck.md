@@ -35,7 +35,7 @@ Contrast is the WCAG ratio of the colour against the surface it is read on (`on-
 | body | JetBrains Mono | 14 |
 | caption | JetBrains Mono | 10 |
 | code | JetBrains Mono | 14 |
-| icon | Material Symbols | 18 |
+| icon | Lucide | 18 |
 
 ## Spacing, shape and size
 

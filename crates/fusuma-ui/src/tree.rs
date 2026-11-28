@@ -1,6 +1,7 @@
 //! The retained widget tree: a fixed-size arena whose nodes keep their own state between frames.
 
 use fusuma_anim::Fx;
+use fusuma_icons::Icon;
 use fusuma_render::{Point, Rect, Size};
 
 use crate::theme::{ButtonVariant, Round, Surface, TextRole};
@@ -269,7 +270,7 @@ pub(crate) enum Kind {
         /// 0 at rest, 1 fully hovered or pressed; moves over time in the animation pass.
         blend: Fx,
         /// An icon (a character of the icon font) before the text.
-        icon: Option<char>,
+        icon: Option<Icon>,
     },
     Spacer,
     /// A place the host fills (a video, a camera, a native view): it takes room like a spacer and draws nothing. The
@@ -297,14 +298,14 @@ pub(crate) enum Kind {
         text: SmallText,
         selected: bool,
         /// An icon before the text.
-        icon: Option<char>,
+        icon: Option<Icon>,
     },
     /// One tab of a tab bar: the tabs that share a parent are one group with at most one selected, like list items.
     Tab {
         text: SmallText,
         selected: bool,
         /// An icon before the text.
-        icon: Option<char>,
+        icon: Option<Icon>,
     },
     /// Progress in thousandths, 0 to 1000.
     Progress {
@@ -1053,14 +1054,14 @@ impl<const N: usize> Tree<N> {
         )
     }
 
-    /// Adds an icon: the character `icon` of the icon font (look it up by name with `fusuma::fonts::FontSet::icon`),
-    /// drawn in a square of the theme's icon size. A renderer without the icon font shows its bitmap glyph.
+    /// Adds an icon, drawn in a square of the theme's icon size. A renderer without the icon font shows its bitmap
+    /// glyph.
     ///
     /// # Errors
     /// [`BuildError`] as for [`label`](Self::label).
-    pub fn icon(&mut self, parent: Option<NodeId>, icon: char) -> Result<NodeId, BuildError> {
+    pub fn icon(&mut self, parent: Option<NodeId>, icon: Icon) -> Result<NodeId, BuildError> {
         let mut buf = [0u8; 4];
-        self.label(parent, icon.encode_utf8(&mut buf), TextRole::Icon)
+        self.label(parent, icon.glyph().encode_utf8(&mut buf), TextRole::Icon)
     }
 
     /// Adds a label.
@@ -1794,8 +1795,11 @@ mod tests {
     fn an_icon_is_a_label_of_one_icon_character_in_the_icon_role() {
         let mut t = Tree::<4>::new();
         let root = t.row(None, Style::new()).unwrap();
-        let gear = t.icon(Some(root), '\u{e8b8}').unwrap();
-        assert_eq!(t.text(gear), Some("\u{e8b8}"));
+        let gear = t.icon(Some(root), Icon::Settings).unwrap();
+        assert_eq!(
+            t.text(gear),
+            Some(Icon::Settings.glyph().encode_utf8(&mut [0; 4]) as &str)
+        );
         assert!(matches!(
             t.nodes[usize::from(gear.index)].kind,
             Kind::Label {
@@ -1810,7 +1814,7 @@ mod tests {
         );
         t.remove(root);
         assert_eq!(
-            t.icon(Some(root), 'x'),
+            t.icon(Some(root), Icon::X),
             Err(BuildError::NoSuchParent),
             "a stale parent"
         );

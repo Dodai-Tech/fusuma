@@ -43,16 +43,7 @@ struct Family {
     regular: Option<String>,
     bold: Option<String>,
     axes: Option<toml::Table>,
-    /// An icon family: where its name table is, its licence, and the names cut out of it.
-    codepoints_url: Option<String>,
-    /// How the name table is written: `codepoints` (the default), `lucide` or `css`; only `scripts/fonts.nu` reads it.
-    #[allow(dead_code)]
-    codepoints_format: Option<String>,
-    /// Tables dropped before cutting; only `scripts/fonts.nu` reads it.
-    #[allow(dead_code)]
-    drop_tables: Option<Vec<String>>,
     licence_url: Option<String>,
-    icons: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -89,13 +80,7 @@ fn main() {
         .iter()
         .filter(|f| {
             assert!(!f.url.is_empty(), "fonts/catalog.toml: {} has no url", f.id);
-            let _ = (&f.bold_url, &f.regular, &f.bold, &f.axes, &f.codepoints_url, &f.licence_url);
-            assert_eq!(
-                f.role == "icons",
-                f.icons.is_some(),
-                "fonts/catalog.toml: {}: `icons` is for an icon family, and an icon family needs it",
-                f.id
-            );
+            let _ = (&f.bold_url, &f.regular, &f.bold, &f.axes, &f.licence_url);
             env::var(format!(
                 "CARGO_FEATURE_{}",
                 f.id.to_uppercase().replace('-', "_")
@@ -116,13 +101,11 @@ fn main() {
         let role = match f.role.as_str() {
             "sans" => "Sans",
             "mono" => "Mono",
-            "icons" => "Icons",
             other => panic!(
-                "fonts/catalog.toml: {}: role '{other}' is not sans, mono or icons",
+                "fonts/catalog.toml: {}: role '{other}' is not sans or mono",
                 f.id
             ),
         };
-        let icons = icon_table(&fonts.join(&f.id), f);
         let licence = ["LICENSE.txt", "OFL.txt"]
             .into_iter()
             .map(|n| fonts.join(&f.id).join(n))
@@ -152,17 +135,12 @@ fn main() {
         };
         let _ = writeln!(
             src,
-            "    Family {{ id: {:?}, name: {:?}, role: Role::{role}, about: {:?}, regular: {}, bold: {bold}, licence: include_str!({:?}), icons: &[{}] }},",
+            "    Family {{ id: {:?}, name: {:?}, role: Role::{role}, about: {:?}, regular: {}, bold: {bold}, licence: include_str!({:?}) }},",
             f.id,
             f.name,
             f.about,
             file("regular"),
-            licence.display().to_string(),
-            icons
-                .iter()
-                .map(|(n, c)| format!("({n:?}, '\\u{{{c:x}}}')"))
-                .collect::<Vec<_>>()
-                .join(", ")
+            licence.display().to_string()
         );
     }
     src.push_str("];\n\n/// Every preset of the catalog, linked or not; the first one whose families are linked is the default.\npub const PRESETS: &[Preset] = &[\n");
@@ -202,66 +180,10 @@ fn main() {
             .map(|f| atlas::Source {
                 id: f.id.as_str(),
                 sans: f.role == "sans",
-                // Icons fill a square as high as the line; their codepoints are the coverage.
-                // Sorted and without repeats: an atlas's glyphs are searched by character.
-                ranges: (f.role == "icons").then(|| {
-                    let mut cps: Vec<u32> = icon_table(&fonts.join(&f.id), f)
-                        .iter()
-                        .map(|(_, c)| *c)
-                        .collect();
-                    cps.sort_unstable();
-                    cps.dedup();
-                    cps.into_iter().map(|c| (c, c)).collect()
-                }),
             })
             .collect();
         atlas::build(&faces, &fonts, &out, &sizes, &catalog.defaults.coverage);
     }
-}
-
-/// An icon family's names and characters from its `names.txt` (`name hex` a line), sorted by name, checked against
-/// the catalog's list; empty for a text family.
-fn icon_table(dir: &Path, f: &Family) -> Vec<(String, u32)> {
-    let Some(want) = &f.icons else {
-        return Vec::new();
-    };
-    let path = dir.join("names.txt");
-    let text = fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!(
-            "{}: missing; run `nu scripts/fonts.nu fetch --family {}`",
-            path.display(),
-            f.id
-        )
-    });
-    let mut table: Vec<(String, u32)> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            let (name, hex) = l
-                .split_once(' ')
-                .unwrap_or_else(|| panic!("{}: '{l}'", path.display()));
-            (
-                name.to_string(),
-                u32::from_str_radix(hex.trim(), 16).unwrap(),
-            )
-        })
-        .collect();
-    let mut got: Vec<&str> = table.iter().map(|(n, _)| n.as_str()).collect();
-    // An entry is a name, or `logical=actual`: the table is by the name an app asks for.
-    let mut asked: Vec<&str> = want
-        .iter()
-        .map(|e| e.split_once('=').map_or(e.as_str(), |(logical, _)| logical))
-        .collect();
-    got.sort_unstable();
-    asked.sort_unstable();
-    assert_eq!(
-        got,
-        asked,
-        "{}: not the catalog's icons; fetch it again with --force",
-        path.display()
-    );
-    table.sort();
-    table
 }
 
 /// The line heights to make atlases at: the app's settings, else the catalog's.
@@ -335,8 +257,6 @@ mod atlas {
     pub struct Source<'a> {
         pub id: &'a str,
         pub sans: bool,
-        /// An icon family's codepoints; `None` for text, which gets the catalog's coverage.
-        pub ranges: Option<Vec<(u32, u32)>>,
     }
 
     /// The kerning of a font among the printable ASCII characters, from its GPOS `kern` feature (what a shaper applies):
@@ -416,7 +336,7 @@ mod atlas {
         let mut names = Vec::new();
         for f in families {
             let (id, sans) = (f.id, f.sans);
-            let ranges = f.ranges.as_ref().unwrap_or(&text_ranges);
+            let ranges = &text_ranges;
             let weights: &[&str] = if sans {
                 &["regular", "bold"]
             } else {
@@ -425,30 +345,12 @@ mod atlas {
             for &weight in weights {
                 let data = fs::read(fonts.join(id).join(format!("{weight}.ttf"))).unwrap();
                 let font = FontRef::try_from_slice(&data).unwrap();
-                // How far below the baseline the family's icons reach, in font units (0 for a text family).
-                let dip = if f.ranges.is_some() {
-                    let face = ttf_parser::Face::parse(&data, 0).unwrap();
-                    ranges
-                        .iter()
-                        .flat_map(|&(lo, hi)| lo..=hi)
-                        .filter_map(char::from_u32)
-                        .filter_map(|c| face.glyph_index(c))
-                        .filter_map(|g| face.glyph_bounding_box(g))
-                        .map(|b| -f32::from(b.y_min))
-                        .fold(0.0f32, f32::max)
-                } else {
-                    0.0
-                };
                 let kern_name = format!(
                     "KERN_{}_{}",
                     id.to_uppercase().replace('-', "_"),
                     weight.to_uppercase()
                 );
-                let (upm, pairs) = if f.ranges.is_some() {
-                    (1, Vec::new())
-                } else {
-                    kerning(&data)
-                };
+                let (upm, pairs) = kerning(&data);
                 let list: String = pairs.iter().map(|(k, v)| format!("({k}, {v}), ")).collect();
                 let _ = writeln!(
                     src,
@@ -464,11 +366,10 @@ mod atlas {
                     let atlas = Face {
                         family: id,
                         bold: weight == "bold",
-                        icons: f.ranges.is_some(),
                         line: u32::from(line),
                         name: &name,
                     };
-                    one(&font, &atlas, ranges, dip, &kern_name, out, &mut src);
+                    one(&font, &atlas, ranges, &kern_name, out, &mut src);
                     names.push(name);
                 }
             }
@@ -486,8 +387,6 @@ mod atlas {
     struct Face<'a> {
         family: &'a str,
         bold: bool,
-        /// An icon font: the em is the line and the baseline its bottom, so an icon fills the line's square.
-        icons: bool,
         line: u32,
         name: &'a str,
     }
@@ -498,29 +397,17 @@ mod atlas {
         font: &FontRef<'_>,
         face: &Face<'_>,
         ranges: &[(u32, u32)],
-        dip_units: f32,
         kern_name: &str,
         out: &Path,
         src: &mut String,
     ) {
         let (line, name) = (face.line, face.name);
-        let em = if face.icons {
-            line as f32
-        } else {
-            line as f32 * 100.0 / 121.0
-        };
+        let em = line as f32 * 100.0 / 121.0;
         // `PxScale` is the font's ascent-to-descent height in pixels, not the em: convert `em` pixels per em to it.
         let scale =
             ab_glyph::PxScale::from(em * font.height_unscaled() / font.units_per_em().unwrap());
         let scaled = font.as_scaled(scale);
-        // An icon stands on the bottom of its line. One that dips below its font's baseline (Phosphor's do, by 3 % of the
-        // em) would leave the square, so the whole family is lifted by the deepest dip and stays inside it.
-        let dip = dip_units / f32::from(font.units_per_em().unwrap() as u16) * em;
-        let baseline = if face.icons {
-            em - dip
-        } else {
-            scaled.ascent()
-        };
+        let baseline = scaled.ascent();
         let mut glyphs = String::new();
         let mut coverage: Vec<u8> = Vec::new();
         for &(lo, hi) in ranges {
@@ -572,12 +459,7 @@ mod atlas {
             if face.bold { " bold" } else { "" },
             face.family,
             face.bold,
-            // The line's bottom for an icon (the lift is in each glyph's `top`), the font's ascent for text.
-            if face.icons {
-                em.round()
-            } else {
-                baseline.round()
-            } as u32,
+            baseline.round() as u32,
             (em * 64.0).round() as u32
         );
     }

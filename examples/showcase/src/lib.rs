@@ -88,19 +88,6 @@ pub use fusuma::{Class, PHONE_BELOW, TABLET_BELOW, WATCH_BELOW};
 /// How many logical pixels a column of a text UI counts for, when it picks a layout by width.
 const CELL_PX: u32 = 9;
 
-/// The icons the Typography page shows, by name.
-#[cfg(feature = "fonts")]
-const ICONS: [&str; 8] = [
-    "home",
-    "settings",
-    "wifi",
-    "bluetooth",
-    "palette",
-    "battery_full",
-    "notifications",
-    "ev_station",
-];
-
 /// The text of the palette button: the palette's name.
 fn palette_button_text(palette: &Palette) -> &'static str {
     match palette.name {
@@ -413,7 +400,6 @@ pub struct Showcase {
     /// The Examples page's view, kept in step with its part of the tree.
     pages: fusuma::Host<pages::PageMsg, 160>,
     /// The icon characters, looked up once (a lookup by name is not free on a chip).
-    icons: Option<pages::Icons>,
     /// The state the pages show, besides the ones above.
     notify: bool,
     location: bool,
@@ -476,7 +462,6 @@ impl Showcase {
             x: pages::Extra::START,
             text_scale: 100,
             pages: fusuma::Host::new(),
-            icons: None,
             notify: true,
             location: false,
             size: 1,
@@ -778,14 +763,14 @@ impl Showcase {
         self.palette_rows = [None; 27];
         self.design_rows = [None; 2];
         self.palette_groups = [None; 2];
-        // The chevron of a dropdown, when the icon font has one.
-        #[cfg(feature = "fonts")]
-        let chevron = fusuma::fonts::FontSet::default_set().icon("expand_more");
-        #[cfg(not(feature = "fonts"))]
-        let chevron: Option<char> = None;
-        let dropdown = |t: &mut Tree<NODES>, parent, text| match chevron {
-            Some(c) => t.button_with_icon(Some(parent), c, text, ButtonVariant::Secondary),
-            None => t.button(Some(parent), text, ButtonVariant::Secondary),
+        // The chevron of a dropdown.
+        let dropdown = |t: &mut Tree<NODES>, parent, text| {
+            t.button_with_icon(
+                Some(parent),
+                fusuma::Icon::ChevronDown,
+                text,
+                ButtonVariant::Secondary,
+            )
         };
         // On a watch the header has no room for the palette: it is a tile of the home screen instead (see below).
         self.palette_button = None;
@@ -1046,44 +1031,10 @@ impl Showcase {
         }
     }
 
-    /// The icons the pages use, by name, when the build has the font.
-    fn page_icons(&self) -> pages::Icons {
-        #[cfg(feature = "fonts")]
-        {
-            let set = fusuma::fonts::FontSet::default_set();
-            let mut row = [None; 9];
-            for (slot, name) in row.iter_mut().zip(ICONS) {
-                *slot = set.icon(name);
-            }
-            pages::Icons {
-                home: set.icon("home"),
-                search: set.icon("search"),
-                settings: set.icon("settings"),
-                more: set.icon("more_vert"),
-                share: set.icon("share"),
-                edit: set.icon("edit"),
-                delete: set.icon("delete"),
-                row,
-            }
-        }
-        #[cfg(not(feature = "fonts"))]
-        {
-            pages::Icons::default()
-        }
-    }
-
     /// Makes the page on show match the state: built the first time, then only what differs is touched.
     fn sync_pages(&mut self) {
         let Some(c) = self.content else { return };
         let look = self.page_look();
-        let icons = match self.icons {
-            Some(i) => i,
-            None => {
-                let i = self.page_icons();
-                self.icons = Some(i);
-                i
-            }
-        };
         let typed = self.typed;
         let state = pages::State {
             clicks: self.clicks,
@@ -1106,7 +1057,6 @@ impl Showcase {
             step: self.step,
             chips: self.chips,
             x: self.x,
-            icons,
         };
         // The tree has room for the page (the whole app is checked to fit), so a failure leaves a smaller page.
         let (tree, host) = (&mut self.tree, &mut self.pages);

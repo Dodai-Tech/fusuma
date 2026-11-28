@@ -64,7 +64,7 @@ fn view(s: &State) -> impl View<Msg> + use<'_> {
                 if s.error { "Required" } else { "" },
             ),
             key_value("Range", "412 km"),
-            icon_badge('i', s.count),
+            icon_badge(fusuma::Icon::Bell, s.count),
         ))
         .gap(4),
         fusuma::column((
@@ -77,8 +77,13 @@ fn view(s: &State) -> impl View<Msg> + use<'_> {
         .gap(4),
         fusuma::column((
             split_button("Charge", Msg::Main, Msg::More),
-            fab('+', "Add").on_press(Msg::Add),
-            search_bar(' ', &s.query, |q| Msg::Search(q.to_owned()), Msg::Submit),
+            fab(fusuma::Icon::Plus, "Add").on_press(Msg::Add),
+            search_bar(
+                fusuma::Icon::Search,
+                &s.query,
+                |q| Msg::Search(q.to_owned()),
+                Msg::Submit,
+            ),
             avatar_group(&PEOPLE[..s.people], 28, 3),
             text("end"),
         ))

@@ -15,10 +15,13 @@ categories = ["gui", "text-processing", "no-std"]
 [features]
 # The families come from `fusuma-fonts`' features, turned on by whoever picks them (the app, the `fusuma` facade).
 default = []
+# Icons: `Font::Icons` is the Lucide font of `fusuma-icons`. Without it an icon is drawn with the bitmap font.
+icons = ["dep:fusuma-icons"]
 
 [dependencies]
 fusuma-render.workspace = true
 fusuma-fonts = { workspace = true, default-features = false }
+fusuma-icons = { workspace = true, optional = true }
 # `libm`, never `std`: Parley's `std` feature pulls `memmap2`, which does not build for ESP-IDF, and system fonts
 # are not wanted here (the bundled ones are the point).
 parley = { workspace = true }
@@ -26,6 +29,7 @@ parley = { workspace = true }
 [dev-dependencies]
 # The tests draw with the default preset and Roboto.
 fusuma-fonts = { workspace = true, features = ["preset-fusuma", "roboto"] }
+fusuma-icons.workspace = true
 
 [lints]
 workspace = true

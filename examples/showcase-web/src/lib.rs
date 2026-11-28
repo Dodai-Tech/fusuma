@@ -582,7 +582,6 @@ async fn run() -> Result<(), JsValue> {
         settings.fonts.preset.as_deref(),
         settings.fonts.sans.as_deref(),
         settings.fonts.mono.as_deref(),
-        settings.fonts.icons.as_deref(),
     )
     .map_err(|e| JsValue::from_str(&e.to_string()))?;
     let palette = fusuma::Palette::choose(

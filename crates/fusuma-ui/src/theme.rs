@@ -308,8 +308,8 @@ pub struct Fonts {
 }
 
 impl Fonts {
-    /// Inter for text, Inter Bold for headings, JetBrains Mono for code, Material Symbols for icons (each the
-    /// family the build linked for that role).
+    /// Inter for text, Inter Bold for headings, JetBrains Mono for code, Lucide for icons (the text ones are
+    /// the families the build linked for that role).
     pub const DEFAULT: Self = Self {
         body: Font::Sans,
         title: Font::SansBold,

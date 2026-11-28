@@ -35,6 +35,7 @@ def "test layers: text and font crates are drawing support, which a renderer may
     assert (not (is_toolkit "fusuma-text"))
     assert (not (is_toolkit "fusuma-fonts"))
     assert (not (is_toolkit "fusuma-icons"))
+    assert (not (is_toolkit "fusuma-atlas"))
     assert (is_toolkit "fusuma-ui")
     assert equal (violations [(pkg fusuma-render-vello-common [fusuma-render fusuma-text fusuma-fonts])]) []
     assert equal (violations [(pkg fusuma-render-vello-cpu [fusuma-text fusuma-ui])] | length) 1

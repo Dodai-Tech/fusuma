@@ -6,6 +6,7 @@ members = [
     "crates/fusuma-anim",
     "crates/fusuma",
     "crates/fusuma-ui",
+    "crates/fusuma-atlas",
     "crates/fusuma-fonts",
     "crates/fusuma-icons",
     "crates/fusuma-text",
@@ -58,6 +59,7 @@ wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "v
 fusuma-ui = { path = "crates/fusuma-ui", version = "0.2.0" }
 fusuma-platform = { path = "crates/fusuma-platform", version = "0.2.0" }
 fusuma = { path = "crates/fusuma", version = "0.2.0", default-features = false }
+fusuma-atlas = { path = "crates/fusuma-atlas", version = "0.2.0" }
 fusuma-fonts = { path = "crates/fusuma-fonts", version = "0.2.0", default-features = false }
 fusuma-icons = { path = "crates/fusuma-icons", version = "0.2.0" }
 fusuma-text = { path = "crates/fusuma-text", version = "0.2.0", default-features = false }

@@ -11,7 +11,7 @@ publish = false
 
 [features]
 default = ["fonts"]
-# Smooth text (Inter, Inter Bold, JetBrains Mono) and icons (Material Symbols). Without them text is the built-in
+# Smooth text (Inter, Inter Bold, JetBrains Mono) and icons (Lucide). Without them text is the built-in
 # bitmap font and the icons row is left out.
 fonts = ["fusuma/fonts-fusuma", "fusuma/icons"]
 

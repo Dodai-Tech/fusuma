@@ -386,10 +386,14 @@ fn atlas_for(
         fusuma_render::Font::Sans => Face::Sans,
         fusuma_render::Font::SansBold => Face::SansBold,
         fusuma_render::Font::Mono => Face::Mono,
-        fusuma_render::Font::Icons => Face::Icons,
+        // The icons are `fusuma-icons`': Lucide, from the atlases of the icons the app uses.
+        #[cfg(feature = "icons")]
+        fusuma_render::Font::Icons => return fusuma_icons::atlas::for_size(style.size),
+        #[cfg(not(feature = "icons"))]
+        fusuma_render::Font::Icons => return None,
         fusuma_render::Font::Bitmap => return None,
     };
-    fusuma_fonts::atlas::Atlas::for_face(set, face, style.size)
+    fusuma_fonts::atlas::for_face(set, face, style.size)
 }
 
 impl<T: DrawTarget<Color = Rgb565> + Blend> Renderer for Embedded<T>
@@ -1397,43 +1401,6 @@ mod atlas_text_tests {
         );
     }
 
-    /// An icon fills the square of its line, as Vello draws it.
-    #[test]
-    fn an_icon_fills_its_square_like_vellos() {
-        let set = fusuma_fonts::FontSet::default_set();
-        for (name, size) in [("settings", 20u32), ("home", 15), ("wifi", 10)] {
-            let ch = set.icon(name).unwrap();
-            let mut text = [0u8; 4];
-            let text = ch.encode_utf8(&mut text);
-            let (w, h) = (40u32, 40u32);
-            let mut a = screen(w as u16, h as u16);
-            let mut v = fusuma_render_vello_cpu::new(w, h).unwrap();
-            paint(&mut a, text, Font::Icons, size);
-            paint(&mut v, text, Font::Icons, size);
-            let (pa, pv) = (grey(&a, w, h), grey(&v, w, h));
-            let ink = |p: &[u8]| p.iter().map(|&g| u64::from(g)).sum::<u64>();
-            let ratio = ink(&pa) as f64 / ink(&pv) as f64;
-            assert!(
-                (0.85..1.15).contains(&ratio),
-                "{name} {size}: ink {ratio:.3}"
-            );
-            // Inside the square from (2, 2).
-            for y in 0..h {
-                for x in 0..w {
-                    let inside = (2..2 + size).contains(&x) && (2..2 + size).contains(&y);
-                    assert!(
-                        inside || pa[(y * w + x) as usize] == 0,
-                        "{name} {size}: ink at ({x}, {y})"
-                    );
-                }
-            }
-            let m = a.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
-            assert_eq!((m.w, m.h), (size, size), "{name}: a square");
-            let mv = v.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
-            assert_eq!((mv.w, mv.h), (size, size), "{name}: Vello's square");
-        }
-    }
-
     /// Kerning: pairs such as "AV" and "To" sit closer, as a shaper sets them, so a line is as wide as Vello's.
     #[test]
     fn kerned_text_is_as_wide_as_vellos() {
@@ -1457,7 +1424,7 @@ mod atlas_text_tests {
             );
             // What it would be with no kerning: the advances alone.
             let atlas =
-                fusuma_fonts::atlas::Atlas::for_face(&set, fusuma_fonts::Face::Sans, size).unwrap();
+                fusuma_fonts::atlas::for_face(&set, fusuma_fonts::Face::Sans, size).unwrap();
             let plain: u32 = text
                 .chars()
                 .filter_map(|c| atlas.glyph_or_replacement(c))
@@ -1480,50 +1447,51 @@ mod atlas_text_tests {
         assert_eq!(closer, 5, "every line is nearer Vello's with kerning");
     }
 
-    /// Every icon family, drawn by the integer renderer from its atlas and by Vello from its outlines: the same ink in
-    /// the same square. (Phosphor's icons dip below the baseline and are lifted to stay inside it.)
+    /// An icon, drawn by the integer renderer from its atlas and by Vello from the font's outlines: the same ink in the
+    /// same square (the line's), at every size.
+    #[cfg(feature = "icons")]
     #[test]
-    fn icons_of_every_family_fill_their_square_like_vellos() {
-        for id in ["material-symbols", "lucide", "phosphor"] {
-            let set = fusuma_fonts::FontSet::choose(None, None, None, Some(id)).unwrap();
-            for (name, size) in [
-                ("settings", 20u32),
-                ("home", 15),
-                ("wifi", 10),
-                ("bolt", 20),
-                ("delete", 15),
-                ("search", 10),
-            ] {
-                let ch = set.icon(name).unwrap_or_else(|| panic!("{id} has {name}"));
-                let mut text = [0u8; 4];
-                let text = ch.encode_utf8(&mut text);
-                let (w, h) = (40u32, 40u32);
-                let (mut a, mut v) = (
-                    screen(w as u16, h as u16),
-                    fusuma_render_vello_cpu::new(w, h).unwrap(),
-                );
-                a.set_fonts(set);
-                v.set_fonts(set);
-                paint(&mut a, text, Font::Icons, size);
-                paint(&mut v, text, Font::Icons, size);
-                let (pa, pv) = (grey(&a, w, h), grey(&v, w, h));
-                let ink = |p: &[u8]| p.iter().map(|&g| u64::from(g)).sum::<u64>();
-                assert!(ink(&pv) > 0, "{id} {name} {size}: Vello drew nothing");
-                let ratio = ink(&pa) as f64 / ink(&pv) as f64;
-                assert!(
-                    (0.75..1.25).contains(&ratio),
-                    "{id} {name} {size}: ink {ratio:.3}"
-                );
-                for y in 0..h {
-                    for x in 0..w {
-                        let inside = (2..2 + size).contains(&x) && (2..2 + size).contains(&y);
-                        assert!(
-                            inside || pa[(y * w + x) as usize] == 0,
-                            "{id} {name} {size}: ink at ({x}, {y})"
-                        );
-                    }
+    fn icons_fill_their_square_like_vellos() {
+        use fusuma_icons::Icon;
+        for (icon, size) in [
+            (Icon::Settings, 20u32),
+            (Icon::House, 15),
+            (Icon::Wifi, 10),
+            (Icon::Zap, 20),
+            (Icon::Trash2, 15),
+            (Icon::Search, 10),
+            (Icon::ChevronDown, 20),
+        ] {
+            let mut text = [0u8; 4];
+            let text = icon.glyph().encode_utf8(&mut text);
+            let (w, h) = (40u32, 40u32);
+            let (mut a, mut v) = (
+                screen(w as u16, h as u16),
+                fusuma_render_vello_cpu::new(w, h).unwrap(),
+            );
+            paint(&mut a, text, Font::Icons, size);
+            paint(&mut v, text, Font::Icons, size);
+            let (pa, pv) = (grey(&a, w, h), grey(&v, w, h));
+            let ink = |p: &[u8]| p.iter().map(|&g| u64::from(g)).sum::<u64>();
+            assert!(ink(&pv) > 0, "{icon} {size}: Vello drew nothing");
+            let ratio = ink(&pa) as f64 / ink(&pv) as f64;
+            assert!(
+                (0.75..1.25).contains(&ratio),
+                "{icon} {size}: ink {ratio:.3}"
+            );
+            for y in 0..h {
+                for x in 0..w {
+                    let inside = (2..2 + size).contains(&x) && (2..2 + size).contains(&y);
+                    assert!(
+                        inside || pa[(y * w + x) as usize] == 0,
+                        "{icon} {size}: ink at ({x}, {y})"
+                    );
                 }
             }
+            let m = a.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
+            assert_eq!((m.w, m.h), (size, size), "{icon}: a square");
+            let mv = v.measure_text(text, &TextStyle::new(size, Color::WHITE).font(Font::Icons));
+            assert_eq!((mv.w, mv.h), (size, size), "{icon}: Vello's square");
         }
     }
 

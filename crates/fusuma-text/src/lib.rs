@@ -96,14 +96,13 @@ impl Default for TextEngine {
     }
 }
 
-/// The face a font role asks for; the bitmap font is not this engine's.
+/// The face a font role asks for; the bitmap font is not this engine's, and the icons are `fusuma-icons`'.
 const fn face(font: Font) -> Option<Face> {
     match font {
         Font::Sans => Some(Face::Sans),
         Font::SansBold => Some(Face::SansBold),
         Font::Mono => Some(Face::Mono),
-        Font::Icons => Some(Face::Icons),
-        Font::Bitmap => None,
+        Font::Icons | Font::Bitmap => None,
     }
 }
 
@@ -117,6 +116,10 @@ impl TextEngine {
             let blob: Blob<u8> = Blob::new(Arc::new(f.data));
             fonts.collection.register_fonts(blob, None);
         }
+        #[cfg(feature = "icons")]
+        fonts
+            .collection
+            .register_fonts(Blob::new(Arc::new(fusuma_icons::FONT)), None);
         Self {
             fonts,
             layouts: LayoutContext::new(),
@@ -141,6 +144,10 @@ impl TextEngine {
 
     /// The family name and weight that draw `font`, if a family fills its role.
     fn spec(&self, font: Font) -> Option<(&'static str, f32)> {
+        #[cfg(feature = "icons")]
+        if font == Font::Icons {
+            return Some((fusuma_icons::FONT_FAMILY, 400.0));
+        }
         let (family, file) = self.set.file(face(font)?)?;
         Some((family.name, if file.bold { 700.0 } else { 400.0 }))
     }
@@ -190,7 +197,7 @@ impl TextEngine {
     }
 
     /// Lays `text` out. Icons (`icons`) fill a square as high as the line: their em is the line and their baseline
-    /// its bottom, as their font draws them (Material Symbols stand on the baseline, one em high).
+    /// its bottom, as their font draws them (Lucide stands on the baseline, one em high).
     fn build(
         &mut self,
         text: &str,
@@ -361,7 +368,7 @@ mod tests {
                 .id()
         };
         let inter_file = font_of(&mut e);
-        e.set_fonts(FontSet::choose(None, Some("roboto"), None, None).unwrap());
+        e.set_fonts(FontSet::choose(None, Some("roboto"), None).unwrap());
         let roboto = e.measure("Settings and more", Font::Sans, 24).unwrap();
         assert_ne!(font_of(&mut e), inter_file, "another file");
         assert_ne!(

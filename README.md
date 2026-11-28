@@ -67,8 +67,9 @@ just showcase-esp-restore      # boot the board's factory app again
 | [`fusuma-render-integer`](crates/fusuma-render-integer) | the integer renderer for microcontrollers: RGB565, smooth text from glyph atlases, smooth shapes | yes |
 | [`fusuma-render-vello-cpu`](crates/fusuma-render-vello-cpu), [`fusuma-render-vello`](crates/fusuma-render-vello) | Vello on the CPU and on the GPU (`wgpu`), sharing [`-vello-common`](crates/fusuma-render-vello-common) | CPU with `libm` |
 | [`fusuma-text`](crates/fusuma-text) | Parley layout over the linked fonts | with alloc |
-| [`fusuma-icons`](crates/fusuma-icons) | every [Lucide](https://lucide.dev/icons/) icon (2431 names) by name and as a constant, as an icon family for any renderer | yes |
-| [`fusuma-fonts`](crates/fusuma-fonts) | the font catalog: ten OFL families, five presets, Material Symbols icons, one feature each; glyph atlases | yes |
+| [`fusuma-icons`](crates/fusuma-icons) | every [Lucide](https://lucide.dev/icons/) icon (2431) as a typed `Icon` enum, with the font and, for the integer renderer, atlases of the icons used | yes |
+| [`fusuma-atlas`](crates/fusuma-atlas) | the glyph atlas types the fonts and icons crates generate | yes |
+| [`fusuma-fonts`](crates/fusuma-fonts) | the font catalog: ten OFL families, five presets, one feature each; glyph atlases | yes |
 | [`fusuma-platform`](crates/fusuma-platform) | the renderer choice, `fusuma.toml` and board files (catalog: [docs/BOARDS.md](docs/BOARDS.md)) | yes |
 | [`fusuma-platform-desktop`](crates/fusuma-platform-desktop) | a window on Linux, macOS and Windows (`winit`) | no |
 | [`fusuma-platform-embedded`](crates/fusuma-platform-embedded) | what every board shares: `Board`, `Driver`, the frame step | yes |
@@ -92,5 +93,5 @@ UI is the design system.
 
 ## License
 
-MIT. The bundled fonts are under the SIL Open Font License 1.1, Material Symbols under Apache 2.0; their texts are in
-`crates/fusuma-fonts/fonts`.
+MIT. The bundled fonts are under the SIL Open Font License 1.1 (`crates/fusuma-fonts/fonts`), the Lucide icons under ISC
+(`crates/fusuma-icons/fonts`); their texts travel with them.

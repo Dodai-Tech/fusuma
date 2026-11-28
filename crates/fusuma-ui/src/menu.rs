@@ -174,7 +174,7 @@ mod tests {
             .unwrap();
         let menu = t.menu(Some(root), Style::new().padding(4)).unwrap();
         let rows = [
-            t.list_item_with_icon(Some(menu), 'a', "Copy", false)
+            t.list_item_with_icon(Some(menu), fusuma_icons::Icon::Copy, "Copy", false)
                 .unwrap(),
             t.list_item(Some(menu), "Paste", false).unwrap(),
             t.list_item(Some(menu), "Delete", false).unwrap(),

@@ -55,10 +55,18 @@
           },
           "minItems": 1,
           "description": "Line heights of the glyph atlases the integer renderer draws with, read at build time (FUSUMA_SETTINGS). Default 10, 15 and 20."
-        },
-        "icons": {
-          "type": "string",
-          "description": "The icon family's id (material-symbols). Default: the first one the build linked."
+        }
+      }
+    },
+    "icons": {
+      "type": "object",
+      "description": "Which Lucide icons the integer renderer makes glyph atlases of (fusuma-icons), besides the toolkit's own. Read at build time (FUSUMA_SETTINGS).",
+      "additionalProperties": false,
+      "properties": {
+        "used": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names on lucide.dev, such as arrow-left."
         }
       }
     },

@@ -13,9 +13,10 @@ use fusuma_ui::{
     TextRole, Tone,
 };
 
+use fusuma_icons::Icon;
+
 use super::{
-    Button, Children, Cx, Handler, View, ViewMarker, button, column, icon, row, spacer, text,
-    text_field,
+    Button, Children, Cx, Handler, View, ViewMarker, button, column, row, spacer, text, text_field,
 };
 
 /// The bar across the top of a screen: a title on the left and, on the right, the actions (icon buttons, a menu).
@@ -84,14 +85,14 @@ pub fn key_value<'a, M: Clone + 'a>(name: &'a str, value: &'a str) -> impl View<
 /// not change; above 99 the badge says `99+`.
 #[derive(Clone, Copy, Debug)]
 pub struct IconBadge {
-    glyph: char,
+    icon: Icon,
     count: u16,
 }
 
-/// The icon `glyph` with `count` on it.
+/// The icon with `count` on it.
 #[must_use]
-pub const fn icon_badge(glyph: char, count: u16) -> IconBadge {
-    IconBadge { glyph, count }
+pub const fn icon_badge(icon: Icon, count: u16) -> IconBadge {
+    IconBadge { icon, count }
 }
 
 impl IconBadge {
@@ -127,7 +128,7 @@ impl<M: Clone> View<M> for IconBadge {
         let at = cx
             .tree
             .row(parent, Style::new().gap(2).align(CrossAlign::Start))?;
-        cx.tree.icon(Some(at), self.glyph)?;
+        cx.tree.icon(Some(at), self.icon)?;
         let badge = cx.tree.row(Some(at), self.badge_style())?;
         cx.tree
             .label(Some(badge), self.count_text().as_str(), TextRole::Caption)?;
@@ -139,7 +140,8 @@ impl<M: Clone> View<M> for IconBadge {
             return;
         };
         let mut buf = [0u8; 4];
-        cx.tree.set_text(glyph, self.glyph.encode_utf8(&mut buf));
+        cx.tree
+            .set_text(glyph, self.icon.glyph().encode_utf8(&mut buf));
         if let Some(badge) = cx.tree.next_sibling(glyph) {
             cx.tree.set_style(badge, self.badge_style());
             if let Some(l) = cx.tree.first_child(badge) {
@@ -154,8 +156,8 @@ impl ViewMarker for IconBadge {}
 /// A round button with an icon, in the main action's colour: the one thing a screen is for (compose, add). With a `label` it
 /// is an extended one.
 #[must_use]
-pub fn fab<M>(glyph: char, label: &str) -> Button<'_, M> {
-    button(label).icon(glyph).primary()
+pub fn fab<M>(icon: Icon, label: &str) -> Button<'_, M> {
+    button(label).icon(icon).primary()
 }
 
 /// A button and, beside it, a second one that opens the other choices (a menu): the main action and its alternatives.
@@ -172,16 +174,16 @@ pub fn split_button<'a, M: Clone + 'a>(
     .gap(1)
 }
 
-/// A search field in a pill with the icon `glyph` before it (the font's `search`; a space for none) and `on_submit` for Enter.
+/// A search field in a pill with the icon before it (usually [`Icon::Search`]) and `on_submit` for Enter.
 #[must_use]
 pub fn search_bar<'a, M: Clone + 'a>(
-    glyph: char,
+    icon: Icon,
     value: &'a str,
     on_input: fn(&str) -> M,
     on_submit: M,
 ) -> impl View<M> + 'a {
     row((
-        icon(glyph),
+        crate::elm::icon(icon),
         text_field(value)
             .placeholder("Search")
             .on_input(on_input)
