@@ -31,6 +31,9 @@ fn at(texture: &wgpu::Texture, x: u32, y: u32) -> wgpu::TexelCopyTextureInfo<'_>
 /// Renders that may fail in a row before the frames kept for drawing again are given up (a lost device never recovers).
 const MAX_FAILED: u8 = 3;
 
+/// The most textures kept for surfaces the host fills; the one used longest ago goes first.
+const MAX_HOSTED: usize = 16;
+
 const MAX_SHIFTS: usize = 4;
 
 /// The Fusuma renderer on `vello_gpu`.
@@ -136,7 +139,9 @@ pub struct GpuScene {
     #[cfg(test)]
     fail_renders: u8,
     /// The textures of the surfaces the host fills, by the surface's id.
-    hosted: std::collections::HashMap<u32, wgpu::Texture>,
+    hosted: std::collections::HashMap<u32, (wgpu::Texture, u64)>,
+    /// Counts the frames, to tell which hosted texture was used last.
+    tick: u64,
     /// Images uploaded for the frame being recorded.
     bindings: TextureBindings,
     next_texture: u64,
@@ -227,6 +232,7 @@ impl GpuScene {
             failed: 0,
             lost: false,
             hosted: std::collections::HashMap::new(),
+            tick: 0,
             #[cfg(test)]
             fail_renders: 0,
             bindings: TextureBindings::new(),
@@ -271,7 +277,7 @@ impl GpuScene {
         if !ok {
             return None;
         }
-        let texture = self.hosted.get(&id)?.clone();
+        let texture = self.hosted.get(&id)?.0.clone();
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let tid = TextureId(self.next_texture);
         self.next_texture += 1;
@@ -290,11 +296,25 @@ impl GpuScene {
 
     fn host_texture(&mut self, id: u32, width: u32, height: u32) -> wgpu::Texture {
         let (width, height) = (width.clamp(1, 16384), height.clamp(1, 16384));
-        if let Some(t) = self.hosted.get(&id)
+        let tick = self.tick;
+        if let Some((t, used)) = self.hosted.get_mut(&id)
             && t.width() == width
             && t.height() == height
         {
+            *used = tick;
             return t.clone();
+        }
+        // Ids are the app's: a list that gives every row a new one must not keep a texture for each for ever.
+        while self.hosted.len() >= MAX_HOSTED {
+            let Some(oldest) = self
+                .hosted
+                .iter()
+                .min_by_key(|(_, (_, u))| *u)
+                .map(|(k, _)| *k)
+            else {
+                break;
+            };
+            self.hosted.remove(&oldest);
         }
         let t = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("fusuma surface"),
@@ -313,7 +333,7 @@ impl GpuScene {
                 | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        self.hosted.insert(id, t.clone());
+        self.hosted.insert(id, (t.clone(), tick));
         t
     }
 
@@ -617,6 +637,7 @@ impl Scene for GpuScene {
     }
 
     fn reset(&mut self) {
+        self.tick += 1;
         self.translation = (0.0, 0.0);
         self.paint_transform = Affine::IDENTITY;
         self.open_clips.clear();
@@ -929,6 +950,22 @@ mod tests {
         r.with_scene(Scene::reset);
         r.with_scene(|s| assert!(s.take_lost() && !s.take_lost()));
         r.with_scene(|s| assert_eq!(s.failed, 0));
+    }
+
+    #[test]
+    fn textures_for_surfaces_are_kept_but_not_without_limit() {
+        let Some(r) = gpu(16, 16) else { return };
+        for id in 0..(MAX_HOSTED as u32 * 3) {
+            r.with_scene(|s| {
+                s.reset();
+                let _ = s.fill_texture(id, |t| {
+                    t.texture(2, 2);
+                    true
+                });
+                assert!(s.hosted.len() <= MAX_HOSTED);
+            });
+        }
+        r.with_scene(|s| assert!(s.hosted.contains_key(&(MAX_HOSTED as u32 * 3 - 1))));
     }
 
     #[test]
