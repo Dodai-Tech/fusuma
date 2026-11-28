@@ -291,7 +291,7 @@ pub struct Icons {
     pub share: Option<char>,
     pub edit: Option<char>,
     pub delete: Option<char>,
-    /// The Typography page's row.
+    /// The row of icons on the Foundations page.
     pub row: [Option<char>; 9],
 }
 
@@ -344,9 +344,23 @@ fn swatch<'a>(
     .align(CrossAlign::Center)
 }
 
+/// A bar as wide as a spacing step, with its name and size under it.
+fn gap_bar<'a>(look: Look, name: &'a str, px: u32) -> impl fusuma::View<PageMsg> + 'a {
+    column((
+        row(())
+            .background(Surface::Primary)
+            .round(Round::Small)
+            .width(Length::Fixed(px.max(2)))
+            .height(Length::Fixed(12)),
+        text_fmt(format_args!("{name} {px}")).caption(),
+    ))
+    .gap(look.xs)
+    .align(CrossAlign::Start)
+}
+
 /// The Foundations page: what every widget is made from, drawn from the theme in force (the colours, the corners and the
 /// type), so it changes with the design and the palette.
-pub fn foundations<'a>(look: Look, _s: State<'a>) -> impl Children<PageMsg> + 'a {
+pub fn foundations<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
     let colours = card((
         section("Colour"),
         wrap((
@@ -398,12 +412,47 @@ pub fn foundations<'a>(look: Look, _s: State<'a>) -> impl Children<PageMsg> + 'a
     .padding(look.md)
     .gap(look.xs)
     .width(Length::Fill(1));
+    let space = card((
+        section("Spacing"),
+        row((
+            gap_bar(look, "xs", look.xs),
+            gap_bar(look, "sm", look.sm),
+            gap_bar(look, "md", look.md),
+            gap_bar(look, "lg", look.lg),
+        ))
+        .gap(look.md)
+        .align(CrossAlign::End),
+    ))
+    .padding(look.md)
+    .gap(look.sm)
+    .width(Length::Fill(1));
+    // The icons the build has, in order, as a list with a key each.
+    let mut icons = [(0u32, ' '); 9];
+    let mut n = 0;
+    for (k, c) in s.icons.row.iter().enumerate() {
+        if let Some(c) = *c {
+            icons[n] = (u32::try_from(k).unwrap_or(0), c);
+            n += 1;
+        }
+    }
+    let icon_card = (n > 0).then(|| {
+        card((
+            section("Icons"),
+            IconRow(icons, n, look.md),
+            text("Font icons: one colour, any size, drawn like text.").caption(),
+        ))
+        .padding(look.md)
+        .gap(look.sm)
+        .width(Length::Fill(1))
+    });
     (
         (!look.lite).then(|| text("Foundations").title()),
         (!look.lite).then(|| text("What every widget is made from.").caption()),
         colours,
         (!look.lite).then_some(shape),
+        (!look.lite).then_some(space),
         (!look.lite).then_some(type_scale),
+        icon_card,
     )
 }
 
@@ -833,20 +882,9 @@ pub fn text_page<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
 }
 
 /// The Typography page.
-pub fn typography<'a>(look: Look, s: State<'a>) -> impl Children<PageMsg> + 'a {
-    // The icons the build has, in order, as a list with a key each.
-    let mut icons = [(0u32, ' '); 9];
-    let mut n = 0;
-    for (k, c) in s.icons.row.iter().enumerate() {
-        if let Some(c) = *c {
-            icons[n] = (u32::try_from(k).unwrap_or(0), c);
-            n += 1;
-        }
-    }
-    let _ = &icons;
+pub fn typography<'a>(look: Look, _s: State<'a>) -> impl Children<PageMsg> + 'a {
     (
         (!look.lite).then(|| text("Typography").title()),
-        TypographyIcons(icons, n, look.sm),
         (!look.lite).then(|| text("Inter Bold, for titles and emphasis").title()),
         text("Inter Regular: the quick brown fox jumps over the lazy dog."),
         text("Romanian: ăâîșț ĂÂÎȘȚ, and more: éüñß €"),
@@ -953,11 +991,11 @@ pub fn reading<'a>(look: Look, _: State<'a>) -> impl Children<PageMsg> + 'a {
 
 /// The row of icons of the Typography page: as many as the font has.
 #[derive(Clone, Copy, Debug)]
-struct TypographyIcons([(u32, char); 9], usize, u32);
+struct IconRow([(u32, char); 9], usize, u32);
 
-impl fusuma::ViewMarker for TypographyIcons {}
+impl fusuma::ViewMarker for IconRow {}
 
-impl fusuma::View<PageMsg> for TypographyIcons {
+impl fusuma::View<PageMsg> for IconRow {
     fn build<const N: usize, const K: usize>(
         &self,
         cx: &mut fusuma::Cx<'_, PageMsg, N, K>,

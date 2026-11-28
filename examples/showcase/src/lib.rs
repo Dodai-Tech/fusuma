@@ -240,18 +240,32 @@ impl Page {
         Self::Typography,
         Self::Buttons,
         Self::Selection,
-        Self::List,
-        Self::Progress,
         Self::Controls,
         Self::Text,
-        Self::Navigation,
-        Self::Reading,
-        Self::Components,
-        Self::Data,
         Self::Pickers,
+        Self::List,
+        Self::Data,
+        Self::Progress,
+        Self::Reading,
+        Self::Navigation,
         Self::Bars,
+        Self::Components,
         Self::Overview,
     ];
+
+    /// The section of the sidebar the page is under: what a developer reaches for it to do.
+    #[must_use]
+    pub const fn section(self) -> &'static str {
+        match self {
+            Self::Foundations | Self::Typography => "Foundations",
+            Self::Buttons | Self::Selection | Self::Controls | Self::Text | Self::Pickers => {
+                "Input"
+            }
+            Self::List | Self::Data | Self::Progress | Self::Reading => "Display",
+            Self::Navigation | Self::Bars | Self::Components => "Structure",
+            Self::Overview => "Examples",
+        }
+    }
 
     /// The name in the sidebar.
     #[must_use]
@@ -943,7 +957,13 @@ impl Showcase {
                 .background(Surface::Surface)
                 .round(Round::Medium),
         )?;
+        let mut section = "";
         for (slot, page) in self.sidebar.iter_mut().zip(Page::ALL) {
+            // A caption over the first page of each section (the Examples section is one page: its name says it).
+            if page.section() != section && page != Page::Overview {
+                t.label(Some(side), page.section(), TextRole::Caption)?;
+            }
+            section = page.section();
             *slot = Some(t.list_item(Some(side), page.name(), page == self.page)?);
         }
         self.status = Some(t.label(Some(root), "Tap something", TextRole::Caption)?);
@@ -3561,11 +3581,12 @@ mod tests {
         for _ in Page::ALL
             .iter()
             .skip_while(|p| **p != Page::Buttons)
+            .take_while(|p| **p != Page::Reading)
             .skip(1)
-            .take_while(|p| **p != Page::Components)
         {
             tap(&mut ph, next);
         }
+        tap(&mut ph, next);
         settle(&mut ph);
         ph.frame(&mut pr).unwrap();
         assert_eq!(ph.page(), Page::Reading);
