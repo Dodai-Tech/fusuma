@@ -138,10 +138,9 @@ impl Canvas {
                     let Surfaces { pixels, textures } = hosts;
                     compose(shell, r, drawn, single, |r, id, rect| {
                         if let Some(t) = textures.as_mut() {
-                            let (device, queue) = r.with_scene(|s| s.device());
-                            if let Some(texture) = t(id, rect, &device, &queue) {
-                                let source = r.with_scene(|s| s.external_texture(&texture));
-                                let size = (texture.width(), texture.height());
+                            let got =
+                                r.with_scene(|s| s.fill_texture(id, |target| t(id, rect, target)));
+                            if let Some((source, size)) = got {
                                 return r.draw_source(source, size, rect, true).is_ok();
                             }
                         }
@@ -208,6 +207,36 @@ fn put_pixels<R: fusuma::render::Renderer>(
     }
 }
 
+/// What is drawn again over a place the host filled.
+#[derive(Clone, Copy)]
+enum Over {
+    /// Dialogs, menus, toasts and a drag.
+    Dialogs,
+    /// Toasts and a drag.
+    Topmost,
+}
+
+/// Draws what is above again, once over each of `places` (a place inside another is inside one already done).
+fn redraw_over<A: App, R: fusuma::render::Renderer>(
+    shell: &mut Shell<A>,
+    r: &mut R,
+    places: &[Rect],
+    what: Over,
+) {
+    for (n, place) in places.iter().enumerate() {
+        if places[..n].iter().any(|p| p.intersect(place) == *place) {
+            continue;
+        }
+        let done = match what {
+            Over::Dialogs => shell.paint_overlays(r, *place),
+            Over::Topmost => shell.paint_topmost(r, *place),
+        };
+        if let Err(e) = done {
+            log::error!("what is above a surface could not be drawn: {e:?}");
+        }
+    }
+}
+
 /// Goes through the layer plan back to front. `put` draws surface `id` (all of `rect`) with the host's picture and says
 /// whether it did; it is called with the clip set to the part that can be seen. Returns the rectangle that changed: the
 /// frame's and the surfaces'.
@@ -226,7 +255,15 @@ fn compose<A: App, R: fusuma::render::Renderer>(
     let mut fresh = vec![drawn];
     let mut filled: Vec<Rect> = Vec::new();
     let mut last = None;
+    // The places filled so far that are not above the dialogs, and those that are.
+    let mut flushed = false;
+    let mut high: Vec<Rect> = Vec::new();
     for layer in plan.layers() {
+        // The first layer inside a dialog: the dialogs, menus and toasts go over what was filled so far, so it comes over them.
+        if layer.above && !flushed {
+            flushed = true;
+            redraw_over(shell, r, &filled, Over::Dialogs);
+        }
         match layer.kind {
             fusuma::LayerKind::Ui => {}
             fusuma::LayerKind::Surface(id) => {
@@ -244,7 +281,11 @@ fn compose<A: App, R: fusuma::render::Renderer>(
                 if put_it {
                     total = total.union(&seen);
                     fresh.push(seen);
-                    filled.push(seen);
+                    if layer.above {
+                        high.push(seen);
+                    } else {
+                        filled.push(seen);
+                    }
                     last = Some(id);
                 }
             }
@@ -257,16 +298,12 @@ fn compose<A: App, R: fusuma::render::Renderer>(
             }
         }
     }
-    // The host's pixels covered the dialogs and toasts: they are drawn again, once over every place (a surface inside
-    // another is inside a place already done).
-    for (n, place) in filled.iter().enumerate() {
-        if filled[..n].iter().any(|p| p.intersect(place) == *place) {
-            continue;
-        }
-        if let Err(e) = shell.paint_overlays(r, *place) {
-            log::error!("what is above a surface could not be drawn: {e:?}");
-        }
+    // The host's pixels covered the dialogs and toasts: they are drawn again, once over every place. Surfaces inside
+    // dialogs came after, so only toasts and a drag are drawn over them.
+    if !flushed {
+        redraw_over(shell, r, &filled, Over::Dialogs);
     }
+    redraw_over(shell, r, &high, Over::Topmost);
     total
 }
 

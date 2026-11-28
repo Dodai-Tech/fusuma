@@ -185,16 +185,18 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   over it (`paint_over(id)`), and last draws **dialogs, menus, toasts and a drag again over every place it filled**
   (`paint_overlays`): the host's pixels covered them, and before this an open dialog over a video vanished under it. Each step
   is limited to the places that were refilled, so a translucent control is not drawn twice over a surface that was not
-  (the first version used the union of all of them). Not supported: a surface above a dialog
-- [x] **A GPU texture for a surface, with no copy through the CPU** (`Surfaces::textures`, `TextureSurface`,
-  `GpuScene::external_texture`, `Backend::draw_source`): the host makes an `Rgba8Unorm` texture on the window's device
-  (`GpuScene::device`), the scene refers to it as an external image and stretches it over the surface rectangle in the same
-  render; nothing of its pixels goes through the CPU. The pixel `FillSurface` stays for the CPU backend and as the fallback. Not
-  tried with a real decoder, only a texture written by the test (a `wgpu` texture from another device is a validation error)
-- [ ] A surface **above** a dialog, and what is over a surface when the surface is a texture shared with the host's own wgpu
-  pipeline (`GpuScene::with_device` makes that possible; the window does not use it)
-- [ ] The GPU scene loses a frame whose render failed (the commands were taken by the failed render and the next frame resets
-  the scene): the picture stays as it was until something redraws that part. Needs a way to tell the app to redraw everything
+  (the first version used the union of all of them).
+- [x] **A GPU texture for a surface, with no copy through the CPU** (`Surfaces::textures`, `TextureTarget`,
+  `GpuScene::fill_texture`, `Backend::draw_source`): the host is given the device and queue the window draws with and a
+  texture the scene owns for that surface (`TextureTarget::texture(w, h)`, kept between frames), writes its frame into it on
+  the GPU, and the scene stretches it over the surface in the same render. The texture is the scene's on purpose: `wgpu`
+  cannot tell a texture of another device or instance from a good one and panics inside the renderer, so a foreign one cannot
+  be handed over. The pixel `FillSurface` stays for the CPU backend and as the fallback
+- [x] **Surfaces inside dialogs are above them** (`Layer::above`, `Tree::paint_topmost`): the plan lists them after the others;
+  the host redraws the dialogs over what it filled, fills these, and redraws toasts and a drag over them
+- [x] **A failed GPU render loses nothing**: the render is tried again on a fresh renderer, and when that fails too the frame's
+  commands, moves and damage are kept and drawn with the next frame (up to three failures in a row, then given up: a lost
+  device does not come back)
 - [ ] A `Retained | Full` capability in place of the boolean, if a third kind of renderer needs it (not Iced's `Hinted`: neither
   source needs it)
 - [x] **Audit of the renderer layer** (all five crates): line coverage 96.8 % (`cargo llvm-cov`: integer 96 to 99 %, vello-cpu 99 %,

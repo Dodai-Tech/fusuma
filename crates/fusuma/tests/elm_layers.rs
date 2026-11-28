@@ -116,6 +116,7 @@ fn a_surface_that_does_not_fit_in_the_plan_is_counted() {
             Rect::new(0, 0, 1, 1),
             Rect::new(0, 0, 1, 1),
             false,
+            false,
         );
     }
     assert_eq!(plan.surfaces().count(), fusuma::MAX_SURFACES);

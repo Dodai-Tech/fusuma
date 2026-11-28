@@ -1788,6 +1788,14 @@ impl App for Showcase {
         self.tree.paint_overlays(renderer, &self.theme, region)
     }
 
+    fn paint_topmost<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        self.tree.paint_topmost(renderer, &self.theme, region)
+    }
+
     fn layers(&self) -> Option<fusuma::LayerPlan> {
         Some(self.tree.layers())
     }

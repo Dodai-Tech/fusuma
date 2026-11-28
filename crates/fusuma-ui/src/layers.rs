@@ -46,6 +46,10 @@ pub struct Layer {
     /// The part of `rect` that can be seen: cut to the screen and to the scrolling lists it is in. A host draws only
     /// inside it.
     pub visible: Rect,
+    /// The layer is inside an open dialog, a menu or a sheet, so it is above the dialogs (and what is dimmed behind
+    /// them) and listed after every layer that is not. A host draws such a layer after it redrew the dialogs over what
+    /// it filled first (`Tree::paint_overlays`), and then redraws what is above even it (`Tree::paint_topmost`).
+    pub above: bool,
 }
 
 /// The layers of the current picture, back to front: the interface first, then the surfaces in tree order.
@@ -64,6 +68,7 @@ impl LayerPlan {
             kind: LayerKind::Ui,
             rect: screen,
             visible: screen,
+            above: false,
         };
         let layers = [empty; MAX_LAYERS];
         Self {
@@ -75,7 +80,7 @@ impl LayerPlan {
 
     /// Adds a surface over the layers so far, and over it what the app put inside it when `over` is set. Beyond
     /// [`MAX_SURFACES`] it is counted and left out.
-    pub fn push_surface(&mut self, id: u32, rect: Rect, visible: Rect, over: bool) {
+    pub fn push_surface(&mut self, id: u32, rect: Rect, visible: Rect, over: bool, above: bool) {
         if self.surfaces().count() >= MAX_SURFACES {
             self.left_out += 1;
             return;
@@ -84,6 +89,7 @@ impl LayerPlan {
             kind: LayerKind::Surface(id),
             rect,
             visible,
+            above,
         };
         self.len += 1;
         if over {
@@ -91,6 +97,7 @@ impl LayerPlan {
                 kind: LayerKind::Over(id),
                 rect: visible,
                 visible,
+                above,
             };
             self.len += 1;
         }
@@ -140,7 +147,9 @@ impl<const N: usize> Tree<N> {
             .and_then(|r| self.rect(r))
             .unwrap_or(Rect::new(0, 0, 0, 0));
         let mut plan = LayerPlan::ui(screen);
-        self.collect_surfaces(&mut plan, screen);
+        // The surfaces of the interface first, then those inside dialogs: they are above them.
+        self.collect_surfaces(&mut plan, screen, false);
+        self.collect_surfaces(&mut plan, screen, true);
         plan
     }
 }
@@ -213,6 +222,45 @@ impl<const N: usize> Tree<N> {
         Ok(())
     }
 
+    /// Whether node `i` is inside a dialog, a menu or a sheet.
+    fn in_dialog(&self, i: usize) -> bool {
+        let mut cur = self.nodes[i].parent.map(usize::from);
+        while let Some(p) = cur {
+            if matches!(self.nodes[p].kind, Kind::Dialog { .. }) {
+                return true;
+            }
+            cur = self.nodes[p].parent.map(usize::from);
+        }
+        false
+    }
+
+    /// Draws again what is above even the surfaces inside dialogs (toasts, a dragged item) inside `region`: the host calls
+    /// it for each place it put such a surface in, after [`paint_over`](Self::paint_over).
+    ///
+    /// # Errors
+    /// The renderer's error.
+    pub fn paint_topmost<R: fusuma_render::Renderer>(
+        &self,
+        r: &mut R,
+        theme: &crate::theme::Theme,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        if !self.host_surfaces || region.is_empty() {
+            return Ok(());
+        }
+        r.save()?;
+        let mut done = r.clip(region);
+        if done.is_ok() {
+            done = self.paint_toasts(r, theme, Some(region));
+        }
+        if done.is_ok() {
+            done = self.paint_drag(r, theme, Some(region));
+        }
+        let back = r.restore();
+        done?;
+        back
+    }
+
     /// Draws again what is above everything else (open dialogs and menus, toasts, a dragged item) inside `region`. The host
     /// calls it for each place it put its own pixels in: they were drawn after the interface and cover those layers.
     /// `region` must not have had them drawn over it since the host filled it, or a dimming layer would be drawn twice.
@@ -260,7 +308,7 @@ impl<const N: usize> Tree<N> {
     }
 
     /// Adds the visible surfaces to `plan` in tree order (depth first), cut to `screen`.
-    pub(crate) fn collect_surfaces(&self, plan: &mut LayerPlan, screen: Rect) {
+    pub(crate) fn collect_surfaces(&self, plan: &mut LayerPlan, screen: Rect, above: bool) {
         let Some(root) = self.root.map(usize::from) else {
             return;
         };
@@ -274,8 +322,8 @@ impl<const N: usize> Tree<N> {
             }
             if let Kind::Surface { id } = n.kind {
                 let visible = self.visible_rect(i).intersect(&screen);
-                if !visible.is_empty() {
-                    plan.push_surface(id, n.rect, visible, n.first.is_some());
+                if !visible.is_empty() && self.in_dialog(i) == above {
+                    plan.push_surface(id, n.rect, visible, n.first.is_some(), above);
                 }
             }
             at = n

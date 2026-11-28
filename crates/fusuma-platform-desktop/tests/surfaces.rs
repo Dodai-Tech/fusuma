@@ -75,6 +75,13 @@ impl App for Rig {
     ) -> Result<(), R::Error> {
         self.tree.paint_overlays(r, &self.theme, region)
     }
+    fn paint_topmost<R: fusuma::render::Renderer>(
+        &mut self,
+        r: &mut R,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        self.tree.paint_topmost(r, &self.theme, region)
+    }
     fn layers(&self) -> Option<fusuma::LayerPlan> {
         Some(self.tree.layers())
     }
@@ -296,47 +303,29 @@ fn a_texture_is_shown_with_no_copy_through_the_cpu() {
     let mut shell = Shell::new(Rig::player());
     let asked = cell(0);
     let a = asked.clone();
-    let mut texture: Option<wgpu::Texture> = None;
     let mut hosts = Surfaces {
         pixels: Some(Box::new(|_, _, _| {
             panic!("a texture was given: no pixels are asked for")
         })),
-        textures: Some(Box::new(move |_, _, device, queue| {
+        textures: Some(Box::new(move |_, _, target| {
             a.set(a.get() + 1);
-            Some(
-                texture
-                    .get_or_insert_with(|| {
-                        let size = wgpu::Extent3d {
-                            width: 2,
-                            height: 2,
-                            depth_or_array_layers: 1,
-                        };
-                        let t = device.create_texture(&wgpu::TextureDescriptor {
-                            label: Some("test video"),
-                            size,
-                            mip_level_count: 1,
-                            sample_count: 1,
-                            dimension: wgpu::TextureDimension::D2,
-                            format: wgpu::TextureFormat::Rgba8Unorm,
-                            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                                | wgpu::TextureUsages::COPY_DST,
-                            view_formats: &[],
-                        });
-                        let blue = [0u8, 0, 200, 255].repeat(4);
-                        queue.write_texture(
-                            t.as_image_copy(),
-                            &blue,
-                            wgpu::TexelCopyBufferLayout {
-                                offset: 0,
-                                bytes_per_row: Some(8),
-                                rows_per_image: None,
-                            },
-                            size,
-                        );
-                        t
-                    })
-                    .clone(),
-            )
+            let texture = target.texture(2, 2);
+            let blue = [0u8, 0, 200, 255].repeat(4);
+            target.queue().write_texture(
+                texture.as_image_copy(),
+                &blue,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(8),
+                    rows_per_image: None,
+                },
+                wgpu::Extent3d {
+                    width: 2,
+                    height: 2,
+                    depth_or_array_layers: 1,
+                },
+            );
+            true
         })),
     };
     canvas.frame_with(&mut shell, 0, &mut hosts).unwrap();
@@ -346,6 +335,67 @@ fn a_texture_is_shown_with_no_copy_through_the_cpu() {
     assert!(near(top, 0x0000C8), "{top:06x}");
     // The controls are over it, as with pixels.
     assert_ne!(at(&canvas, surface.x + 8, surface.bottom() - 14), top);
+}
+
+/// A surface inside an open dialog is above the dialog and the dimmed picture, and above a surface that lies under both.
+fn a_surface_in_a_dialog_is_above_the_dialog(backend: Backend) {
+    let Some(mut canvas) = canvas(backend) else {
+        return;
+    };
+    let mut shell = Shell::new(Rig::new(|t| {
+        let root = t.root_id();
+        t.surface(
+            root,
+            1,
+            Style::new().width(Length::Fill(1)).height(Length::Fill(1)),
+        )
+        .unwrap();
+        let d = t.dialog(root, Style::new().padding(12)).unwrap();
+        t.surface(
+            Some(d),
+            2,
+            Style::new()
+                .width(Length::Fixed(100))
+                .height(Length::Fixed(60)),
+        )
+        .unwrap();
+        t.button(Some(d), "Close", ButtonVariant::Primary).unwrap();
+        t.open_dialog(d);
+    }));
+    let mut hosts = Surfaces {
+        pixels: Some(Box::new(|id, _, px| {
+            px.fill(if id == 1 { 0x00C8_0000 } else { 0x0000_C800 });
+        })),
+        textures: None,
+    };
+    for step in 0..30 {
+        shell.app.tick(30);
+        canvas.frame_with(&mut shell, step * 30, &mut hosts);
+    }
+    let plan = shell.app.tree.layers();
+    let order: Vec<_> = plan.layers().iter().map(|l| (l.kind, l.above)).collect();
+    assert_eq!(
+        order,
+        [
+            (fusuma::LayerKind::Ui, false),
+            (fusuma::LayerKind::Surface(1), false),
+            (fusuma::LayerKind::Surface(2), true)
+        ]
+    );
+    let inner = plan.surfaces().nth(1).unwrap().rect;
+    let c = at(&canvas, inner.x + 50, inner.y + 30);
+    assert!(
+        near(c, 0x00C800),
+        "the video in the dialog is not covered: {c:06x}"
+    );
+    // Under the dialog the first one is dimmed, not covered by the dialog's panel.
+    let dim = at(&canvas, 4, 4);
+    assert!(!near(dim, 0xC80000) && rgb(dim).0 > 0x40, "{dim:06x}");
+    // It stays right when the first surface is drawn again.
+    shell.app.tree.surface_changed(1);
+    canvas.frame_with(&mut shell, 5000, &mut hosts);
+    assert_eq!(at(&canvas, 4, 4), dim);
+    assert!(near(at(&canvas, inner.x + 50, inner.y + 30), 0x00C800));
 }
 
 macro_rules! on_both {
@@ -364,5 +414,6 @@ on_both!(
     a_surface_shows_the_hosts_picture_with_controls_over_it,
     a_dialog_stays_above_a_surface,
     a_surface_nests_in_another,
-    a_surface_in_a_list_stays_in_the_list
+    a_surface_in_a_list_stays_in_the_list,
+    a_surface_in_a_dialog_is_above_the_dialog
 );

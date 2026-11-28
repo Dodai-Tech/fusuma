@@ -28,18 +28,16 @@ pub use canvas::{Canvas, blit};
 pub type FillSurface = Box<dyn FnMut(u32, fusuma::render::Rect, &mut [u32])>;
 
 /// What gives a surface of the layer plan a GPU texture instead of pixels, so a video frame or a camera image reaches the
-/// window with no copy through the CPU: it gets the surface's id, its rectangle, and the device and queue the window draws
-/// with (make the texture on them). It returns the texture to show, stretched over the rectangle, or `None` to fall back
-/// to the pixel [`FillSurface`]. The texture is `Rgba8Unorm` with `TEXTURE_BINDING`, opaque or premultiplied, and it is
-/// only referred to: the host may keep writing to it between frames. Used on the GPU backend only; the CPU one asks for
-/// pixels.
+/// window with no copy through the CPU: it gets the surface's id, its rectangle and a [`TextureTarget`](fusuma::renderers::vello_gpu::TextureTarget) (the device and
+/// queue the window draws with, and the texture of this surface to write into, which the window owns). It returns `true`
+/// when the texture holds a picture, which is stretched over the rectangle, or `false` to fall back to the pixel
+/// [`FillSurface`]. GPU backend only; the CPU one asks for pixels.
 pub type TextureSurface = Box<
     dyn FnMut(
         u32,
         fusuma::render::Rect,
-        &fusuma::renderers::vello_gpu::wgpu::Device,
-        &fusuma::renderers::vello_gpu::wgpu::Queue,
-    ) -> Option<fusuma::renderers::vello_gpu::wgpu::Texture>,
+        &mut fusuma::renderers::vello_gpu::TextureTarget<'_>,
+    ) -> bool,
 >;
 
 /// What the host puts in the surfaces of the layer plan.

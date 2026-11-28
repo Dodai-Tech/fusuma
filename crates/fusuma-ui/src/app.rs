@@ -139,6 +139,20 @@ pub trait App {
         Ok(())
     }
 
+    /// Draws again what is above even the surfaces inside dialogs (toasts, a dragged item) inside `region`, a place such a
+    /// surface was put in (a `Layer` with `above` set). The default draws nothing.
+    ///
+    /// # Errors
+    /// The renderer's error.
+    fn paint_topmost<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        let _ = (renderer, region);
+        Ok(())
+    }
+
     /// The layers of the picture (see [`LayerPlan`](crate::LayerPlan)): the interface and the places the host fills itself
     /// (a video, a camera, a native view). `None` (the default) means the interface alone.
     fn layers(&self) -> Option<crate::LayerPlan> {

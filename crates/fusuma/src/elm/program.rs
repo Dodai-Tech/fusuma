@@ -563,6 +563,14 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.tree.paint_overlays(renderer, &self.theme, region)
     }
 
+    fn paint_topmost<R: Renderer>(
+        &mut self,
+        renderer: &mut R,
+        region: Rect,
+    ) -> Result<(), R::Error> {
+        self.tree.paint_topmost(renderer, &self.theme, region)
+    }
+
     fn layers(&self) -> Option<fusuma_ui::LayerPlan> {
         Some(self.tree.layers())
     }

@@ -28,6 +28,9 @@ fn at(texture: &wgpu::Texture, x: u32, y: u32) -> wgpu::TexelCopyTextureInfo<'_>
 }
 
 /// The most picture moves one frame may ask for.
+/// Renders that may fail in a row before the frames kept for drawing again are given up (a lost device never recovers).
+const MAX_FAILED: u8 = 3;
+
 const MAX_SHIFTS: usize = 4;
 
 /// The Fusuma renderer on `vello_gpu`.
@@ -56,6 +59,47 @@ impl core::fmt::Display for GpuError {
 
 impl std::error::Error for GpuError {}
 
+/// A texture the scene owns for a surface the host fills (a video, a camera): the host gets the device and the queue the
+/// window draws with, and a texture made on them, so it can write its frames into it on the GPU with no copy through the
+/// CPU. The texture is the scene's, never the host's: a `wgpu` texture from another device (or another instance) cannot be
+/// told apart from a good one and crashes the renderer, so there is no way to hand one over.
+pub struct TextureTarget<'a> {
+    scene: &'a mut GpuScene,
+    id: u32,
+    used: Option<(u32, u32)>,
+}
+
+impl core::fmt::Debug for TextureTarget<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TextureTarget")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TextureTarget<'_> {
+    /// The device the window draws with.
+    #[must_use]
+    pub fn device(&self) -> &wgpu::Device {
+        &self.scene.device
+    }
+
+    /// The queue the window draws with.
+    #[must_use]
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.scene.queue
+    }
+
+    /// The texture of this surface, `width` by `height`, `Rgba8Unorm` with `TEXTURE_BINDING`, `COPY_DST`, `COPY_SRC` and
+    /// `RENDER_ATTACHMENT` (write to it with the queue, copy into it, or render into it). It is kept between frames, so
+    /// the same one comes back while the size stays; a new size makes a new texture. Whatever is in it is drawn,
+    /// stretched over the surface, when the closure returns `true`.
+    pub fn texture(&mut self, width: u32, height: u32) -> wgpu::Texture {
+        self.used = Some((width.max(1), height.max(1)));
+        self.scene.host_texture(self.id, width, height)
+    }
+}
+
 /// A `vello_gpu` scene, the `wgpu` device it renders on and a texture to render into.
 pub struct GpuScene {
     scene: vello_gpu::Scene,
@@ -83,6 +127,14 @@ pub struct GpuScene {
     /// Clips pushed and not yet popped, with the transform each had: emptying the scene drops them, and they come back.
     open_clips: Vec<(KRect, Affine)>,
     dirty: bool,
+    /// Renders in a row that failed. The frame's commands are kept and drawn again with the next one, so a failure
+    /// loses no part of the picture (see [`MAX_FAILED`]).
+    failed: u8,
+    /// Test hook: the next renders fail.
+    #[cfg(test)]
+    fail_renders: u8,
+    /// The textures of the surfaces the host fills, by the surface's id.
+    hosted: std::collections::HashMap<u32, wgpu::Texture>,
     /// Images uploaded for the frame being recorded.
     bindings: TextureBindings,
     next_texture: u64,
@@ -170,6 +222,10 @@ impl GpuScene {
             paint_transform: Affine::IDENTITY,
             open_clips: Vec::new(),
             dirty: true,
+            failed: 0,
+            hosted: std::collections::HashMap::new(),
+            #[cfg(test)]
+            fail_renders: 0,
             bindings: TextureBindings::new(),
             #[cfg(not(target_arch = "wasm32"))]
             staging: None,
@@ -194,24 +250,62 @@ impl GpuScene {
         &mut self.scene
     }
 
-    /// Lets the scene draw `texture` (a texture the host made on this scene's device: `Rgba8Unorm`, with
-    /// `TEXTURE_BINDING`, opaque or premultiplied) as an image in the next frame, with no copy through the CPU: a video
-    /// frame, a camera, a map. Draw it with `Backend::draw_source`. The texture is only referred to, so the host may keep
-    /// writing to it between frames; it must not change while a frame is being drawn.
-    pub fn external_texture(&mut self, texture: &wgpu::Texture) -> ImageSource {
-        let id = TextureId(self.next_texture);
-        self.next_texture += 1;
-        self.bindings.insert(
+    /// Fills surface `id` of the layer plan through `fill`, which is given the texture to write into (see
+    /// [`TextureTarget`]), and returns the image to draw over the surface's rectangle (with `Backend::draw_source`) with its
+    /// size, or `None` when `fill` said it had nothing.
+    pub fn fill_texture(
+        &mut self,
+        id: u32,
+        fill: impl FnOnce(&mut TextureTarget<'_>) -> bool,
+    ) -> Option<(ImageSource, (u32, u32))> {
+        let mut target = TextureTarget {
+            scene: self,
             id,
-            texture.create_view(&wgpu::TextureViewDescriptor::default()),
-        );
-        ImageSource::external_texture(id, TextureRegion::Full, true)
+            used: None,
+        };
+        let ok = fill(&mut target);
+        let size = target.used?;
+        if !ok {
+            return None;
+        }
+        let texture = self.hosted.get(&id)?.clone();
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let tid = TextureId(self.next_texture);
+        self.next_texture += 1;
+        self.bindings.insert(tid, view);
+        Some((
+            ImageSource::external_texture(tid, TextureRegion::Full, true),
+            size,
+        ))
     }
 
-    /// The device and queue the scene draws with: the host makes the textures it hands over on these.
-    #[must_use]
-    pub fn device(&self) -> (wgpu::Device, wgpu::Queue) {
-        (self.device.clone(), self.queue.clone())
+    fn host_texture(&mut self, id: u32, width: u32, height: u32) -> wgpu::Texture {
+        let (width, height) = (width.clamp(1, 16384), height.clamp(1, 16384));
+        if let Some(t) = self.hosted.get(&id)
+            && t.width() == width
+            && t.height() == height
+        {
+            return t.clone();
+        }
+        let t = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("fusuma surface"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        self.hosted.insert(id, t.clone());
+        t
     }
 
     /// The texture that is rendered into, in `Rgba8Unorm`. It holds the last frame after
@@ -230,14 +324,9 @@ impl GpuScene {
     /// target is the whole picture, and that stays on the GPU.
     pub fn present(&mut self, target: &wgpu::Texture) {
         let (w, h) = self.size;
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("fusuma present"),
-            });
-        if self.record(&mut encoder).is_none() {
+        let Some((mut encoder, _)) = self.recorded() else {
             return;
-        }
+        };
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
@@ -262,11 +351,50 @@ impl GpuScene {
         self.dirty = false;
     }
 
+    /// [`record`](Self::record) into a new encoder, tried again on a fresh renderer when it fails (a lost pipeline or a
+    /// full pool is rebuilt). When it fails again the frame is kept, not dropped: the commands, the moves and the damage
+    /// stay in the scene and are drawn with the next frame, so no part of the picture is left stale for good.
+    fn recorded(&mut self) -> Option<(wgpu::CommandEncoder, (u32, u32, u32, u32))> {
+        for _ in 0..2 {
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("fusuma frame"),
+                });
+            if let Some(region) = self.record(&mut encoder) {
+                self.failed = 0;
+                return Some((encoder, region));
+            }
+            self.rebuild_renderer();
+        }
+        self.failed = self.failed.saturating_add(1);
+        None
+    }
+
+    fn rebuild_renderer(&mut self) {
+        let (renderer, resources) = GpuRenderer::new(
+            &self.device,
+            &self.queue,
+            &RenderTargetConfig {
+                format: self.texture.format(),
+                width: self.size.0,
+                height: self.size.1,
+            },
+        );
+        self.depth = renderer.create_depth_texture_view(&RenderSize {
+            width: self.size.0,
+            height: self.size.1,
+        });
+        self.renderer = renderer;
+        self.resources = resources;
+    }
+
     /// Records the moves of the picture and then the new commands drawn over it into `encoder`. Returns the part that
     /// matters to the CPU (x, y, width, height): what the frame named, or everything when it named nothing; `None`
-    /// when the scene failed to render, and the picture is left as it was.
+    /// when the scene failed to render: the damage and moves are put back, the commands stay in the scene.
     fn record(&mut self, encoder: &mut wgpu::CommandEncoder) -> Option<(u32, u32, u32, u32)> {
         let damage = std::mem::take(&mut self.damage);
+        let damage_kept = damage.clone();
         let shifts = std::mem::take(&mut self.shifts);
         let mut area: Option<(u32, u32, u32, u32)> = None;
         let mut join = |r: Option<(u32, u32, u32, u32)>| {
@@ -278,7 +406,7 @@ impl GpuScene {
                 }));
             }
         };
-        for (region, dy) in shifts {
+        for &(region, dy) in &shifts {
             let clipped = self.clip_rect(region);
             self.shift_picture(encoder, clipped, dy);
             join(clipped);
@@ -295,7 +423,16 @@ impl GpuScene {
         options.target_init = TargetInit::SrcOver;
         // A scene that fails to render leaves the previous picture; the error has nowhere to go
         // through the `Renderer` trait, and the next frame tries again.
-        self.renderer
+        #[cfg(test)]
+        let forced = self.fail_renders > 0;
+        #[cfg(test)]
+        {
+            self.fail_renders = self.fail_renders.saturating_sub(1);
+        }
+        #[cfg(not(test))]
+        let forced = false;
+        let rendered = self
+            .renderer
             .render(
                 &self.scene,
                 &mut self.resources,
@@ -307,7 +444,12 @@ impl GpuScene {
                 &self.bindings,
                 options,
             )
-            .ok()?;
+            .ok();
+        if forced || rendered.is_none() {
+            self.shifts = shifts;
+            self.damage = damage_kept;
+            return None;
+        }
         let whole = (0, 0, u32::from(self.size.0), u32::from(self.size.1));
         Some(if named {
             area.unwrap_or((0, 0, 0, 0))
@@ -387,12 +529,7 @@ impl GpuScene {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn render(&mut self) {
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("fusuma render"),
-            });
-        let Some(region) = self.record(&mut encoder) else {
+        let Some((mut encoder, region)) = self.recorded() else {
             return;
         };
         let (w, _) = self.size;
@@ -471,10 +608,19 @@ impl Scene for GpuScene {
     }
 
     fn reset(&mut self) {
-        self.scene.reset();
         self.translation = (0.0, 0.0);
         self.paint_transform = Affine::IDENTITY;
         self.open_clips.clear();
+        if self.failed > 0 && self.failed <= MAX_FAILED {
+            // The last render failed: what it should have drawn is still in the scene, with the images, the moves and the
+            // damage. The new frame is drawn after it, so nothing is lost.
+            self.scene.set_transform(Affine::IDENTITY);
+            self.scene.set_paint_transform(Affine::IDENTITY);
+            self.dirty = true;
+            return;
+        }
+        self.failed = 0;
+        self.scene.reset();
         // The images of the forgotten frame are not needed any more.
         self.bindings = TextureBindings::new();
         self.damage.clear();
@@ -622,7 +768,8 @@ impl Scene for GpuScene {
         #[cfg(not(target_arch = "wasm32"))]
         if self.dirty {
             self.render();
-            self.dirty = false;
+            // A render that failed is tried again by the next read.
+            self.dirty = self.failed > 0;
         }
         &self.pixels
     }
@@ -755,6 +902,40 @@ mod tests {
             ],
         );
         same(&mut inc, &mut whole, 64, 64);
+    }
+
+    #[test]
+    fn a_render_that_fails_loses_nothing() {
+        let Some(mut r) = gpu(64, 64) else { return };
+        let bg = Color::rgb(10, 20, 30);
+        let blue = Color::rgb(0, 0, 255);
+        let red = Color::rgb(255, 0, 0);
+        r.clear(bg).unwrap();
+        scene(&mut r, &[(Rect::new(4, 4, 20, 20), blue)]);
+        assert_eq!(r.pixel(5, 5).unwrap(), blue);
+        // The first render of the next frame fails; the retry on a fresh renderer draws it.
+        r.with_scene(Scene::reset);
+        r.with_scene(|s| s.fail_renders = 1);
+        r.will_draw(Rect::new(40, 40, 8, 8));
+        scene(&mut r, &[(Rect::new(40, 40, 8, 8), red)]);
+        r.with_scene(|s| assert_eq!(s.failed, 0, "the retry on a fresh renderer drew it"));
+        assert_eq!(r.pixel(42, 42).unwrap(), red);
+        // Fails for both attempts: the commands are kept for the next frame.
+        r.with_scene(Scene::reset);
+        r.will_draw(Rect::new(10, 40, 8, 8));
+        r.fill_rect(Rect::new(10, 40, 8, 8), 0, blue).unwrap();
+        r.with_scene(|s| {
+            s.fail_renders = 2;
+            s.render();
+            assert_eq!(s.failed, 1);
+        });
+        // The next frame draws something else; the kept part comes with it.
+        r.with_scene(Scene::reset);
+        r.will_draw(Rect::new(30, 10, 8, 8));
+        scene(&mut r, &[(Rect::new(30, 10, 8, 8), red)]);
+        assert_eq!(r.pixel(12, 42).unwrap(), blue, "the lost frame is drawn");
+        assert_eq!(r.pixel(32, 12).unwrap(), red);
+        assert_eq!(r.pixel(5, 5).unwrap(), blue);
     }
 
     #[test]
