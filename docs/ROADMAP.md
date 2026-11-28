@@ -196,7 +196,10 @@ three Vello crates, folding `fusuma-platform` into `fusuma` (the ESP build scrip
   the host redraws the dialogs over what it filled, fills these, and redraws toasts and a drag over them
 - [x] **A failed GPU render loses nothing**: the render is tried again on a fresh renderer, and when that fails too the frame's
   commands, moves and damage are kept and drawn with the next frame (up to three failures in a row, then given up: a lost
-  device does not come back)
+  device does not come back); past that the scene says so (`GpuScene::take_lost`) and the window asks the app to draw
+  everything again (`App::redraw_all`)
+- [x] **Two surfaces that overlap are not dimmed twice**: the host redraws dialogs and toasts over each filled place cut by
+  the places before it
 - [ ] A `Retained | Full` capability in place of the boolean, if a third kind of renderer needs it (not Iced's `Hinted`: neither
   source needs it)
 - [x] **Audit of the renderer layer** (all five crates): line coverage 96.8 % (`cargo llvm-cov`: integer 96 to 99 %, vello-cpu 99 %,

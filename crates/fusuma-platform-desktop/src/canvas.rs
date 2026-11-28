@@ -131,6 +131,10 @@ impl Canvas {
             Surface::Gpu(r) => {
                 let r: &mut VelloGpu = r;
                 r.with_scene(vello_gpu::Scene::reset);
+                if r.with_scene(|s| s.take_lost()) {
+                    log::error!("the GPU kept failing: drawing everything again");
+                    shell.redraw_all();
+                }
                 let drawn = log_err(shell.frame(now_ms, r))?;
                 // The scene keeps its picture, draws only what changed over it and reads back only that.
                 let single = shell.frame_rects().len() < 2;
@@ -223,16 +227,79 @@ fn redraw_over<A: App, R: fusuma::render::Renderer>(
     places: &[Rect],
     what: Over,
 ) {
+    // Each place is cut by those before it: translucent layers (a dimming scrim) must not be drawn twice over a part
+    // that two places share.
     for (n, place) in places.iter().enumerate() {
-        if places[..n].iter().any(|p| p.intersect(place) == *place) {
-            continue;
+        let mut parts = vec![*place];
+        for before in &places[..n] {
+            parts = parts.into_iter().flat_map(|p| minus(p, *before)).collect();
         }
-        let done = match what {
-            Over::Dialogs => shell.paint_overlays(r, *place),
-            Over::Topmost => shell.paint_topmost(r, *place),
-        };
-        if let Err(e) = done {
-            log::error!("what is above a surface could not be drawn: {e:?}");
+        for part in parts {
+            let done = match what {
+                Over::Dialogs => shell.paint_overlays(r, part),
+                Over::Topmost => shell.paint_topmost(r, part),
+            };
+            if let Err(e) = done {
+                log::error!("what is above a surface could not be drawn: {e:?}");
+            }
+        }
+    }
+}
+
+/// What is left of `a` when `b` is taken out: up to four rectangles.
+fn minus(a: Rect, b: Rect) -> Vec<Rect> {
+    let o = a.intersect(&b);
+    if o.is_empty() {
+        return vec![a];
+    }
+    let mut out = Vec::with_capacity(4);
+    if o.y > a.y {
+        out.push(Rect::new(a.x, a.y, a.w, (o.y - a.y).cast_unsigned()));
+    }
+    if o.bottom() < a.bottom() {
+        out.push(Rect::new(
+            a.x,
+            o.bottom(),
+            a.w,
+            (a.bottom() - o.bottom()).cast_unsigned(),
+        ));
+    }
+    if o.x > a.x {
+        out.push(Rect::new(a.x, o.y, (o.x - a.x).cast_unsigned(), o.h));
+    }
+    if o.right() < a.right() {
+        out.push(Rect::new(
+            o.right(),
+            o.y,
+            (a.right() - o.right()).cast_unsigned(),
+            o.h,
+        ));
+    }
+    out
+}
+
+#[cfg(test)]
+mod minus_tests {
+    use super::*;
+
+    #[test]
+    fn the_parts_left_cover_exactly_what_is_not_taken_out() {
+        let a = Rect::new(0, 0, 10, 10);
+        for b in [
+            Rect::new(3, 3, 4, 4),
+            Rect::new(-5, -5, 8, 8),
+            Rect::new(8, 2, 9, 3),
+            Rect::new(20, 20, 2, 2),
+            Rect::new(0, 0, 10, 10),
+        ] {
+            let parts = minus(a, b);
+            for y in 0..10 {
+                for x in 0..10 {
+                    let inside = |r: &Rect| r.contains(fusuma::render::Point::new(x, y));
+                    let n = parts.iter().filter(|p| inside(p)).count();
+                    assert_eq!(n, usize::from(!inside(&b)), "{x},{y} {b:?}");
+                }
+            }
         }
     }
 }

@@ -542,6 +542,10 @@ impl<P: Program, const N: usize, const K: usize, const L: usize> App for Runner<
         self.tree.changed()
     }
 
+    fn redraw_all(&mut self) {
+        self.tree.invalidate();
+    }
+
     fn host_surfaces(&mut self, on: bool) {
         self.tree.set_host_surfaces(on);
     }

@@ -1767,6 +1767,10 @@ impl App for Showcase {
         self.tree.changed()
     }
 
+    fn redraw_all(&mut self) {
+        self.tree.invalidate();
+    }
+
     fn host_surfaces(&mut self, on: bool) {
         self.tree.set_host_surfaces(on);
     }

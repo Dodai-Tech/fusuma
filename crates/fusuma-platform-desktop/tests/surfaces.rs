@@ -57,6 +57,10 @@ impl App for Rig {
     fn frame_rects(&self) -> &[Rect] {
         self.tree.frame_rects()
     }
+    fn redraw_all(&mut self) {
+        self.tree.invalidate();
+    }
+
     fn host_surfaces(&mut self, on: bool) {
         self.tree.set_host_surfaces(on);
     }

@@ -292,6 +292,11 @@ impl<A: App> Shell<A> {
         self.app.paint_over(renderer, id, region)
     }
 
+    /// Asks for the whole picture to be drawn again (see [`App::redraw_all`]).
+    pub fn redraw_all(&mut self) {
+        self.app.redraw_all();
+    }
+
     /// Draws dialogs, menus and toasts again over a place the host filled (see [`App::paint_overlays`]).
     ///
     /// # Errors

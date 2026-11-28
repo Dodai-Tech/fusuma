@@ -130,6 +130,8 @@ pub struct GpuScene {
     /// Renders in a row that failed. The frame's commands are kept and drawn again with the next one, so a failure
     /// loses no part of the picture (see [`MAX_FAILED`]).
     failed: u8,
+    /// Renders failed more than [`MAX_FAILED`] times in a row: the frames were dropped and the picture is stale.
+    lost: bool,
     /// Test hook: the next renders fail.
     #[cfg(test)]
     fail_renders: u8,
@@ -223,6 +225,7 @@ impl GpuScene {
             open_clips: Vec::new(),
             dirty: true,
             failed: 0,
+            lost: false,
             hosted: std::collections::HashMap::new(),
             #[cfg(test)]
             fail_renders: 0,
@@ -277,6 +280,12 @@ impl GpuScene {
             ImageSource::external_texture(tid, TextureRegion::Full, true),
             size,
         ))
+    }
+
+    /// Whether frames were given up on since the last call (the device kept failing): what is on the picture is stale, so
+    /// the host asks the app to draw everything again.
+    pub fn take_lost(&mut self) -> bool {
+        std::mem::take(&mut self.lost)
     }
 
     fn host_texture(&mut self, id: u32, width: u32, height: u32) -> wgpu::Texture {
@@ -619,6 +628,8 @@ impl Scene for GpuScene {
             self.dirty = true;
             return;
         }
+        // Given up on: the picture is stale, and the host has to draw all of it again.
+        self.lost |= self.failed > MAX_FAILED;
         self.failed = 0;
         self.scene.reset();
         // The images of the forgotten frame are not needed any more.
@@ -902,6 +913,22 @@ mod tests {
             ],
         );
         same(&mut inc, &mut whole, 64, 64);
+    }
+
+    #[test]
+    fn a_device_that_keeps_failing_is_given_up_on_and_the_host_told() {
+        let Some(mut r) = gpu(32, 32) else { return };
+        r.clear(Color::rgb(1, 2, 3)).unwrap();
+        for _ in 0..=MAX_FAILED {
+            r.with_scene(|s| {
+                s.fail_renders = 2;
+                s.render();
+            });
+        }
+        r.with_scene(|s| assert!(s.failed > MAX_FAILED && !s.take_lost()));
+        r.with_scene(Scene::reset);
+        r.with_scene(|s| assert!(s.take_lost() && !s.take_lost()));
+        r.with_scene(|s| assert_eq!(s.failed, 0));
     }
 
     #[test]

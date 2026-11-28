@@ -125,6 +125,10 @@ pub trait App {
         Ok(())
     }
 
+    /// Asks for the whole picture to be drawn again (the host lost what it showed: a GPU that kept failing). The default
+    /// does nothing.
+    fn redraw_all(&mut self) {}
+
     /// Draws again what is above everything (dialogs, menus, toasts) inside `region`, a place the host filled; call it
     /// last, once for each such place. The default draws nothing.
     ///
